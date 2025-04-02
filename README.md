@@ -25,5 +25,5 @@ GraphFaker is an open-source Python library designed to generate, load, and expo
 GraphFaker simplifies graph data experimentation by providing an accessible, open-source solution for professionals and students alike. It helps researchers test algorithms, developers prototype applications, and educators teach graph concepts without dealing with data access barriers.
 
 References:
-https://arxiv.org/pdf/2203.00112
-https://research.google/pubs/graphworld-fake-graphs-bring-real-insights-for-gnns/
+- https://arxiv.org/pdf/2203.00112
+- https://research.google/pubs/graphworld-fake-graphs-bring-real-insights-for-gnns/

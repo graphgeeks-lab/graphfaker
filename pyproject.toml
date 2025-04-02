@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graphfaker"
+version = "0.1.0"
+description = "an open-source Python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way"
+readme = "README.md"
+authors = [
+  {name = "Dennis Irorere", email = "denironyx@gmail.com"}
+]
+maintainers = [
+  {name = "Dennis Irorere", email = "denironyx@gmail.com"}
+]
+classifiers = [
+
+]
+license = {text = "MIT license"}
+dependencies = [
+  "networkx>=3.4.2",
+  "pandas>=2.2.3",
+  "rdflib>=7.1.4",
+  "typer",
+]
+
+[project.optional-dependencies]
+dev = [
+    "coverage",  # testing
+    "mypy",  # linting
+    "pytest",  # testing
+    "ruff"  # linting
+]
+
+[project.urls]
+
+bugs = "https://github.com/denironyx/graphfaker/issues"
+changelog = "https://github.com/denironyx/graphfaker/blob/master/changelog.md"
+homepage = "https://github.com/denironyx/graphfaker"
+
+[tool.setuptools]
+package-dir = {"graphfaker" = "graphfaker"}
+
+[tool.setuptools.package-data]
+"*" = ["*.*"]
+
+
+
+
+# Mypy
+# ----
+
+[tool.mypy]
+files = "."
+
+# Use strict defaults
+strict = true
+warn_unreachable = true
+warn_no_return = true
+
+
