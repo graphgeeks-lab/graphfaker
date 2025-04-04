@@ -19,6 +19,7 @@ classifiers = [
 license = {text = "MIT license"}
 dependencies = [
   "faker>=37.1.0",
+  "matplotlib>=3.10.1",
   "networkx>=3.4.2",
   "pandas>=2.2.3",
   "rdflib>=7.1.4",
