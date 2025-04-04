@@ -174,3 +174,4 @@ if __name__ == "__main__":
     print("Wikidata Organizations:", G_orgs.nodes(data=True))
     print("Transportation Network Nodes:", len(G_transport.nodes()) if G_transport else "Failed to fetch")
     print("Synthetic People:", G_people.nodes(data=True))
+

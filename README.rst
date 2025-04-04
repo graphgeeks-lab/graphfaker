@@ -20,8 +20,22 @@ graphfaker
 
 
 
-an open-source Python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way
+an open-source Python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way. It enables users to create realistic yet customizable graph structures tailored to their specific needs, allowing for better experimentation and learning without relying on sensitive or proprietary data.
 
+Synthetic Graph Generation
+  -  Create graphs for social networks, transportation systems, knowledge graphs, and more.
+  -  Configurable number of nodes, edges, and relationships.
+  -  Support for weighted, directed, and attributed graphs.
+
+Prebuilt Benchmark Graphs
+  -  Load small, structured datasets for graph learning and algorithm testing.
+  -  Support for loading into NetworkX, Pandas, Kuzu, and Neo4j.
+  -  Export to formats like CSV, JSON, GraphML, and RDF.
+
+Knowledge Graph Creation
+  -  Generate knowledge graphs with predefined schemas (people, organizations, locations, etc.).
+  -  Randomized entity and relationship generation.
+  -  Output in JSON-LD, RDF, or Neo4j formats.
 
 * Free software: MIT license
 * Documentation: https://graphfaker.readthedocs.io.

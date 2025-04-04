@@ -18,9 +18,12 @@ classifiers = [
 ]
 license = {text = "MIT license"}
 dependencies = [
+  "faker>=37.1.0",
   "networkx>=3.4.2",
   "pandas>=2.2.3",
   "rdflib>=7.1.4",
+  "requests>=2.32.3",
+  "sparqlwrapper>=2.0.0",
   "typer",
 ]
 
