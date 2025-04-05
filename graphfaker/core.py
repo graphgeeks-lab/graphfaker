@@ -1,4 +1,7 @@
-"""Graphfaker module with synthetic graph generation, visualization, and export capabilities."""
+"""Social Knowledge Graph module.
+A multi-domain network connecting entities across social, geographical, and commercial dimensions.
+"""
+
 import networkx as nx
 import random
 from faker import Faker
@@ -6,217 +9,203 @@ import matplotlib.pyplot as plt
 
 fake = Faker()
 
-class GraphFaker:
-    @staticmethod
-    def generate_people(num=10):
-        """Generate synthetic people nodes."""
-        G = nx.Graph()
-        for i in range(num):
-            pid = f"person_{i}"
-            G.add_node(
-                pid,
-                type="Person",
-                name=fake.name(),
-                email=fake.email(),
-                age=random.randint(18, 80)
-            )
-        return G
+# Define subtypes for each node category
+PERSON_SUBTYPES = ["Student", "Professional", "Retiree", "Unemployed"]
+PLACE_SUBTYPES = ["City", "Park", "Restaurant", "Airport", "University"]
+ORG_SUBTYPES = ["TechCompany", "Hospital", "NGO", "University", "RetailChain"]
+EVENT_SUBTYPES = ["Concert", "Conference", "Protest", "SportsGame"]
+PRODUCT_SUBTYPES = ["Electronics", "Apparel", "Book", "Vehicle"]
 
-    @staticmethod
-    def generate_places(num=5):
-        """Generate synthetic place nodes."""
-        G = nx.Graph()
-        for i in range(num):
-            cid = f"place_{i}"
-            G.add_node(
-                cid,
-                type="Place",
-                name=fake.city(),
-                country=fake.country()
-            )
-        return G
+# Define relationship possibilities
+REL_PERSON_PERSON = ["FRIENDS_WITH", "COLLEAGUES", "MENTORS"]
+REL_PERSON_PLACE = ["LIVES_IN", "VISITED", "BORN_IN"]
+REL_PERSON_ORG = ["WORKS_AT", "STUDIED_AT", "OWNS"]
+REL_ORG_PLACE = ["HEADQUARTERED_IN", "HAS_BRANCH"]
+REL_PERSON_EVENT = ["ATTENDED", "ORGANIZED"]
+REL_ORG_PRODUCT = ["MANUFACTURES", "SELLS"]
+REL_PERSON_PRODUCT = ["PURCHASED", "REVIEWED"]
 
-    @staticmethod
-    def generate_organizations(num=5):
-        """Generate synthetic organization nodes."""
-        G = nx.Graph()
-        for i in range(num):
-            oid = f"org_{i}"
-            G.add_node(
-                oid,
-                type="Organization",
-                name=fake.company(),
-                industry=fake.job()
-            )
-        return G
+# Connection probability distribution (as percentages)
+EDGE_DISTRIBUTION = {
+    ("Person", "Person"): (REL_PERSON_PERSON, 0.40),
+    ("Person", "Place"): (REL_PERSON_PLACE, 0.20),
+    ("Person", "Organization"): (REL_PERSON_ORG, 0.15),
+    ("Organization", "Place"): (REL_ORG_PLACE, 0.10),
+    ("Person", "Event"): (REL_PERSON_EVENT, 0.08),
+    ("Organization", "Product"): (REL_ORG_PRODUCT, 0.05),
+    ("Person", "Product"): (REL_PERSON_PRODUCT, 0.02)
+}
 
-    @staticmethod
-    def generate_events(num=3):
-        """Generate synthetic event nodes."""
-        G = nx.Graph()
-        for i in range(num):
-            eid = f"event_{i}"
-            G.add_node(
-                eid,
-                type="Event",
-                name=fake.catch_phrase(),
-                date=fake.date()
-            )
-        return G
+class SocialGraph:
+    def __init__(self):
+        # We'll use a directed graph for directional relationships.
+        self.G = nx.DiGraph()
 
-    @staticmethod
-    def generate_products(num=3):
-        """Generate synthetic product nodes."""
-        G = nx.Graph()
-        for i in range(num):
-            pid = f"product_{i}"
-            G.add_node(
-                pid,
-                type="Product",
-                name=fake.word(),
-                category=fake.word()
-            )
-        return G
-
-    @staticmethod
-    def connect_people_to_organizations(G, people_nodes, org_nodes):
-        """Connect people to organizations with a random relationship."""
-        for p in people_nodes:
-            org = random.choice(org_nodes)
-            G.add_edge(p, org, relationship=random.choice(["works_at", "consults_for", "owns"]))
-
-    @staticmethod
-    def connect_people_to_places(G, people_nodes, place_nodes):
-        """Connect people to places with a random relationship."""
-        for p in people_nodes:
-            place = random.choice(place_nodes)
-            G.add_edge(p, place, relationship=random.choice(["lives_in", "born_in"]))
-
-    @staticmethod
-    def connect_people_to_events(G, people_nodes, event_nodes):
-        """Connect people to events with an 'attends' relationship."""
-        for p in people_nodes:
-            event = random.choice(event_nodes)
-            G.add_edge(p, event, relationship="attends")
-
-    @staticmethod
-    def connect_people_to_products(G, people_nodes, product_nodes):
-        """Connect people to products with a 'buys' relationship."""
-        for p in people_nodes:
-            product = random.choice(product_nodes)
-            G.add_edge(p, product, relationship="buys")
-
-    @staticmethod
-    def connect_orgs_to_places(G, org_nodes, place_nodes):
-        """Connect organizations to places with a 'headquartered_in' relationship."""
-        for org in org_nodes:
-            place = random.choice(place_nodes)
-            G.add_edge(org, place, relationship="headquartered_in")
-
-    @staticmethod
-    def generate_graph(total_nodes=100, total_edges=500):
+    def generate_nodes(self, total_nodes=100):
         """
-        Generate a synthetic graph with a specified total number of nodes and edges.
-        Default: 100 nodes and ~500 edges.
-        The nodes are split into types:
-          - 50% People
-          - 20% Places
-          - 15% Organizations
-          - 10% Events
-          - Remaining as Products
+        Generates nodes split into:
+         - People (50%)
+         - Places (20%)
+         - Organizations (15%)
+         - Events (10%)
+         - Products (5%)
         """
-        # Determine numbers per node type
-        num_people = int(total_nodes * 0.5)
-        num_places = int(total_nodes * 0.2)
-        num_orgs = int(total_nodes * 0.15)
-        num_events = int(total_nodes * 0.1)
-        num_products = total_nodes - (num_people + num_places + num_orgs + num_events)
+        counts = {
+            "Person": int(total_nodes * 0.50),
+            "Place": int(total_nodes * 0.20),
+            "Organization": int(total_nodes * 0.15),
+            "Event": int(total_nodes * 0.10),
+        }
+        # Remaining nodes will be Products
+        counts["Product"] = total_nodes - sum(counts.values())
 
-        # Generate subgraphs for each node type
-        G_people = GraphFaker.generate_people(num_people)
-        G_places = GraphFaker.generate_places(num_places)
-        G_orgs = GraphFaker.generate_organizations(num_orgs)
-        G_events = GraphFaker.generate_events(num_events)
-        G_products = GraphFaker.generate_products(num_products)
+        # Generate People
+        for i in range(counts["Person"]):
+            node_id = f"person_{i}"
+            subtype = random.choice(PERSON_SUBTYPES)
+            self.G.add_node(node_id, type="Person",
+                            name=fake.name(),
+                            age=random.randint(18, 80),
+                            occupation=fake.job(),
+                            email=fake.email(),
+                            education_level=random.choice(["High School", "Bachelor", "Master", "PhD"]),
+                            skills=", ".join(fake.words(nb=3)),
+                            subtype=subtype)
+        # Generate Places
+        for i in range(counts["Place"]):
+            node_id = f"place_{i}"
+            subtype = random.choice(PLACE_SUBTYPES)
+            self.G.add_node(node_id, type="Place",
+                            name=fake.city(),
+                            place_type=subtype,
+                            population=random.randint(10000, 1000000),
+                            coordinates=(fake.latitude(), fake.longitude()))
+        # Generate Organizations
+        for i in range(counts["Organization"]):
+            node_id = f"org_{i}"
+            subtype = random.choice(ORG_SUBTYPES)
+            self.G.add_node(node_id, type="Organization",
+                            name=fake.company(),
+                            industry=fake.job(),
+                            revenue=round(random.uniform(1e6, 1e9), 2),
+                            employee_count=random.randint(50, 5000),
+                            subtype=subtype)
+        # Generate Events
+        for i in range(counts["Event"]):
+            node_id = f"event_{i}"
+            subtype = random.choice(EVENT_SUBTYPES)
+            self.G.add_node(node_id, type="Event",
+                            name=fake.catch_phrase(),
+                            event_type=subtype,
+                            start_date=fake.date(),
+                            duration=random.randint(1, 5))  # days
+        # Generate Products
+        for i in range(counts["Product"]):
+            node_id = f"product_{i}"
+            subtype = random.choice(PRODUCT_SUBTYPES)
+            self.G.add_node(node_id, type="Product",
+                            name=fake.word().capitalize(),
+                            category=subtype,
+                            price=round(random.uniform(10, 1000), 2),
+                            release_date=fake.date())
 
-        # Combine all nodes into one main graph
-        G = nx.Graph()
-        G.add_nodes_from(G_people.nodes(data=True))
-        G.add_nodes_from(G_places.nodes(data=True))
-        G.add_nodes_from(G_orgs.nodes(data=True))
-        G.add_nodes_from(G_events.nodes(data=True))
-        G.add_nodes_from(G_products.nodes(data=True))
+    def add_relationship(self, source, target, rel_type, attributes=None, bidirectional=False):
+        """
+        Adds a relationship edge from source to target.
+        If bidirectional, also adds the reverse edge.
+        """
+        if attributes is None:
+            attributes = {}
+        self.G.add_edge(source, target, relationship=rel_type, **attributes)
+        if bidirectional:
+            self.G.add_edge(target, source, relationship=rel_type, **attributes)
 
-        # Get lists of nodes for each type
-        people_nodes = list(G_people.nodes())
-        place_nodes = list(G_places.nodes())
-        org_nodes = list(G_orgs.nodes())
-        event_nodes = list(G_events.nodes())
-        product_nodes = list(G_products.nodes())
+    def generate_edges(self, total_edges=1000):
+        """
+        Generate edges based on the EDGE_DISTRIBUTION probabilities.
+        The number of edges for each relationship category is determined by the weight.
+        """
+        # Get node lists by type
+        nodes_by_type = { "Person": [], "Place": [], "Organization": [], "Event": [], "Product": [] }
+        for node, data in self.G.nodes(data=True):
+            t = data.get("type")
+            if t in nodes_by_type:
+                nodes_by_type[t].append(node)
 
-        # Create predefined relationships between nodes
-        GraphFaker.connect_people_to_organizations(G, people_nodes, org_nodes)
-        GraphFaker.connect_people_to_places(G, people_nodes, place_nodes)
-        GraphFaker.connect_people_to_events(G, people_nodes, event_nodes)
-        GraphFaker.connect_people_to_products(G, people_nodes, product_nodes)
-        GraphFaker.connect_orgs_to_places(G, org_nodes, place_nodes)
+        # For each category in EDGE_DISTRIBUTION, calculate the number of edges
+        for (src_type, tgt_type), (possible_rels, weight) in EDGE_DISTRIBUTION.items():
+            num_edges = int(total_edges * weight)
+            src_nodes = nodes_by_type.get(src_type, [])
+            tgt_nodes = nodes_by_type.get(tgt_type, [])
+            if not src_nodes or not tgt_nodes:
+                continue
 
-        # Add random edges until we reach the desired total_edges
-        current_edges = G.number_of_edges()
-        all_nodes = list(G.nodes())
-        possible_rels = ["works_at", "consults_for", "owns", "lives_in", "born_in", "attends", "buys", "headquartered_in"]
-        while current_edges < total_edges:
-            u, v = random.sample(all_nodes, 2)
-            if not G.has_edge(u, v):
+            for _ in range(num_edges):
+                source = random.choice(src_nodes)
+                target = random.choice(tgt_nodes)
+                # Avoid self-loop in same category if not desired
+                if src_type == tgt_type and source == target:
+                    continue
                 rel = random.choice(possible_rels)
-                G.add_edge(u, v, relationship=rel)
-                current_edges += 1
+                attr = {}
+                # Add additional attributes for specific relationships
+                if rel == "VISITED":
+                    attr["visit_count"] = random.randint(1, 20)
+                elif rel == "WORKS_AT":
+                    attr["position"] = fake.job()
+                elif rel == "PURCHASED":
+                    attr["date"] = fake.date()
+                    attr["amount"] = round(random.uniform(1, 500), 2)
+                elif rel == "REVIEWED":
+                    attr["rating"] = random.randint(1, 5)
 
-        return G
+                # Define directionality and bidirectionality
+                # For Person-Person FRIENDS_WITH and COLLEAGUES, treat as bidirectional
+                bidir = False
+                if src_type == "Person" and tgt_type == "Person" and rel in ["FRIENDS_WITH", "COLLEAGUES"]:
+                    bidir = True
 
-    @staticmethod
-    def visualize_graph(G, title="GraphFaker Synthetic Graph"):
+                self.add_relationship(source, target, rel, attributes=attr, bidirectional=bidir)
+
+    def generate_graph(self, total_nodes=100, total_edges=1000):
+        """Generates the complete Social Knowledge Graph."""
+        self.generate_nodes(total_nodes=total_nodes)
+        self.generate_edges(total_edges=total_edges)
+        return self.G
+
+    def visualize_graph(self, title="Social Knowledge Graph", k=1.5, iterations=100):
         """Visualize the graph using Matplotlib with a more spread-out layout."""
-        plt.figure(figsize=(12, 10))
-        # Increase 'k' and iterations for a better spread
-        pos = nx.spring_layout(G, seed=42, k=1.5, iterations=100)
-        node_colors = []
-        for node, data in G.nodes(data=True):
-            if data.get("type") == "Person":
-                node_colors.append("lightblue")
-            elif data.get("type") == "Place":
-                node_colors.append("lightgreen")
-            elif data.get("type") == "Organization":
-                node_colors.append("orange")
-            elif data.get("type") == "Event":
-                node_colors.append("pink")
-            elif data.get("type") == "Product":
-                node_colors.append("yellow")
-            else:
-                node_colors.append("gray")
-
-        nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=500, alpha=0.8)
-        nx.draw_networkx_edges(G, pos, alpha=0.5)
-        # Create labels: display the 'name' attribute if available, else the node ID.
-        labels = {node: data.get("name", node) for node, data in G.nodes(data=True)}
-        nx.draw_networkx_labels(G, pos, labels=labels, font_size=8)
+        plt.figure(figsize=(14, 12))
+        pos = nx.spring_layout(self.G, seed=42, k=k, iterations=iterations)
+        # Color nodes based on their type
+        color_map = {
+            "Person": "lightblue",
+            "Place": "lightgreen",
+            "Organization": "orange",
+            "Event": "pink",
+            "Product": "yellow"
+        }
+        node_colors = [color_map.get(data.get("type"), "gray") for _, data in self.G.nodes(data=True)]
+        nx.draw_networkx_nodes(self.G, pos, node_color=node_colors, node_size=500, alpha=0.9)
+        nx.draw_networkx_edges(self.G, pos, alpha=0.4)
+        labels = {node: data.get("name", node) for node, data in self.G.nodes(data=True)}
+        nx.draw_networkx_labels(self.G, pos, labels=labels, font_size=8)
         plt.title(title)
         plt.axis("off")
         plt.show()
 
-    @staticmethod
-    def export_graph(G, filename="graph_output.graphml"):
+    def export_graph(self, filename="social_knowledge_graph.graphml"):
         """Export the graph to GraphML format."""
-        nx.write_graphml(G, filename)
+        nx.write_graphml(self.G, filename)
         print(f"Graph exported to {filename}")
 
-
 if __name__ == "__main__":
-    # Interactive: if desired, these values could be passed via CLI arguments or user input.
-    # For now, default values are used.
-    G = GraphFaker.generate_graph(total_nodes=100, total_edges=500)
-    GraphFaker.visualize_graph(G, title="graphfaker Synthetic Graph (POC)")
-    GraphFaker.export_graph(G, filename="graphfaker_output.graphml")
-
+    # Create the graph with defaults (can be overridden by user input)
+    sg = SocialGraph()
+    G = sg.generate_graph(total_nodes=20, total_edges=60)
+    print("-> graphfaker generation <-")
     print("Total nodes:", G.number_of_nodes())
     print("Total edges:", G.number_of_edges())
+    sg.visualize_graph(title="Social Graph (POC)")
+   # sg.export_graph(filename="social_knowledge_graph.graphml")
+
