@@ -6,6 +6,7 @@ import networkx as nx
 import random
 from faker import Faker
 import matplotlib.pyplot as plt
+from graphfaker.fetchers.osm import OSMGraphFetcher
 
 fake = Faker()
 
@@ -167,13 +168,43 @@ class GraphFaker:
 
                 self.add_relationship(source, target, rel, attributes=attr, bidirectional=bidir)
 
-    def generate_graph(self, total_nodes=100, total_edges=1000):
+    def _generate_osm(self, place:str=None, bbox:tuple=None, network_type:str="drive",
+                      simplify:bool=True, retain_all:bool=False) -> nx.DiGraph:
+        """Fetch an OSM network via OSMFetcher"""
+        G = OSMGraphFetcher.fetch_network(place=place, bbox=bbox,
+                                     network_type=network_type,
+                                     simplify=simplify, retain_all=retain_all)
+        self.G = G
+        return G
+
+    def _generate_random(self, total_nodes=100, total_edges=1000):
         """Generates the complete Social Knowledge Graph."""
         self.generate_nodes(total_nodes=total_nodes)
         self.generate_edges(total_edges=total_edges)
         return self.G
 
-    def visualize_graph(self, title="Social Knowledge Graph", k=1.5, iterations=100):
+    def generate_graph(self,
+                       mode:str="random",
+                       total_nodes:int=100,
+                       total_edges:int=1000,
+                       place:str=None,
+                       bbox:tuple=None,
+                       network_type:str="drive",
+                       simplify:bool=True,
+                       retain_all:bool=False
+                       ) -> nx.DiGraph:
+        """
+        Unified entrypoint: choose 'random' or 'osm'.
+        Pass kwargs depending on mode.
+        """
+        if mode == "random":
+            return self._generate_random(total_nodes=100, total_edges=1000)
+        elif mode == "osm":
+            return self._generate_osm(place, bbox, network_type, simplify, retain_all)
+        else:
+            raise ValueError(f"Unknown mode '{mode}'. Use 'random' or 'osm'.")
+
+    def visualize_graph(self, title="GraphFaker Graph", k=1.5, iterations=100):
         """Visualize the graph using Matplotlib with a more spread-out layout."""
         plt.figure(figsize=(14, 12))
         pos = nx.spring_layout(self.G, seed=42, k=k, iterations=iterations)
@@ -198,4 +229,51 @@ class GraphFaker:
         """Export the graph to GraphML format."""
         nx.write_graphml(self.G, filename)
         print(f"Graph exported to {filename}")
+
+    def visualize_osm(self, G: nx.Graph = None,
+                      show_edge_names: bool = False,
+                      show_node_ids: bool = False,
+                      node_size: int = 20,
+                      edge_linewidth: float = 1.0):
+        """
+        Visualize an OSM-derived graph using OSMnx plotting, with optional labels.
+        :param G: The graph to visualize (default: last generated graph).
+        :param show_edge_names: If True, overlay edge 'name' attributes as labels.
+        :param show_node_ids: If True, overlay node IDs as labels.
+        :param node_size: Size of nodes in the plot.
+        :param edge_linewidth: Width of edges in the plot.
+        """
+        if G is None:
+            G = self.G
+        try:
+            import osmnx as ox
+        except ImportError:
+            raise ImportError("osmnx is required for visualize_osm. Install via `pip install osmnx`.")
+        # Plot base OSM network
+        fig, ax = ox.plot_graph(G, node_size=node_size, edge_linewidth=edge_linewidth,
+                                show=False, close=False)
+        # Prepare positions for labeling
+        pos = {node: (data.get('x'), data.get('y')) for node, data in G.nodes(data=True)}
+        # Edge labels
+        if show_edge_names:
+            edge_labels = {}
+            for u, v, data in G.edges(data=True):
+                name = data.get('name')
+                if name:
+                    # OSMnx 'name' can be list or string
+                    label = name if isinstance(name, str) else ",".join(name)
+                    edge_labels[(u, v)] = label
+            nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=6, ax=ax)
+        # Node labels
+        if show_node_ids or any('name' in d for _, d in G.nodes(data=True)):
+            labels = {}
+            for node, data in G.nodes(data=True):
+                if show_node_ids:
+                    labels[node] = str(node)
+                elif 'name' in data:
+                    labels[node] = data['name']
+            nx.draw_networkx_labels(G, pos, labels=labels, font_size=6, ax=ax)
+        ax.set_title("OSM Network Visualization")
+        plt.show()
+
 

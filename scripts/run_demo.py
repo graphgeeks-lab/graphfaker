@@ -13,3 +13,20 @@ if __name__ == "__main__":
     print("Total edges:", G.number_of_edges())
     gf.visualize_graph(title="Graph Faker PoC ")
     # sg.export_graph(filename="social_knowledge_graph.graphml")
+
+
+from graphfaker.core import GraphFaker
+
+gf = GraphFaker()
+
+# Random synthetic
+G_rand = gf.generate_graph(mode="random", total_nodes=50, total_edges=200)
+gf.visualize_graph(G_rand)
+
+# OSM network
+G_osm = gf.generate_graph(
+    mode="osm",
+    place="Chinatown, San Francisco, California",
+    network_type="drive"
+)
+gf.visualize_graph(G_osm)
