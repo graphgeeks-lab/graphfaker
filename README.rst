@@ -19,8 +19,9 @@ graphfaker
      :alt: Updates
 
 
+Note: The authors or graphgeeks labs do not hold any responsibility for the correctness of this generator.
 
-an open-source Python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way. It enables users to create realistic yet customizable graph structures tailored to their specific needs, allowing for better experimentation and learning without relying on sensitive or proprietary data.
+an open-source python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way. It enables users to create realistic yet customizable graph structures tailored to their specific needs, allowing for better experimentation and learning without relying on sensitive or proprietary data.
 
 Synthetic Graph Generation
   -  Create graphs for social networks, transportation systems, knowledge graphs, and more.
@@ -36,6 +37,11 @@ Knowledge Graph Creation
   -  Generate knowledge graphs with predefined schemas (people, organizations, locations, etc.).
   -  Randomized entity and relationship generation.
   -  Output in JSON-LD, RDF, or Neo4j formats.
+
+Impact
+
+GraphFaker simplifies graph data experimentation by providing an accessible, open-source solution for professionals and students alike. It helps researchers test algorithms, developers prototype applications, and educators teach graph concepts without dealing with data access barriers.
+
 
 * Free software: MIT license
 * Documentation: https://graphfaker.readthedocs.io.
