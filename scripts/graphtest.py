@@ -18,3 +18,12 @@ gf = core.GraphFaker()
 gd = gf.generate_graph(total_nodes=100, total_edges=500)
 
 gf.visualize_graph(gd, title="GraphFaker Project")
+
+
+#%matplotlib inline
+from graphfaker.core import GraphFaker
+
+gf = GraphFaker()
+G = gf.generate_graph(total_nodes=50, total_edges=200)
+gf.visualize_graph(G, title="GraphFaker in Jupyter")
+gf.export_graph(G, path="notebook.graphml")

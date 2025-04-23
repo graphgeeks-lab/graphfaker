@@ -36,7 +36,7 @@ EDGE_DISTRIBUTION = {
     ("Person", "Product"): (REL_PERSON_PRODUCT, 0.02)
 }
 
-class SocialGraph:
+class GraphFaker:
     def __init__(self):
         # We'll use a directed graph for directional relationships.
         self.G = nx.DiGraph()
@@ -198,14 +198,4 @@ class SocialGraph:
         """Export the graph to GraphML format."""
         nx.write_graphml(self.G, filename)
         print(f"Graph exported to {filename}")
-
-if __name__ == "__main__":
-    # Create the graph with defaults (can be overridden by user input)
-    sg = SocialGraph()
-    G = sg.generate_graph(total_nodes=20, total_edges=60)
-    print("-> graphfaker generation <-")
-    print("Total nodes:", G.number_of_nodes())
-    print("Total edges:", G.number_of_edges())
-    sg.visualize_graph(title="Social Graph (POC)")
-   # sg.export_graph(filename="social_knowledge_graph.graphml")
 
