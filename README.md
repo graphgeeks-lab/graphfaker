@@ -1,59 +1,51 @@
-==========
-graphfaker
-==========
+# GraphFaker
+
+GraphFaker is a Python library for generating, loading, and exporting synthetic graph datasets. This guide will help you get started, generate different types of graphs, and integrate with popular graph tools.
+
+*Note: The authors or graphgeeks labs do not hold any responsibility for the correctness of this generator.*
+
+[![PyPI version](https://img.shields.io/pypi/v/graphfaker.svg)](https://pypi.python.org/pypi/graphfaker)
+[![Build Status](https://img.shields.io/travis/denironyx/graphfaker.svg)](https://travis-ci.com/denironyx/graphfaker)
+[![Docs Status](https://readthedocs.org/projects/graphfaker/badge/?version=latest)](https://graphfaker.readthedocs.io/en/latest/?version=latest)
+[![Dependency Status](https://pyup.io/repos/github/denironyx/graphfaker/shield.svg)](https://pyup.io/repos/github/denironyx/graphfaker/)
+
+## Why Use GraphFaker?
+
+GraphFaker solves several important challenges for data scientists, researchers, and developers working with graph data:
+
+- **No need for sensitive or proprietary data**: Generate realistic graph structures without privacy concerns
+- **Rapid prototyping and testing**: Quickly create test datasets of varying sizes and properties
+- **Research, teaching, and development**: Perfect for academic settings, tutorials, and building graph applications
+- **Customizable graph generation**: Create specific graph structures tailored to your needs
 
 
-.. image:: https://img.shields.io/pypi/v/graphfaker.svg
-        :target: https://pypi.python.org/pypi/graphfaker
+## Installation
 
-.. image:: https://img.shields.io/travis/denironyx/graphfaker.svg
-        :target: https://travis-ci.com/denironyx/graphfaker
-
-.. image:: https://readthedocs.org/projects/graphfaker/badge/?version=latest
-        :target: https://graphfaker.readthedocs.io/en/latest/?version=latest
-        :alt: Documentation Status
-
-
-.. image:: https://pyup.io/repos/github/denironyx/graphfaker/shield.svg
-     :target: https://pyup.io/repos/github/denironyx/graphfaker/
-     :alt: Updates
-
-
-Note: The authors or graphgeeks labs do not hold any responsibility for the correctness of this generator.
-
-an open-source python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way. It enables users to create realistic yet customizable graph structures tailored to their specific needs, allowing for better experimentation and learning without relying on sensitive or proprietary data.
-
-Synthetic Graph Generation
-  -  Create graphs for social networks, transportation systems, knowledge graphs, and more.
-  -  Configurable number of nodes, edges, and relationships.
-  -  Support for weighted, directed, and attributed graphs.
-
-Prebuilt Benchmark Graphs
-  -  Load small, structured datasets for graph learning and algorithm testing.
-  -  Support for loading into NetworkX, Pandas, Kuzu, and Neo4j.
-  -  Export to formats like CSV, JSON, GraphML, and RDF.
-
-Knowledge Graph Creation
-  -  Generate knowledge graphs with predefined schemas (people, organizations, locations, etc.).
-  -  Randomized entity and relationship generation.
-  -  Output in JSON-LD, RDF, or Neo4j formats.
-
-Impact
-
-GraphFaker simplifies graph data experimentation by providing an accessible, open-source solution for professionals and students alike. It helps researchers test algorithms, developers prototype applications, and educators teach graph concepts without dealing with data access barriers.
-
-
-## How to get Started
-
+Install GraphFaker from PyPI:
 
 ```sh
-#Show help
+uv pip install graphfaker
+```
+
+For development:
+
+```sh
+git clone https://github.com/denironyx/graphfaker.git
+cd graphfaker
+uv pip install -e .
+```
+
+## Quick Start
+
+### Command Line Interface (CLI)
+
+Show CLI help:
+```sh
 python -m graphfaker.cli --help
 ```
 
-using python to generate graph
-```
-# Generate a 100-node, 500-edge synthetic graph, visualize it, and export to `out.graphml`
+Generate a synthetic graph:
+```sh
 python -m graphfaker.cli gen \
     --mode synthetic \
     --total-nodes 100 \
@@ -62,26 +54,63 @@ python -m graphfaker.cli gen \
     --export out.graphml
 ```
 
-doing the same with bash.
-```
+Or using the bash entrypoint:
+```sh
 graphfaker gen --mode synthetic --total-nodes 100 --total-edges 500 --visualize --export out.graphml
-
 ```
 
+Generate a knowledge graph:
+```sh
+python -m graphfaker.cli gen --mode knowledge --schema people_orgs --total-nodes 50 --export kg.jsonld
+```
 
-* Free software: MIT license
-* Documentation: https://graphfaker.readthedocs.io.
+Load a prebuilt benchmark graph:
+```sh
+python -m graphfaker.cli load --dataset karate_club --export karate.graphml
+```
 
+### Python API
 
-Features
---------
+Use GraphFaker directly in your Python code:
+```python
+from graphfaker import generate
+G = generate(mode='synthetic', total_nodes=100, total_edges=500)
+# G is a NetworkX graph object
+```
 
-* TODO
+## Graph Export Formats
 
-Credits
--------
+GraphFaker supports exporting to various formats for different use cases:
 
-This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
+- **GraphML**: For general graph analysis and visualization (`--export graph.graphml`) 
+- **JSON/JSON-LD**: For knowledge graphs and web applications (`--export data.json`)
+- **CSV**: For tabular analysis and database imports (`--export edges.csv`)
+- **RDF**: For semantic web and linked data applications (`--export graph.ttl`)
 
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+Example:
+```sh
+python -m graphfaker.cli gen --mode synthetic --export out.csv
+```
+
+## Integration with Graph Tools
+
+GraphFaker generates NetworkX graph objects that can be easily integrated with:
+
+- **Graph databases**: Neo4j, Kuzu, TigerGraph
+- **Analysis tools**: NetworkX, SNAP, graph-tool
+- **ML frameworks**: PyTorch Geometric, DGL, TensorFlow GNN
+- **Visualization**: Gephi, Cytoscape, D3.js
+
+## Documentation
+
+Full documentation is available at: https://graphfaker.readthedocs.io
+
+## License
+
+MIT License
+
+## Credits
+
+Created with Cookiecutter and the `audreyr/cookiecutter-pypackage` project template.
+
+---
