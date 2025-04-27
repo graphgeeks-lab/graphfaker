@@ -97,5 +97,39 @@ def _(G_osm, basic_stats):
     return
 
 
+@app.cell
+def _():
+    import osmnx as ox
+
+    # Example: Download street network for "Birmingham, B16, UK"
+    G = ox.graph_from_place("Chinatown, San Francisco, California", network_type="drive")
+
+    # Visualize the graph using a static map
+    fig, ax = ox.plot_graph(
+        G,
+        node_size=50,
+        node_color="red",
+        edge_color="black",
+        edge_linewidth=2,
+        bgcolor="white",
+    )
+
+    # Customize the plot (optional)
+    ax.set_title("Birmingham, B16 Street Network (Driving)")
+    return G, fig, ox
+
+
+@app.cell
+def _(G, fig, ox):
+
+    # Or visualize using an interactive web map
+    m = ox.plot_graph_folium(G, popup_attribute="name", weight=3, color="blue")
+
+    # Display the plot
+    fig.show()
+    m.show()
+    return
+
+
 if __name__ == "__main__":
     app.run()

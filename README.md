@@ -82,7 +82,7 @@ G = generate(mode='synthetic', total_nodes=100, total_edges=500)
 
 GraphFaker supports exporting to various formats for different use cases:
 
-- **GraphML**: For general graph analysis and visualization (`--export graph.graphml`) 
+- **GraphML**: For general graph analysis and visualization (`--export graph.graphml`)
 - **JSON/JSON-LD**: For knowledge graphs and web applications (`--export data.json`)
 - **CSV**: For tabular analysis and database imports (`--export edges.csv`)
 - **RDF**: For semantic web and linked data applications (`--export graph.ttl`)
@@ -114,3 +114,18 @@ MIT License
 Created with Cookiecutter and the `audreyr/cookiecutter-pypackage` project template.
 
 ---
+
+
+```
+gf = GraphFaker()
+# pure algorithmic
+G1 = gf.generate_graph(mode="synthetic", algorithm="barabasi", total_nodes=500, ba_m=3)
+# real-world data
+G2 = gf.generate_graph(mode="osm", place="Berlin,DE")
+# expand that real-world data
+G3 = gf.generate_graph(mode="osm", place="Berlin,DE", expand=True, total_nodes=5000)
+# flight network
+G4 = gf.generate_graph(mode="flights", airline="UA")
+
+
+```
