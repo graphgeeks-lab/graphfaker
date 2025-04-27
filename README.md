@@ -129,3 +129,5 @@ G4 = gf.generate_graph(mode="flights", airline="UA")
 
 
 ```
+
+`marimo run .\scripts\demo_graphfaker.py`

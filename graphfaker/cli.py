@@ -19,7 +19,7 @@ def gen(
 
     # for osm source
     place: str = typer.Option(None, help="OSM place name (e.g., 'Soho Square, London, UK')"),
-    address: str = typer.Option(None, help="OSM place name (e.g., 'Soho Square, London, UK')"),
+    address: str = typer.Option(None, help="OSM address (e.g., '1600 Amphitheatre Parkway, Mountain View, CA')"),
     bbox: str = typer.Option(
         None,
         help="OSM bounding box as 'north,south,east,west'"
@@ -30,12 +30,12 @@ def gen(
     ),
     simplify: str = typer.Option(True, help="Simplify OSM graph topology"),
     retain_all: bool = typer.Option(False, help="Retain all components in OSM graph"),
-    dist: int = typer.Option(1000, help="Total distance from the address"),
+    dist: int = typer.Option(1000, help="Search radius (meters) when fetching around address"),
 
     # for flight source
-    country: str = typer.Option("United States", help="Airport filtered by country"),
-    year: int = typer.Option(2024, help="Flight filtered by year"),
-    month: int = typer.Option(1, help="Month in the year (e.g 1 = January, 12 = December)"),
+    country: str = typer.Option("United States", help="Filter airports by country for flight data"),
+    year: int = typer.Option(2024, help="Year (YYYY) for single-month flight fetch"),
+    month: int = typer.Option(1, help="Month (1-12) for single-month flight fetch"),
     date_range: tuple = typer.Option(None, help="Year and Month range for flight data"),
 
     # common

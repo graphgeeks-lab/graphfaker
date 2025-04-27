@@ -193,8 +193,8 @@ class GraphFaker:
               f"{len(flights_df)} flights.")
 
         G = FlightGraphFetcher.build_graph(airlines_df, airports_df, flights_df)
-
-        return self.G
+        self.G = G
+        return G
         # Inform users of which span was downloaded
         if date_range:
             start, end = date_range
@@ -232,7 +232,7 @@ class GraphFaker:
         elif source == "osm":
             return self._generate_osm(place, address, bbox, network_type, simplify, retain_all, dist)
         elif source == "flights":
-            return self._generate_flights(country, month, year, date_range)
+            return self._generate_flights(country, year=2024, month=1, date_range=None)
         else:
             raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
 
