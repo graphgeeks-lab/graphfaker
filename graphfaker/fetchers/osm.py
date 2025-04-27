@@ -18,16 +18,45 @@ class OSMGraphFetcher:
         dist: float = 1000
     ) -> nx.MultiDiGraph:
         """
-        Fetch a street network from OpenStreetMap.
+        OSMGraphFetcher: Fetch and preprocess street networks from OpenStreetMap via OSMnx.
 
-        :param place: A place name (e.g., "London, UK") to geocode and retrieve.
-        :param address: An address name (e.g Brindley, Place, UK) to geocode and retreive.
-        :param bbox: A tuple of (north, south, east, west) coordinates.
-        :param network_type: Type of street network ("drive", "walk", "bike", etc.).
-        :param simplify: Whether to simplify the graph topology.
-        :param retain_all: If True, retain all connected components.
-        :param dist: A foat of distance (default 1000 meters)
-        :return: A NetworkX graph of the street network.
+        Methods:
+            fetch_network(
+                place: str = None,
+                address: str = None,
+                bbox: tuple = None,
+                network_type: str = "drive",
+                simplify: bool = True,
+                retain_all: bool = False,
+                dist: float = 1000
+            ) -> nx.MultiDiGraph
+                Fetch a street network and project it to UTM for accurate spatial analysis.
+
+        Parameters:
+            place (str, optional): A geographic name (e.g., "London, UK") to geocode and fetch.
+            address (str, optional): A specific address or point-of-interest to geocode and fetch around.
+            bbox (tuple, optional): A bounding box as (north, south, east, west) coordinates.
+            network_type (str): OSMnx network type: "drive", "walk", "bike", or "all".
+            simplify (bool): If True, simplify the graph topology (merge intersections).
+            retain_all (bool): If True, keep all connected components; else largest only.
+            dist (float): Search radius in meters when fetching by address.
+
+        Returns:
+            nx.MultiDiGraph: Projected street network graph (UTM coordinates).
+
+        Raises:
+            ValueError: If none of place, address, or bbox is provided.
+            ImportError: If OSMnx is not installed.
+
+        Example:
+            from graphfaker.fetchers.osm import OSMGraphFetcher
+            # Fetch by place
+            G1 = OSMGraphFetcher.fetch_network(place="San Francisco, CA")
+            # Fetch by address within 500m
+            G2 = OSMGraphFetcher.fetch_network(address="1600 Amphitheatre Parkway, Mountain View, CA", dist=500)
+            # Fetch by bounding box
+            bbox = (37.79, 37.77, -122.41, -122.43)
+            G3 = OSMGraphFetcher.fetch_network(bbox=bbox, network_type="walk")
         """
         if address:
             G = ox.graph_from_address(address, dist=dist,network_type=network_type, simplify=simplify, retain_all=retain_all)

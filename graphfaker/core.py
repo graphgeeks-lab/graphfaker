@@ -7,6 +7,7 @@ import random
 from faker import Faker
 import matplotlib.pyplot as plt
 from graphfaker.fetchers.osm import OSMGraphFetcher
+from graphfaker.fetchers.flights import FlightGraphFetcher
 
 fake = Faker()
 
@@ -177,32 +178,63 @@ class GraphFaker:
         self.G = G
         return G
 
-    def _generate_random(self, total_nodes=100, total_edges=1000):
+    def _generate_flights(self, country:str="United States", year:int=None, month:int=None, date_range:tuple=None):
+        """
+        Fetch flights, airport, and airline via FlightFetcher
+        """
+        # 1) Fetch  airline and airport tables
+        airlines_df = FlightGraphFetcher.fetch_airlines()
+        airports_df = FlightGraphFetcher.fetch_airports(country=country)
+
+        # Fetch flight transit on-time performance data
+        flights_df = FlightGraphFetcher.fetch_flights(year=year, month=month, date_range=date_range)
+        print(f"Fetched {len(airlines_df)} airlines, "
+              f"{len(airports_df)} airports, "
+              f"{len(flights_df)} flights.")
+
+        G = FlightGraphFetcher.build_graph(airlines_df, airports_df, flights_df)
+
+        return self.G
+        # Inform users of which span was downloaded
+        if date_range:
+            start, end = date_range
+            print(f"Flight data covers {start} -> {end}")
+        else:
+            print(f"Flight data for {year}-{month:02d}")
+    def _generate_faker(self, total_nodes=100, total_edges=1000):
         """Generates the complete Social Knowledge Graph."""
         self.generate_nodes(total_nodes=total_nodes)
         self.generate_edges(total_edges=total_edges)
         return self.G
 
     def generate_graph(self,
-                       mode:str="random",
+                       source:str="faker",
                        total_nodes:int=100,
                        total_edges:int=1000,
                        place:str=None,
+                       address: str = None,
                        bbox:tuple=None,
                        network_type:str="drive",
                        simplify:bool=True,
-                       retain_all:bool=False
+                       retain_all:bool=False,
+                       dist: float = 1000,
+                       country: str = "United States",
+                       year: int = 2024,
+                       month: int = 1,
+                       date_range: tuple = None
                        ) -> nx.DiGraph:
         """
         Unified entrypoint: choose 'random' or 'osm'.
-        Pass kwargs depending on mode.
+        Pass kwargs depending on source.
         """
-        if mode == "random":
-            return self._generate_random(total_nodes=100, total_edges=1000)
-        elif mode == "osm":
-            return self._generate_osm(place, bbox, network_type, simplify, retain_all)
+        if source == "faker":
+            return self._generate_faker(total_nodes=100, total_edges=1000)
+        elif source == "osm":
+            return self._generate_osm(place, address, bbox, network_type, simplify, retain_all, dist)
+        elif source == "flights":
+            return self._generate_flights(country, month, year, date_range)
         else:
-            raise ValueError(f"Unknown mode '{mode}'. Use 'random' or 'osm'.")
+            raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
 
     def visualize_graph(self, title="GraphFaker Graph", k=1.5, iterations=100):
         """Visualize the graph using Matplotlib with a more spread-out layout."""
