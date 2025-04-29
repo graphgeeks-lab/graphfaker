@@ -1,6 +1,6 @@
 # GraphFaker
 
-GraphFaker is a powerful Python library and CLI tool for generating, loading, and exporting synthetic and real-world graph datasets. It supports social/knowledge graphs, OpenStreetMap (OSM) road networks, and real airline flight networks. Use it for data science, research, teaching, rapid prototyping, and more!
+GraphFaker is a Python library and CLI tool for generating, loading, and exporting synthetic and real-world graph datasets. It supports `faker`  as social graph, OpenStreetMap (OSM) road networks, and real airline flight networks. Use it for data science, research, teaching, rapid prototyping, and more!
 
 *Note: The authors and graphgeeks labs do not hold any responsibility for the correctness of this generator.*
 
@@ -13,7 +13,7 @@ GraphFaker is a powerful Python library and CLI tool for generating, loading, an
 
 ## Features
 - **Multiple Graph Sources:**
-  - `faker`: Synthetic social/knowledge graphs with rich node/edge types
+  - `faker`: Synthetic social graphs with rich node/edge types
   - `osm`: Real-world road networks from OpenStreetMap
   - `flights`: Real airline, airport, and flight networks
 - **Flexible Export:** GraphML, JSON, CSV, RDF, and more
@@ -108,14 +108,14 @@ g = gf.generate_graph(source="flights", country="United States", date_range=("20
 
 ## Graph Export Formats
 
-- **GraphML**: General graph analysis/visualization (`--export graph.graphml`)
-- **JSON/JSON-LD**: Knowledge graphs/web apps (`--export data.json`)
+- **GraphML**: General graph analysis/visualization (`--export graph.graphml`) ✔️
+- **JSON/JSON-LD**: Knowledge graphs/web apps (`--export data.json`) 
 - **CSV**: Tabular analysis/database imports (`--export edges.csv`)
 - **RDF**: Semantic web/linked data (`--export graph.ttl`)
 
 ---
 
-## Integration with Graph Tools
+## Future Integration with Graph Tools
 
 GraphFaker generates NetworkX graph objects that can be easily integrated with:
 - **Graph databases**: Neo4j, Kuzu, TigerGraph
