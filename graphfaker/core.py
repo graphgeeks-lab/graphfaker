@@ -236,7 +236,7 @@ class GraphFaker:
         else:
             raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
 
-    def visualize_graph(self, title="GraphFaker Graph", k=1.5, iterations=100):
+    def visualize_graph(self, title, k=1.5, iterations=100):
         """Visualize the graph using Matplotlib with a more spread-out layout."""
         plt.figure(figsize=(14, 12))
         pos = nx.spring_layout(self.G, seed=42, k=k, iterations=iterations)
@@ -253,11 +253,11 @@ class GraphFaker:
         nx.draw_networkx_edges(self.G, pos, alpha=0.4)
         labels = {node: data.get("name", node) for node, data in self.G.nodes(data=True)}
         nx.draw_networkx_labels(self.G, pos, labels=labels, font_size=8)
-        plt.title(title)
+        plt.title(title=title)
         plt.axis("off")
         plt.show()
 
-    def export_graph(self, filename="social_knowledge_graph.graphml"):
+    def export_graph(self, filename="exported_graph.graphml"):
         """Export the graph to GraphML format."""
         nx.write_graphml(self.G, filename)
         print(f"Graph exported to {filename}")
