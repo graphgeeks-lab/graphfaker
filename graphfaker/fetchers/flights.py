@@ -58,7 +58,7 @@ COLUMN_MAP = {
     'Year': 'year', 'Month': 'month', 'DayofMonth': 'day',
     'DepDelay': 'dep_delay', 'ArrDelay': 'arr_delay',
     'Reporting_Airline': 'carrier', 'Flight_Number_Reporting_Airline': 'flight',
-    'Origin': 'origin', 'Dest': 'dest'
+    'Origin': 'origin', 'Dest': 'dest', 'Tail_Number': 'tail_number'
 }
 
 class FlightGraphFetcher:
@@ -209,6 +209,7 @@ class FlightGraphFetcher:
         # derive flags
         df['cancelled'] = df['dep_delay'].isna()
         df['delayed']   = df['arr_delay'] > 15
+
         return df
 
     @staticmethod
@@ -217,55 +218,83 @@ class FlightGraphFetcher:
         airports_df: pd.DataFrame,
         flights_df: pd.DataFrame
     ) -> nx.DiGraph:
-        """
-        Construct a NetworkX directed graph from fetched DataFrames.
-
-        Args:
-            airlines_df: DataFrame of airlines lookup.
-            airports_df: DataFrame of airport metadata.
-            flights_df:  DataFrame of flight performance records.
-
-        Returns:
-            nx.DiGraph with:
-             - Airline nodes labeled by carrier code.
-             - Airport nodes labeled by FAA code.
-             - Flight nodes labeled '<carrier><flight>_<origin>_<dest>'.
-             - Edges for OPERATED_BY, DEPARTS_FROM, ARRIVES_AT.
-
-        Logs:
-            INFO-level messages for node/edge phases and timing.
-            DEBUG-level messages for individual additions.
-        """
-        t_start = time.time()
+        import time
+        t0 = time.time()
         G = nx.DiGraph()
 
-        # Add Airline nodes
-        print(f"Adding Airline nodes... -> {len(airlines_df)}.")
-        for _, row in airlines_df.iterrows():
-            G.add_node(row['carrier'], type='Airline', name=row['airline_name'])
+        # 1) Airlines
+        print(f"Adding {len(airlines_df)} airlines…")
+        for _, r in airlines_df.iterrows():
+            G.add_node(
+                r['carrier'],
+                type='Airline',
+                name=r['airline_name']
+            )
 
-        print(f"Adding Airport nodes.. -> {len(airports_df)}.")
-        # Add Airport nodes
-        for _, row in airports_df.iterrows():
-            G.add_node(row['faa'], type='Airport', name=row['name'],
-                       city=row['city'], country=row['country'],
-                       coordinates=(row['lat'], row['lon']))
+        # 2) Airports + City relationships
+        print(f"Adding {len(airports_df)} airports + city nodes…")
+        for _, r in airports_df.iterrows():
+            code = r['faa']
+            city = r['city']
 
-        print(f"Adding Flight nodes.. -> {len(flights_df)}.")
-       # Add Flight nodes and edges
-        for _, row in flights_df.iterrows():
-            fn = f"{row['carrier']}{row['flight']}_{row['origin']}_{row['dest']}"
-            G.add_node(fn, type='Flight', cancelled=row['cancelled'], delayed=row['delayed'],
-                       date=f"{row['year']}-{row['month']:02d}-{row['day']:02d}")
-            G.add_edge(fn, row['carrier'], relationship='OPERATED_BY')
-            G.add_edge(fn, row['origin'], relationship='DEPARTS_FROM')
-            G.add_edge(fn, row['dest'], relationship='ARRIVES_AT')
+            # Add Airport node
+            G.add_node(
+                code,
+                type='Airport',
+                name=r['name'],
+                country=r['country'],
+                coordinates=(r['lat'], r['lon'])
+            )
 
-        # log final stats and time
-        elapsed = time.time() - t_start
+            # Add City node if missing
+            if not G.has_node(city):
+                G.add_node(
+                    city,
+                    type='City',
+                    name=city
+                )
+
+            # Connect Airport -> City
+            G.add_edge(code, city, relationship='LOCATED_IN')
+
+        # 3) Flights + edges
+        print(f"Adding {len(flights_df)} flights + edges…")
+        for _, r in flights_df.iterrows():
+            fn = f"{r['carrier']}{r['flight']}_{r['origin']}_{r['dest']}_{r['year']}-{r['month']:02d}-{r['day']:02d}"
+
+            # Check if required nodes exist first
+            carrier_exists = G.has_node(r['carrier'])
+            origin_exists = G.has_node(r['origin'])
+            dest_exists = G.has_node(r['dest'])
+
+            if not (carrier_exists and origin_exists and dest_exists):
+                print(f"⚠️ Skipping flight {fn}: missing carrier or airport(s)")
+                continue  # Skip this flight
+
+            # Add Flight node
+            G.add_node(
+                fn,
+                type='Flight',
+                year=int(r['year']),
+                month=int(r['month']),
+                day=int(r['day']),
+                carrier=r['carrier'],
+                flight_number=r['flight'],
+                tail_number=r.get('tail_number', None),
+                origin=r['origin'],
+                dest=r['dest'],
+                cancelled=bool(r['cancelled']),
+                delayed=bool(r['delayed'])
+            )
+
+            # Now safely add edges (no missing targets)
+            G.add_edge(fn, r['carrier'], relationship='OPERATED_BY')
+            G.add_edge(fn, r['origin'], relationship='DEPARTS_FROM')
+            G.add_edge(fn, r['dest'], relationship='ARRIVES_AT')
+
+        elapsed = time.time() - t0
         print(
-            f"Graph build complete in {elapsed:.2f}s - "
-            f" Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}"
+            f"✅ Graph built in {elapsed:.2f}s — "
+            f"{G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
         )
         return G
-
