@@ -228,11 +228,11 @@ class GraphFaker:
         Pass kwargs depending on source.
         """
         if source == "faker":
-            return self._generate_faker(total_nodes=100, total_edges=1000)
+            return self._generate_faker(total_nodes, total_edges)
         elif source == "osm":
             return self._generate_osm(place, address, bbox, network_type, simplify, retain_all, dist)
         elif source == "flights":
-            return self._generate_flights(country, year=2024, month=1, date_range=None)
+            return self._generate_flights(country, year, month, date_range)
         else:
             raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
 
