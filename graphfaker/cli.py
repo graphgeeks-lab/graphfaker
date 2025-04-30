@@ -36,11 +36,7 @@ def gen(
     country: str = typer.Option("United States", help="Filter airports by country for flight data"),
     year: int = typer.Option(2024, help="Year (YYYY) for single-month flight fetch"),
     month: int = typer.Option(1, help="Month (1-12) for single-month flight fetch"),
-    date_range: tuple = typer.Option(None, help="Year and Month range for flight data"),
-
-    # common
-    export: bool = typer.Option("graph.graphml", help="File path to export GraphML"),
-    visualize: bool = typer.Option(False, help="Display the graph after generation"),
+    date_range: tuple = typer.Option(None, help="Year and Month range for flight data")
 ):
     """Generate a graph using GraphFaker."""
     gf = GraphFaker()
@@ -87,10 +83,6 @@ def gen(
         typer.echo(f"Source '{source}' not supported.")
         raise typer.Exit(code=1)
 
-    if visualize:
-        gf.visualize_graph(G, title=f"GraphFaker ({source})")
-    gf.export_graph(G, export)
-    typer.echo(f"Generated {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
 
 if __name__ == "__main__":
     app()
