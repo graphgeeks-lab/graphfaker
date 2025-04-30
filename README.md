@@ -10,6 +10,11 @@ GraphFaker is a Python library and CLI tool for generating, loading, and exporti
 [![Dependency Status](https://pyup.io/repos/github/denironyx/graphfaker/shield.svg)](https://pyup.io/repos/github/denironyx/graphfaker/)
 
 ---
+⭐ Star the Repo
+
+If you find this project valuable, star ⭐ this repository to support the work and help others discover it!
+
+---
 
 ## Features
 - **Multiple Graph Sources:**
@@ -18,8 +23,6 @@ GraphFaker is a Python library and CLI tool for generating, loading, and exporti
   - `flights`: Real airline, airport, and flight networks
 - **Flexible Export:** GraphML, JSON, CSV, RDF, and more
 - **Easy CLI & Python API**
-- **Visualization**: Built-in graph visualization
-- **Integration**: Works with NetworkX, Gephi, Neo4j, PyTorch Geometric, and more
 
 ---
 
@@ -53,9 +56,7 @@ python -m graphfaker.cli --help
 python -m graphfaker.cli gen \
     --source faker \
     --total-nodes 100 \
-    --total-edges 500 \
-    --visualize \
-    --export out.graphml
+    --total-edges 500
 ```
 
 #### Generate a Real-World Road Network (OSM)
@@ -94,28 +95,27 @@ g2 = gf.generate_graph(source="osm", place="Berlin, Germany", network_type="driv
 # Flight network
 g3 = gf.generate_graph(source="flights", country="United States", year=2024, month=1)
 
-# Visualize and export
-gf.visualize_graph(title="Synthetic Graph")
-gf.export_graph("synthetic.graphml")
 ```
 
 #### Advanced: Date Range for Flights
+
+Note this isn't recommended and it's still being tested. We are working on ways to make this faster.
 ```python
 g = gf.generate_graph(source="flights", country="United States", date_range=("2024-01-01", "2024-01-15"))
 ```
 
 ---
 
-## Graph Export Formats
+## Future Plans: Graph Export Formats
 
 - **GraphML**: General graph analysis/visualization (`--export graph.graphml`) ✔️
-- **JSON/JSON-LD**: Knowledge graphs/web apps (`--export data.json`) 
+- **JSON/JSON-LD**: Knowledge graphs/web apps (`--export data.json`)
 - **CSV**: Tabular analysis/database imports (`--export edges.csv`)
 - **RDF**: Semantic web/linked data (`--export graph.ttl`)
 
 ---
 
-## Future Integration with Graph Tools
+## Future Plans: Integration with Graph Tools
 
 GraphFaker generates NetworkX graph objects that can be easily integrated with:
 - **Graph databases**: Neo4j, Kuzu, TigerGraph
