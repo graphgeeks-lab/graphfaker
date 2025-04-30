@@ -15,7 +15,7 @@ Types of Contributions
 Report Bugs
 ~~~~~~~~~~~
 
-Report bugs at https://github.com/denironyx/graphfaker/issues.
+Report bugs at https://github.com/graphgeeks-lab/graphfaker/issues.
 
 If you are reporting a bug, please include:
 
@@ -45,7 +45,7 @@ articles, and such.
 Submit Feedback
 ~~~~~~~~~~~~~~~
 
-The best way to send feedback is to file an issue at https://github.com/denironyx/graphfaker/issues.
+The best way to send feedback is to file an issue at https://github.com/graphgeeks-lab/graphfaker/issues
 
 If you are proposing a feature:
 
@@ -112,7 +112,7 @@ Tips
 
 To run a subset of tests::
 
-$ pytest tests.test_graphfaker
+$ pytest tests.test_graph_from_source_faker.py
 
 
 Deploying

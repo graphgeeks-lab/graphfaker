@@ -19,12 +19,10 @@ classifiers = [
 license = {text = "MIT license"}
 dependencies = [
   "faker>=37.1.0",
-  "matplotlib>=3.10.1",
   "networkx>=3.4.2",
+  "osmnx==2.0.2",
   "pandas>=2.2.3",
-  "rdflib>=7.1.4",
   "requests>=2.32.3",
-  "sparqlwrapper>=2.0.0",
   "typer",
 ]
 
@@ -38,9 +36,9 @@ dev = [
 
 [project.urls]
 
-bugs = "https://github.com/denironyx/graphfaker/issues"
-changelog = "https://github.com/denironyx/graphfaker/blob/master/changelog.md"
-homepage = "https://github.com/denironyx/graphfaker"
+bugs = "https://github.com/graphgeeks-lab/graphfaker/issues"
+changelog = "https://github.com/graphgeeks-lab/graphfaker/blob/master/changelog.md"
+homepage = "https://github.com/graphgeeks-lab/graphfaker/"
 
 [tool.setuptools]
 package-dir = {"graphfaker" = "graphfaker"}

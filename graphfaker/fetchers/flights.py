@@ -25,7 +25,6 @@ Usage:
 import os
 import io
 import zipfile
-import warnings
 from datetime import datetime, timedelta
 from typing import Tuple, Optional
 from io import StringIO

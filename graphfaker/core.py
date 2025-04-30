@@ -5,7 +5,6 @@ A multi-domain network connecting entities across social, geographical, and comm
 import networkx as nx
 import random
 from faker import Faker
-import matplotlib.pyplot as plt
 from graphfaker.fetchers.osm import OSMGraphFetcher
 from graphfaker.fetchers.flights import FlightGraphFetcher
 
