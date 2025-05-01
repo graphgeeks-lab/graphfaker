@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "graphfaker"
 version = "0.1.0"
-description = "an open-source Python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way"
+description = "an open-source python library for generating, and loading synthetic and real-world graph datasets"
 readme = "README.md"
 authors = [
   {name = "Dennis Irorere", email = "denironyx@gmail.com"}
@@ -17,7 +17,7 @@ classifiers = [
 
 ]
 license = "MIT"
-keywords = ["faker", "graph-data", "flights", "osmnx", "graphs"]
+keywords = ["faker", "graph-data", "flights", "osmnx", "graphs", "graphfaker"]
 dependencies = [
   "faker>=37.1.0",
   "networkx>=3.4.2",

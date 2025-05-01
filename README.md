@@ -1,6 +1,6 @@
 # GraphFaker
 
-GraphFaker is a Python library and CLI tool for generating, loading, and exporting synthetic and real-world graph datasets. It supports `faker`  as social graph, OpenStreetMap (OSM) road networks, and real airline flight networks. Use it for data science, research, teaching, rapid prototyping, and more!
+GraphFaker is a Python library for generating, and loading synthetic and real-world graph datasets. It supports `faker`  as social graph, OpenStreetMap (OSM) road networks, and real airline flight networks. Use it for data science, research, teaching, rapid prototyping, and more!
 
 *Note: The authors and graphgeeks labs do not hold any responsibility for the correctness of this generator.*
 
@@ -11,6 +11,7 @@ GraphFaker is a Python library and CLI tool for generating, loading, and exporti
 
 
 Join our Discord server 👇
+
 [![](https://dcbadge.limes.pink/api/server/https://discord.gg/mQQz9bRRpH)](https://discord.gg/mQQz9bRRpH)
 
 ---
