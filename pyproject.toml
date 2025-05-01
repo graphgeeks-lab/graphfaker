@@ -16,7 +16,8 @@ maintainers = [
 classifiers = [
 
 ]
-license = {text = "MIT license"}
+license = "MIT"
+keywords = ["faker", "graph-data", "flights", "osmnx", "graphs"]
 dependencies = [
   "faker>=37.1.0",
   "networkx>=3.4.2",
