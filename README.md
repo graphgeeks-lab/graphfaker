@@ -31,6 +31,8 @@ GraphFaker is an open-source Python library designed to generate, load, and expo
 
 ---
 
+*Disclaimer: This is still a work in progress (WIP). With logging and debugging print statement. Our goal for releasing early is to get feedback and reiterate.*
+
 ## Installation
 
 Install from PyPI:

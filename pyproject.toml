@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphfaker"
-version = "0.1.0"
+version = "0.1.1"
 description = "an open-source python library for generating, and loading synthetic and real-world graph datasets"
 readme = "README.md"
 authors = [
