@@ -10,6 +10,7 @@ GraphFaker is a Python library for generating, and loading synthetic and real-wo
 [![image](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
+
 Join our Discord server 👇
 
 [![](https://dcbadge.limes.pink/api/server/https://discord.gg/mQQz9bRRpH)](https://discord.gg/mQQz9bRRpH)
