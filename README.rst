@@ -1,61 +1,170 @@
-==========
-graphfaker
+GraphFaker
 ==========
 
+GraphFaker is a Python library for generating and loading synthetic and real-world graph datasets. It supports `faker` as social graph, OpenStreetMap (OSM) road networks, and real airline flight networks. Use it for data science, research, teaching, rapid prototyping, and more!
+
+*Note: The authors and GraphGeeks Labs do not hold any responsibility for the correctness of this generator.*
 
 .. image:: https://img.shields.io/pypi/v/graphfaker.svg
-        :target: https://pypi.python.org/pypi/graphfaker
-
-.. image:: https://img.shields.io/travis/denironyx/graphfaker.svg
-        :target: https://travis-ci.com/denironyx/graphfaker
+   :target: https://pypi.python.org/pypi/graphfaker
 
 .. image:: https://readthedocs.org/projects/graphfaker/badge/?version=latest
-        :target: https://graphfaker.readthedocs.io/en/latest/?version=latest
-        :alt: Documentation Status
-
+   :target: https://graphfaker.readthedocs.io/en/latest/?version=latest
 
 .. image:: https://pyup.io/repos/github/denironyx/graphfaker/shield.svg
-     :target: https://pyup.io/repos/github/denironyx/graphfaker/
-     :alt: Updates
+   :target: https://pyup.io/repos/github/denironyx/graphfaker/
 
+.. image:: https://img.shields.io/badge/License-MIT-yellow.svg
+   :target: https://opensource.org/licenses/MIT
 
-Note: The authors or graphgeeks labs do not hold any responsibility for the correctness of this generator.
+----
 
-an open-source python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way. It enables users to create realistic yet customizable graph structures tailored to their specific needs, allowing for better experimentation and learning without relying on sensitive or proprietary data.
+Join our Discord server
 
-Synthetic Graph Generation
-  -  Create graphs for social networks, transportation systems, knowledge graphs, and more.
-  -  Configurable number of nodes, edges, and relationships.
-  -  Support for weighted, directed, and attributed graphs.
+.. image:: https://dcbadge.limes.pink/api/server/https://discord.gg/mQQz9bRRpH
+   :target: https://discord.gg/mQQz9bRRpH
 
-Prebuilt Benchmark Graphs
-  -  Load small, structured datasets for graph learning and algorithm testing.
-  -  Support for loading into NetworkX, Pandas, Kuzu, and Neo4j.
-  -  Export to formats like CSV, JSON, GraphML, and RDF.
+Problem Statement
+-----------------
 
-Knowledge Graph Creation
-  -  Generate knowledge graphs with predefined schemas (people, organizations, locations, etc.).
-  -  Randomized entity and relationship generation.
-  -  Output in JSON-LD, RDF, or Neo4j formats.
+Graph data is essential for solving complex problems in various fields, including social network analysis, transportation modeling, recommendation systems, and fraud detection. However, many professionals, researchers, and students face a common challenge: a lack of easily accessible, realistic graph datasets for testing, learning, and benchmarking. Real-world graph data is often restricted due to privacy concerns, complexity, or large size, making experimentation difficult.
 
-Impact
+Solution: graphfaker
+--------------------
 
-GraphFaker simplifies graph data experimentation by providing an accessible, open-source solution for professionals and students alike. It helps researchers test algorithms, developers prototype applications, and educators teach graph concepts without dealing with data access barriers.
-
-
-* Free software: MIT license
-* Documentation: https://graphfaker.readthedocs.io.
-
+GraphFaker is an open-source Python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way. It enables users to generate graphs tailored to their specific needs, allowing for better experimentation and learning without needing to think about where the data is coming from or how to fetch the data.
 
 Features
 --------
 
-* TODO
+- **Multiple Graph Sources:**
+  - `faker`: Synthetic social graphs with rich node/edge types
+  - `osm`: Real-world road networks from OpenStreetMap
+  - `flights`: Real airline, airport, and flight networks
+- **Easy CLI & Python Library**
+
+.. note::
+
+   This is still a work in progress (WIP). Includes logging and debugging print statements. Our goal for releasing early is to get feedback and reiterate.
+
+Installation
+------------
+
+Install from PyPI:
+
+.. code-block:: shell
+
+   uv pip install graphfaker
+
+For development:
+
+.. code-block:: shell
+
+   git clone https://github.com/denironyx/graphfaker.git
+   cd graphfaker
+   uv pip install -e .
+
+Quick Start
+-----------
+
+Python Library Usage
+^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+   from graphfaker import GraphFaker
+
+   gf = GraphFaker()
+   # Synthetic social/knowledge graph
+   g1 = gf.generate_graph(source="faker", total_nodes=200, total_edges=800)
+   # OSM road network
+   g2 = gf.generate_graph(source="osm", place="Berlin, Germany", network_type="drive")
+   # Flight network
+   g3 = gf.generate_graph(source="flights", country="United States", year=2024, month=1)
+
+Advanced: Date Range for Flights
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Note this isn't recommended and it's still being tested. We are working on ways to make this faster.
+
+.. code-block:: python
+
+   g = gf.generate_graph(source="flights", country="United States", date_range=("2024-01-01", "2024-01-15"))
+
+CLI Usage (WIP)
+^^^^^^^^^^^^^^^
+
+Show help:
+
+.. code-block:: shell
+
+   python -m graphfaker.cli --help
+
+Generate a Synthetic Social Graph:
+
+.. code-block:: shell
+
+   python -m graphfaker.cli gen \
+       --source faker \
+       --total-nodes 100 \
+       --total-edges 500
+
+Generate a Real-World Road Network (OSM):
+
+.. code-block:: shell
+
+   python -m graphfaker.cli gen \
+       --source osm \
+       --place "Berlin, Germany" \
+       --network-type drive \
+       --export berlin.graphml
+
+Generate a Flight Network (Airlines/Airports/Flights):
+
+.. code-block:: shell
+
+   python -m graphfaker.cli gen \
+       --source flights \
+       --country "United States" \
+       --year 2024 \
+       --month 1
+
+You can also use `--date-range` for custom time spans (e.g., `--date-range "2024-01-01,2024-01-15"`).
+
+Future Plans: Graph Export Formats
+----------------------------------
+
+- **GraphML**: General graph analysis/visualization (`--export graph.graphml`)
+- **JSON/JSON-LD**: Knowledge graphs/web apps (`--export data.json`)
+- **CSV**: Tabular analysis/database imports (`--export edges.csv`)
+- **RDF**: Semantic web/linked data (`--export graph.ttl`)
+
+Future Plans: Integration with Graph Tools
+------------------------------------------
+
+GraphFaker generates NetworkX graph objects that can be easily integrated with:
+
+- **Graph databases**: Neo4j, Kuzu, TigerGraph
+- **Analysis tools**: NetworkX, SNAP, graph-tool
+- **ML frameworks**: PyTorch Geometric, DGL, TensorFlow GNN
+- **Visualization**: Gephi, Cytoscape, D3.js
+
+Documentation
+-------------
+
+Full documentation: https://graphfaker.readthedocs.io
+
+Star the Repo ⭐
+---------------
+
+If you find this project valuable, star ⭐ this repository to support the work and help others discover it!
+
+License
+-------
+
+MIT License
 
 Credits
 -------
 
-This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
-
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+Created with Cookiecutter and the `audreyr/cookiecutter-pypackage` project template.
