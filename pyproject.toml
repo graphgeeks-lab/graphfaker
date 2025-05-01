@@ -22,7 +22,7 @@ dependencies = [
   "faker>=37.1.0",
   "networkx>=3.4.2",
   "osmnx==2.0.2",
-  "pandas>=2.2.3",
+  "pandas>=2.2.2",
   "requests>=2.32.3",
   "typer",
 ]
