@@ -60,7 +60,7 @@ For development:
 
 .. code-block:: shell
 
-   git clone https://github.com/denironyx/graphfaker.git
+   git clone https://github.com/graphgeeks-lab/graphfaker.git
    cd graphfaker
    uv pip install -e .
 
@@ -80,7 +80,7 @@ Python Library Usage
    # OSM road network
    g2 = gf.generate_graph(source="osm", place="Berlin, Germany", network_type="drive")
    # Flight network
-   g3 = gf.generate_graph(source="flights", country="United States", year=2024, month=1)
+   g3 = gf.generate_graph(source="flights", year=2024, month=1)
 
 Advanced: Date Range for Flights
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -147,7 +147,16 @@ GraphFaker generates NetworkX graph objects that can be easily integrated with:
 - **Graph databases**: Neo4j, Kuzu, TigerGraph
 - **Analysis tools**: NetworkX, SNAP, graph-tool
 - **ML frameworks**: PyTorch Geometric, DGL, TensorFlow GNN
-- **Visualization**: Gephi, Cytoscape, D3.js
+- **Visualization**: G.V, Gephi, Cytoscape, D3.js
+
+
+What's on the Horizon?
+----------------------
+
+- Handling large graph -> millions of nodes
+- Using NLP/LLM to fetch graph data -> "Fetch flight data for Jan 2024"
+- Connects to any graph database/engine of choice -> "Establish connections to graph database/engine of choice"
+
 
 Documentation
 -------------
