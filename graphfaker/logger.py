@@ -6,9 +6,8 @@ LOGGING_FORMAT = f"{PACKAGE_NAME}:%(asctime)s - %(name)s - %(levelname)s - %(mes
 
 logger = logging.getLogger(PACKAGE_NAME)
 
-"""
-Set the default logging level to INFO.
-"""
+
+# Set the default logging level to INFO.
 logger.setLevel(logging.INFO)
 
 
@@ -26,6 +25,11 @@ def add_file_logging(file_path=f"{PACKAGE_NAME}.log"):
 
     Args:
         file_path (str): Path to the log file. Defaults to `graphfaker.log`.
+
+    Example:
+        from graphfaker import add_file_logging
+        # Configure custom file log
+        add_file_logging("my_log.log")
     """
     file_handler = logging.FileHandler(file_path)
     file_formatter = logging.Formatter(LOGGING_FORMAT)
@@ -42,7 +46,7 @@ def configure_logging(level=logging.WARNING):
 
     Example:
         # Set logging level to INFO
-        from graphfaker.logger import configure_logging
+        from graphfaker import configure_logging
         import logging
         # Configure logging to INFO level
         configure_logging(logging.INFO)
