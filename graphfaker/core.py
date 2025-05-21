@@ -7,6 +7,7 @@ import random
 from faker import Faker
 from graphfaker.fetchers.osm import OSMGraphFetcher
 from graphfaker.fetchers.flights import FlightGraphFetcher
+from graphfaker.logger import logger
 
 fake = Faker()
 
@@ -34,8 +35,9 @@ EDGE_DISTRIBUTION = {
     ("Organization", "Place"): (REL_ORG_PLACE, 0.10),
     ("Person", "Event"): (REL_PERSON_EVENT, 0.08),
     ("Organization", "Product"): (REL_ORG_PRODUCT, 0.05),
-    ("Person", "Product"): (REL_PERSON_PRODUCT, 0.02)
+    ("Person", "Product"): (REL_PERSON_PRODUCT, 0.02),
 }
+
 
 class GraphFaker:
     def __init__(self):
@@ -64,53 +66,72 @@ class GraphFaker:
         for i in range(counts["Person"]):
             node_id = f"person_{i}"
             subtype = random.choice(PERSON_SUBTYPES)
-            self.G.add_node(node_id, type="Person",
-                            name=fake.name(),
-                            age=random.randint(18, 80),
-                            occupation=fake.job(),
-                            email=fake.email(),
-                            education_level=random.choice(["High School", "Bachelor", "Master", "PhD"]),
-                            skills=", ".join(fake.words(nb=3)),
-                            subtype=subtype)
+            self.G.add_node(
+                node_id,
+                type="Person",
+                name=fake.name(),
+                age=random.randint(18, 80),
+                occupation=fake.job(),
+                email=fake.email(),
+                education_level=random.choice(
+                    ["High School", "Bachelor", "Master", "PhD"]
+                ),
+                skills=", ".join(fake.words(nb=3)),
+                subtype=subtype,
+            )
         # Generate Places
         for i in range(counts["Place"]):
             node_id = f"place_{i}"
             subtype = random.choice(PLACE_SUBTYPES)
-            self.G.add_node(node_id, type="Place",
-                            name=fake.city(),
-                            place_type=subtype,
-                            population=random.randint(10000, 1000000),
-                            coordinates=(fake.latitude(), fake.longitude()))
+            self.G.add_node(
+                node_id,
+                type="Place",
+                name=fake.city(),
+                place_type=subtype,
+                population=random.randint(10000, 1000000),
+                coordinates=(fake.latitude(), fake.longitude()),
+            )
         # Generate Organizations
         for i in range(counts["Organization"]):
             node_id = f"org_{i}"
             subtype = random.choice(ORG_SUBTYPES)
-            self.G.add_node(node_id, type="Organization",
-                            name=fake.company(),
-                            industry=fake.job(),
-                            revenue=round(random.uniform(1e6, 1e9), 2),
-                            employee_count=random.randint(50, 5000),
-                            subtype=subtype)
+            self.G.add_node(
+                node_id,
+                type="Organization",
+                name=fake.company(),
+                industry=fake.job(),
+                revenue=round(random.uniform(1e6, 1e9), 2),
+                employee_count=random.randint(50, 5000),
+                subtype=subtype,
+            )
         # Generate Events
         for i in range(counts["Event"]):
             node_id = f"event_{i}"
             subtype = random.choice(EVENT_SUBTYPES)
-            self.G.add_node(node_id, type="Event",
-                            name=fake.catch_phrase(),
-                            event_type=subtype,
-                            start_date=fake.date(),
-                            duration=random.randint(1, 5))  # days
+            self.G.add_node(
+                node_id,
+                type="Event",
+                name=fake.catch_phrase(),
+                event_type=subtype,
+                start_date=fake.date(),
+                duration=random.randint(1, 5),
+            )  # days
         # Generate Products
         for i in range(counts["Product"]):
             node_id = f"product_{i}"
             subtype = random.choice(PRODUCT_SUBTYPES)
-            self.G.add_node(node_id, type="Product",
-                            name=fake.word().capitalize(),
-                            category=subtype,
-                            price=round(random.uniform(10, 1000), 2),
-                            release_date=fake.date())
+            self.G.add_node(
+                node_id,
+                type="Product",
+                name=fake.word().capitalize(),
+                category=subtype,
+                price=round(random.uniform(10, 1000), 2),
+                release_date=fake.date(),
+            )
 
-    def add_relationship(self, source, target, rel_type, attributes=None, bidirectional=False):
+    def add_relationship(
+        self, source, target, rel_type, attributes=None, bidirectional=False
+    ):
         """
         Adds a relationship edge from source to target.
         If bidirectional, also adds the reverse edge.
@@ -127,7 +148,13 @@ class GraphFaker:
         The number of edges for each relationship category is determined by the weight.
         """
         # Get node lists by type
-        nodes_by_type = { "Person": [], "Place": [], "Organization": [], "Event": [], "Product": [] }
+        nodes_by_type = {
+            "Person": [],
+            "Place": [],
+            "Organization": [],
+            "Event": [],
+            "Product": [],
+        }
         for node, data in self.G.nodes(data=True):
             t = data.get("type")
             if t in nodes_by_type:
@@ -163,21 +190,43 @@ class GraphFaker:
                 # Define directionality and bidirectionality
                 # For Person-Person FRIENDS_WITH and COLLEAGUES, treat as bidirectional
                 bidir = False
-                if src_type == "Person" and tgt_type == "Person" and rel in ["FRIENDS_WITH", "COLLEAGUES"]:
+                if (
+                    src_type == "Person"
+                    and tgt_type == "Person"
+                    and rel in ["FRIENDS_WITH", "COLLEAGUES"]
+                ):
                     bidir = True
 
-                self.add_relationship(source, target, rel, attributes=attr, bidirectional=bidir)
+                self.add_relationship(
+                    source, target, rel, attributes=attr, bidirectional=bidir
+                )
 
-    def _generate_osm(self, place:str=None, bbox:tuple=None, network_type:str="drive",
-                      simplify:bool=True, retain_all:bool=False) -> nx.DiGraph:
+    def _generate_osm(
+        self,
+        place: str = None,
+        bbox: tuple = None,
+        network_type: str = "drive",
+        simplify: bool = True,
+        retain_all: bool = False,
+    ) -> nx.DiGraph:
         """Fetch an OSM network via OSMFetcher"""
-        G = OSMGraphFetcher.fetch_network(place=place, bbox=bbox,
-                                     network_type=network_type,
-                                     simplify=simplify, retain_all=retain_all)
+        G = OSMGraphFetcher.fetch_network(
+            place=place,
+            bbox=bbox,
+            network_type=network_type,
+            simplify=simplify,
+            retain_all=retain_all,
+        )
         self.G = G
         return G
 
-    def _generate_flights(self, country:str="United States", year:int=None, month:int=None, date_range:tuple=None):
+    def _generate_flights(
+        self,
+        country: str = "United States",
+        year: int = None,
+        month: int = None,
+        date_range: tuple = None,
+    ):
         """
         Fetch flights, airport, and airline via FlightFetcher
         """
@@ -186,10 +235,14 @@ class GraphFaker:
         airports_df = FlightGraphFetcher.fetch_airports(country=country)
 
         # Fetch flight transit on-time performance data
-        flights_df = FlightGraphFetcher.fetch_flights(year=year, month=month, date_range=date_range)
-        print(f"Fetched {len(airlines_df)} airlines, "
-              f"{len(airports_df)} airports, "
-              f"{len(flights_df)} flights.")
+        flights_df = FlightGraphFetcher.fetch_flights(
+            year=year, month=month, date_range=date_range
+        )
+        logger.info(
+            f"Fetched {len(airlines_df)} airlines, "
+            f"{len(airports_df)} airports, "
+            f"{len(flights_df)} flights."
+        )
 
         G = FlightGraphFetcher.build_graph(airlines_df, airports_df, flights_df)
         self.G = G
@@ -197,31 +250,34 @@ class GraphFaker:
         # Inform users of which span was downloaded
         if date_range:
             start, end = date_range
-            print(f"Flight data covers {start} -> {end}")
+            logger.info(f"Flight data covers {start} -> {end}")
+
         else:
-            print(f"Flight data for {year}-{month:02d}")
+            logger.info(f"Flight data for {year}-{month:02d}")
+
     def _generate_faker(self, total_nodes=100, total_edges=1000):
         """Generates the complete Social Knowledge Graph."""
         self.generate_nodes(total_nodes=total_nodes)
         self.generate_edges(total_edges=total_edges)
         return self.G
 
-    def generate_graph(self,
-                       source:str="faker",
-                       total_nodes:int=100,
-                       total_edges:int=1000,
-                       place:str=None,
-                       address: str = None,
-                       bbox:tuple=None,
-                       network_type:str="drive",
-                       simplify:bool=True,
-                       retain_all:bool=False,
-                       dist: float = 1000,
-                       country: str = "United States",
-                       year: int = 2024,
-                       month: int = 1,
-                       date_range: tuple = None
-                       ) -> nx.DiGraph:
+    def generate_graph(
+        self,
+        source: str = "faker",
+        total_nodes: int = 100,
+        total_edges: int = 1000,
+        place: str = None,
+        address: str = None,
+        bbox: tuple = None,
+        network_type: str = "drive",
+        simplify: bool = True,
+        retain_all: bool = False,
+        dist: float = 1000,
+        country: str = "United States",
+        year: int = 2024,
+        month: int = 1,
+        date_range: tuple = None,
+    ) -> nx.DiGraph:
         """
         Unified entrypoint: choose 'random' or 'osm'.
         Pass kwargs depending on source.
@@ -229,7 +285,9 @@ class GraphFaker:
         if source == "faker":
             return self._generate_faker(total_nodes, total_edges)
         elif source == "osm":
-            return self._generate_osm(place, address, bbox, network_type, simplify, retain_all, dist)
+            return self._generate_osm(
+                place, address, bbox, network_type, simplify, retain_all, dist
+            )
         elif source == "flights":
             return self._generate_flights(country, year, month, date_range)
         else:

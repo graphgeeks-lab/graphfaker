@@ -26,10 +26,13 @@ TkAgg. Add this at the top of your script (before any plotting commands):
 
 
 import matplotlib
+
 matplotlib.use("TkAgg")
 from graphfaker import GraphFaker
 import networkx as nx
-#import lxml.etree as lxmletree
+from graphfaker.logger import logger
+
+# import lxml.etree as lxmletree
 
 import matplotlib.pyplot as plt
 
@@ -264,46 +267,45 @@ G_flight = gf.generate_graph(source="flights", year=2024, month=1)
 # Suppose you have a flight node id like "AA100_JFK_LAX_2024-01-05"
 
 
-
-
-
-
-
 def find_fully_connected_flights_in_graph(G):
     connected_flights = []
 
     for node, data in G.nodes(data=True):
-        if data.get('type') != 'Flight':
+        if data.get("type") != "Flight":
             continue  # Only check flights
 
         successors = list(G.successors(node))
-        relationships = {G.edges[node, succ]['relationship']: succ for succ in successors if 'relationship' in G.edges[node, succ]}
+        relationships = {
+            G.edges[node, succ]["relationship"]: succ
+            for succ in successors
+            if "relationship" in G.edges[node, succ]
+        }
 
-        has_airline = 'OPERATED_BY' in relationships
-        has_origin = 'DEPARTS_FROM' in relationships
-        has_dest = 'ARRIVES_AT' in relationships
+        has_airline = "OPERATED_BY" in relationships
+        has_origin = "DEPARTS_FROM" in relationships
+        has_dest = "ARRIVES_AT" in relationships
 
         if not (has_airline and has_origin and has_dest):
             continue  # Skip flights not properly connected
 
         # Check Airports -> Cities
-        origin_airport = relationships['DEPARTS_FROM']
-        dest_airport = relationships['ARRIVES_AT']
+        origin_airport = relationships["DEPARTS_FROM"]
+        dest_airport = relationships["ARRIVES_AT"]
 
         origin_city_connected = any(
-            G.edges[origin_airport, succ].get('relationship') == 'LOCATED_IN'
+            G.edges[origin_airport, succ].get("relationship") == "LOCATED_IN"
             for succ in G.successors(origin_airport)
         )
 
         dest_city_connected = any(
-            G.edges[dest_airport, succ].get('relationship') == 'LOCATED_IN'
+            G.edges[dest_airport, succ].get("relationship") == "LOCATED_IN"
             for succ in G.successors(dest_airport)
         )
 
         if origin_city_connected and dest_city_connected:
             connected_flights.append(node)
+    logger.info(f"Found {len(connected_flights)} fully connected flights.")
 
-    print(f"Found {len(connected_flights)} fully connected flights.")
     return connected_flights
 
 
@@ -321,15 +323,15 @@ def build_connected_flights_subgraph(G, connected_flights, limit=1000):
 
         # Follow outgoing edges from the flight
         for succ in G.successors(flight):
-            relationship = G.edges[flight, succ].get('relationship')
+            relationship = G.edges[flight, succ].get("relationship")
 
-            if relationship in ('OPERATED_BY', 'DEPARTS_FROM', 'ARRIVES_AT'):
+            if relationship in ("OPERATED_BY", "DEPARTS_FROM", "ARRIVES_AT"):
                 nodes_to_keep.add(succ)
 
                 # If it's an Airport, find the City
-                if G.nodes[succ].get('type') == 'Airport':
+                if G.nodes[succ].get("type") == "Airport":
                     for city_succ in G.successors(succ):
-                        if G.edges[succ, city_succ].get('relationship') == 'LOCATED_IN':
+                        if G.edges[succ, city_succ].get("relationship") == "LOCATED_IN":
                             nodes_to_keep.add(city_succ)
 
     # Create subgraph
@@ -347,11 +349,12 @@ G_sub = build_connected_flights_subgraph(G_flight, connected_flights, limit=1500
 
 ## to export because of tuple
 for n, data in G_sub.nodes(data=True):
-    coord = data.get('coordinates')
+    coord = data.get("coordinates")
     if isinstance(coord, tuple):
-        data['coordinates'] = f"{coord[0]},{coord[1]}"
+        data["coordinates"] = f"{coord[0]},{coord[1]}"
 
 # 3. Export to GEXF
 nx.write_gexf(G_sub, "fully_connected_1500_flights.gexf")
-
-print(f"✅ Exported {G_sub.number_of_nodes()} nodes and {G_sub.number_of_edges()} edges to fully_connected_1500_flights.gexf")
+logger.info(
+    f"✅ Exported {G_sub.number_of_nodes()} nodes and {G_sub.number_of_edges()} edges to fully_connected_1500_flights.gexf"
+)

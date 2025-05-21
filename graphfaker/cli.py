@@ -2,6 +2,7 @@
 """
 Command-line interface for GraphFaker.
 """
+from venv import logger
 import typer
 from graphfaker.core import GraphFaker
 from graphfaker.fetchers.osm import OSMGraphFetcher
@@ -70,8 +71,7 @@ def gen(
         flights_df = FlightGraphFetcher.fetch_flights(
             year=year, month=month, date_range=date_range
         )
-
-        print(
+        logger.info(
             f"Fetched {len(airlines_df)} airlines, "
             f"{len(airports_df)} airports, "
             f"{len(flights_df)} flights."

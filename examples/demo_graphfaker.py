@@ -1,5 +1,4 @@
-
-
+from graphfaker.logger import logger
 import marimo
 
 __generated_with = "0.13.1"
@@ -25,6 +24,7 @@ def _():
     # suppress only the single warning from unverified HTTPS
     import urllib3
     from urllib3.exceptions import InsecureRequestWarning
+
     urllib3.disable_warnings(InsecureRequestWarning)
     return
 
@@ -32,6 +32,7 @@ def _():
 @app.cell
 def _():
     from graphfaker.fetchers.flights import FlightGraphFetcher
+
     return (FlightGraphFetcher,)
 
 
@@ -51,13 +52,14 @@ def _(FlightGraphFetcher):
 
 @app.cell
 def _(FlightGraphFetcher):
-    flights = FlightGraphFetcher.fetch_flights(year=2024,month=1)
+    flights = FlightGraphFetcher.fetch_flights(year=2024, month=1)
     return
 
 
 @app.cell
 def _():
     from graphfaker import GraphFaker
+
     return (GraphFaker,)
 
 
@@ -82,12 +84,13 @@ def _(G_flight):
 @app.cell
 def _():
     import scipy
+
     return
 
 
 @app.cell
 def _():
-    #gf.visualize_graph(G_flight)
+    # gf.visualize_graph(G_flight)
     return
 
 
@@ -109,9 +112,12 @@ def _(G_flight):
         G_small = G_flight.subgraph(sampled).copy()
     else:
         G_small = G_flight.copy()
-
-    print("Original:", G_flight.number_of_nodes(), "nodes,", G_flight.number_of_edges(), "edges")
-    print("Small   :", G_small.number_of_nodes(), "nodes,", G_small.number_of_edges(), "edges")
+    logger.info(
+        f"Original: {G_flight.number_of_nodes()} nodes, {G_flight.number_of_edges()} edges"
+    )
+    logger.info(
+        f"Small   : {G_small.number_of_nodes()} nodes, {G_small.number_of_edges()} edges"
+    )
 
     return (G_small,)
 
