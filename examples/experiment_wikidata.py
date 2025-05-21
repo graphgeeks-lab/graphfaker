@@ -1,4 +1,5 @@
 import marimo
+from graphfaker.logger import logger
 
 __generated_with = "0.13.1"
 app = marimo.App()
@@ -8,12 +9,14 @@ app = marimo.App()
 def _():
     import pandas as pd
     import SPARQLWrapper as sw
+
     return (pd,)
 
 
 @app.cell
 def _():
     import requests
+
     return (requests,)
 
 
@@ -36,12 +39,19 @@ def _(WIKIDATA_SPARQL_URL, requests):
     def run_sparql_query(query):
         """Fetch data from Wikidata using SPARQL."""
         headers = {"Accept": "application/json"}
-        response = requests.get(WIKIDATA_SPARQL_URL, params={"query": query, "format": "json"}, headers=headers)
+        response = requests.get(
+            WIKIDATA_SPARQL_URL,
+            params={"query": query, "format": "json"},
+            headers=headers,
+        )
         if response.status_code == 200:
             return response.json()["results"]["bindings"]
         else:
-            print("SPARQL Query Failed!", response.status_code)
+            logger.error(
+                "SPARQL Query Failed! Error: %s", response.status_code, exc_info=True
+            )
             return []
+
     return (run_sparql_query,)
 
 
@@ -70,12 +80,14 @@ def _(nx, run_sparql_query):
             G.add_edge(ceo_id, company_id, relationship="CEO_of")
 
         return G
+
     return (fetch_ceos_and_companies,)
 
 
 @app.cell
 def _():
     import matplotlib.pyplot as plt
+
     return
 
 
@@ -99,7 +111,13 @@ def _(fake, nx, random):
             G = nx.Graph()
             for i in range(num):
                 pid = f"person_{i}"
-                G.add_node(pid, type="Person", name=fake.name(), email=fake.email(), age=random.randint(18, 80))
+                G.add_node(
+                    pid,
+                    type="Person",
+                    name=fake.name(),
+                    email=fake.email(),
+                    age=random.randint(18, 80),
+                )
             return G
 
         @staticmethod
@@ -115,20 +133,29 @@ def _(fake, nx, random):
             G = nx.Graph()
             for i in range(num):
                 oid = f"org_{i}"
-                G.add_node(oid, type="Organization", name=fake.company(), industry=fake.job())
+                G.add_node(
+                    oid, type="Organization", name=fake.company(), industry=fake.job()
+                )
             return G
 
         @staticmethod
         def connect_people_to_organizations(G, people_nodes, org_nodes):
             for p in people_nodes:
                 org = random.choice(org_nodes)
-                G.add_edge(p, org, relationship=random.choice(["works_at", "consults_for", "owns"]))
+                G.add_edge(
+                    p,
+                    org,
+                    relationship=random.choice(["works_at", "consults_for", "owns"]),
+                )
 
         @staticmethod
         def connect_people_to_places(G, people_nodes, place_nodes):
             for p in people_nodes:
                 place = random.choice(place_nodes)
-                G.add_edge(p, place, relationship=random.choice(["lives_in", "born_in"]))
+                G.add_edge(
+                    p, place, relationship=random.choice(["lives_in", "born_in"])
+                )
+
     return (Graphfaker,)
 
 
@@ -138,8 +165,12 @@ def _(Graphfaker):
     G_fake_places = Graphfaker.generate_places(5)
     G_fake_orgs = Graphfaker.generate_organizations(5)
 
-    Graphfaker.connect_people_to_organizations(G_people, list(G_people.nodes), list(G_fake_orgs.nodes))
-    Graphfaker.connect_people_to_places(G_people, list(G_people.nodes), list(G_fake_places.nodes))
+    Graphfaker.connect_people_to_organizations(
+        G_people, list(G_people.nodes), list(G_fake_orgs.nodes)
+    )
+    Graphfaker.connect_people_to_places(
+        G_people, list(G_people.nodes), list(G_fake_places.nodes)
+    )
     return (G_people,)
 
 
@@ -157,7 +188,7 @@ def _(G_people, nx):
 
 @app.cell
 def _(ceos_and_companies):
-    print(ceos_and_companies.nodes(data=True))
+    logger.info(ceos_and_companies.nodes(data=True))
     return
 
 
@@ -182,6 +213,7 @@ def _(WikidataFetcher, nx):
             G.add_node(city_id, type="Place", name=city_name)
 
         return G
+
     return
 
 
@@ -211,12 +243,16 @@ def _(pd):
         A class that can be used to query data from Wikidata using SPARQL and return the results as a Pandas DataFrame or a list
         of values for a specific key.
         """
+
         def __init__(self, query: str):
             """
             Initializes the WikiDataQueryResults object with a SPARQL query string.
             :param query: A SPARQL query string.
             """
-            self.user_agent = "WDQS-example Python/%s.%s" % (sys.version_info[0], sys.version_info[1])
+            self.user_agent = "WDQS-example Python/%s.%s" % (
+                sys.version_info[0],
+                sys.version_info[1],
+            )
             self.endpoint_url = "https://query.wikidata.org/sparql"
             self.sparql = SPARQLWrapper(self.endpoint_url, agent=self.user_agent)
             self.sparql.setQuery(query)
@@ -233,7 +269,7 @@ def _(pd):
             for result in results:
                 new_result = {}
                 for key in result:
-                    new_result[key] = result[key]['value']
+                    new_result[key] = result[key]["value"]
                 new_results.append(new_result)
             return new_results
 
@@ -244,7 +280,7 @@ def _(pd):
             :return: A list of dictionaries, where each dictionary represents a result row and has keys corresponding to the
             variables in the SPARQL SELECT clause.
             """
-            results = self.sparql.queryAndConvert()['results']['bindings']
+            results = self.sparql.queryAndConvert()["results"]["bindings"]
             results = self.__transform2dicts(results)
             return results
 
@@ -255,6 +291,7 @@ def _(pd):
             """
             results = self._load()
             return pd.DataFrame.from_dict(results)
+
     return (WikiDataQueryResults,)
 
 
@@ -273,7 +310,7 @@ def _(data_extracter):
 @app.cell
 def _(data_extracter):
     df = data_extracter.load_as_dataframe()
-    print(df.head())
+    logger.info(df.head())
     return
 
 
