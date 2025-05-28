@@ -204,18 +204,22 @@ class GraphFaker:
     def _generate_osm(
         self,
         place: str = None,
+        address: str = None,
         bbox: tuple = None,
         network_type: str = "drive",
         simplify: bool = True,
         retain_all: bool = False,
+        dist: float = 1000,
     ) -> nx.DiGraph:
         """Fetch an OSM network via OSMFetcher"""
         G = OSMGraphFetcher.fetch_network(
             place=place,
+            address=address,
             bbox=bbox,
             network_type=network_type,
             simplify=simplify,
             retain_all=retain_all,
+            dist=dist
         )
         self.G = G
         return G
@@ -283,12 +287,26 @@ class GraphFaker:
         Pass kwargs depending on source.
         """
         if source == "faker":
-            return self._generate_faker(total_nodes, total_edges)
+            return self._generate_faker(
+                total_nodes=total_nodes,
+                total_edges=total_edges
+            )
         elif source == "osm":
             return self._generate_osm(
-                place, address, bbox, network_type, simplify, retain_all, dist
+                place=place,
+                address=address,
+                bbox=bbox,
+                network_type=network_type,
+                simplify=simplify,
+                retain_all=retain_all,
+                dist=dist,
             )
         elif source == "flights":
-            return self._generate_flights(country, year, month, date_range)
+            return self._generate_flights(
+                country=country,
+                year=year,
+                month=month,
+                date_range=date_range,
+            )
         else:
             raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
