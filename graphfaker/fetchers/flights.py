@@ -296,7 +296,7 @@ class FlightGraphFetcher:
             dest_exists = G.has_node(r["dest"])
 
             if not (carrier_exists and origin_exists and dest_exists):
-                logger.warning(f"⚠️ Skipping flight {fn}: missing carrier or airport(s)")
+                #logger.warning(f"⚠️ Skipping flight {fn}: missing carrier or airport(s)")
 
                 continue  # Skip this flight
 
