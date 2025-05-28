@@ -1,5 +1,3 @@
-
-
 import marimo
 
 __generated_with = "0.13.1"
@@ -9,6 +7,7 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     from graphfaker.core import GraphFaker
+
     return (GraphFaker,)
 
 
@@ -33,9 +32,7 @@ def _(G_rand, gf):
 @app.cell
 def _(gf):
     G_osm = gf.generate_graph(
-        mode="osm",
-        place="Chinatown, San Francisco, California",
-        network_type="drive"
+        mode="osm", place="Chinatown, San Francisco, California", network_type="drive"
     )
     return (G_osm,)
 
@@ -66,6 +63,7 @@ def _(G_osm, gf):
 @app.cell
 def _():
     from graphfaker.fetchers.osm import OSMGraphFetcher
+
     return
 
 
@@ -78,16 +76,18 @@ def _(G_osm, gf):
 @app.cell
 def _():
     import networkx as nx
+
     def basic_stats(G: nx.Graph) -> dict:
         """
         Compute basic statistics of the OSM network
         """
         stats = {
-            'nodes': G.number_of_nodes(),
-            'edges': G.number_of_edges(),
-            'avg_degree': sum(dict(G.degree()).values()) / float(G.number_of_nodes())
+            "nodes": G.number_of_nodes(),
+            "edges": G.number_of_edges(),
+            "avg_degree": sum(dict(G.degree()).values()) / float(G.number_of_nodes()),
         }
         return stats
+
     return (basic_stats,)
 
 
@@ -102,7 +102,9 @@ def _():
     import osmnx as ox
 
     # Example: Download street network for "Birmingham, B16, UK"
-    G = ox.graph_from_place("Chinatown, San Francisco, California", network_type="drive")
+    G = ox.graph_from_place(
+        "Chinatown, San Francisco, California", network_type="drive"
+    )
 
     # Visualize the graph using a static map
     fig, ax = ox.plot_graph(
