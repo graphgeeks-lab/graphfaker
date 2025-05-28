@@ -62,7 +62,7 @@ gf = GraphFaker()
 # Synthetic social/knowledge graph
 g1 = gf.generate_graph(source="faker", total_nodes=200, total_edges=800)
 # OSM road network
-g2 = gf.generate_graph(source="osm", place="Berlin, Germany", network_type="drive")
+g2 = gf.generate_graph(source="osm", place="Chinatown, San Francisco, California", network_type="drive")
 # Flight network
 g3 = gf.generate_graph(source="flights", year=2024, month=1)
 
