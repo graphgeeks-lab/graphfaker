@@ -47,9 +47,9 @@ Features
 
 - **Easy CLI & Python Library**
 
-.. Vision::
 
-   To remove friction around data acquisition, letting you focus on algorithms, teaching, or rapid prototyping.
+*Vision:: To remove friction around data acquisition, letting you focus on algorithms, teaching, or rapid prototyping.*
+
 
 Key Features
 ============
@@ -69,6 +69,9 @@ Key Features
    * - **Wikipedia**
      - Raw page dumps (title, summary, content, sections, links, references) as JSON.
 
+.. note::
+
+   This is still a work in progress (WIP). Includes logging and debugging print statements. Our goal for releasing early is to get feedback and reiterate.
 
 Installation
 ------------
