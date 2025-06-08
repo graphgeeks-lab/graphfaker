@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphfaker"
-version = "0.1.2"
-description = "an open-source python library for generating, and loading synthetic and real-world graph datasets"
+version = "0.2.0"
+description = "an open-source python library for generating, and loading both synthetic and real-world graph datasets"
 readme = "README.md"
 authors = [
   {name = "Dennis Irorere", email = "denironyx@gmail.com"}
@@ -25,6 +25,7 @@ dependencies = [
   "pandas>=2.2.2",
   "requests>=2.32.3",
   "typer",
+  "wikipedia>=1.4.0",
 ]
 
 [project.optional-dependencies]
