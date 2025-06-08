@@ -28,7 +28,7 @@ GraphFaker is an open-source Python library designed to generate, load, and expo
   - `osm`: Real-world street networks directly from OpenStreetMap (by place name, address, or bounding box)
   - `flights`: Flight/airline networks from Bureau of Transportation Statistics (airlines ↔ airports ↔ flight legs, complete with cancellation and delay flags)
 - **Unstructured Data Source:**
- - `WikiFetcher`: Raw Wikipedia page data (title, summary, content, sections, links, references) ready for custom graph or RAG pipelines
+  - `WikiFetcher`: Raw Wikipedia page data (title, summary, content, sections, links, references) ready for custom graph or RAG pipelines
 - **Easy CLI & Python Library**
 
 This removes friction around data acquisition, letting you focus on algorithms, teaching or rapid prototyping.

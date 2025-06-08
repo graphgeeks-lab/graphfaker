@@ -35,35 +35,40 @@ Solution: graphfaker
 GraphFaker is an open-source Python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way. It enables users to generate graphs tailored to their specific needs, allowing for better experimentation and learning without needing to think about where the data is coming from or how to fetch the data.
 
 Features
---------
+========
 
 - **Multiple Graph Sources:**
-  - `faker`: Synthetic “social-knowledge” graphs powered by Faker (people, places, organizations, events, products with rich attributes and relationships)
-  - `osm`: Real-world street networks directly from OpenStreetMap (by place name, address, or bounding box)
-  - `flights`: Flight/airline networks from Bureau of Transportation Statistics (airlines ↔ airports ↔ flight legs, complete with cancellation and delay flags)
+  - ``faker``: Synthetic “social-knowledge” graphs powered by Faker (people, places, organizations, events, products with rich attributes and relationships)
+  - ``osm``: Real-world street networks directly from OpenStreetMap (by place name, address, or bounding box)
+  - ``flights``: Flight/airline networks from Bureau of Transportation Statistics (airlines ↔ airports ↔ flight legs, complete with cancellation and delay flags)
+
 - **Unstructured Data Source:**
- - `WikiFetcher`: Raw Wikipedia page data (title, summary, content, sections, links, references) ready for custom graph or RAG pipelines
+  - ``WikiFetcher``: Raw Wikipedia page data (title, summary, content, sections, links, references) ready for custom graph or entity recognition
+
 - **Easy CLI & Python Library**
 
-.. note::
+.. Vision::
 
-   This removes friction around data acquisition, letting you focus on algorithms, teaching or rapid prototyping.
+   To remove friction around data acquisition, letting you focus on algorithms, teaching, or rapid prototyping.
 
-✨ Key Features
-----------------
+Key Features
+============
 
-| Source        | What It Gives You                                                                                                                                                                                     |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Faker**     | Synthetic social-knowledge graphs with configurable sizes, weighted and directional relationships.                                                      |
-| **OSM**       | Real road or walking networks via OSMnx under the hood—fetch by place, address, or bounding box; simplify topology; project to UTM.                                                |
-| **Flights**   | Airline/airport graph from BTS on-time performance data: nodes for carriers, airports, flights; edges for OPERATED\_BY, DEPARTS\_FROM, ARRIVES\_AT; batch or date-range support; subgraph sampling.   |
-| **WikiFetcher** | Raw page dumps (title, summary, content, sections, links, references) as JSON |
+.. list-table::
+   :header-rows: 1
+   :widths: 15 85
 
+   * - Source
+     - What It Gives You
+   * - **Faker**
+     - Synthetic social-knowledge graphs with configurable sizes, weighted and directional relationships.
+   * - **OSM**
+     - Real road or walking networks via OSMnx under the hood—fetch by place, address, or bounding box; simplify topology; project to UTM.
+   * - **Flights**
+     - Airline/airport graph from BTS on-time performance data: nodes for carriers, airports, flights; edges for OPERATED_BY, DEPARTS_FROM, ARRIVES_AT; batch or date-range support; subgraph sampling.
+   * - **Wikipedia**
+     - Raw page dumps (title, summary, content, sections, links, references) as JSON.
 
-
-.. note::
-
-   This is still a work in progress (WIP). Includes logging and debugging print statements. Our goal for releasing early is to get feedback and reiterate.
 
 Installation
 ------------
