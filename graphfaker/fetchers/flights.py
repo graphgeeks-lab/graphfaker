@@ -33,7 +33,7 @@ import requests
 import pandas as pd
 from tqdm.auto import tqdm
 import networkx as nx
-import time
+
 
 # suppress only the single warning from unverified HTTPS
 import urllib3
@@ -124,6 +124,7 @@ class FlightGraphFetcher:
         Raises:
             HTTPError if download fails.
         """
+        logger.info("Fetching airlines lookup from BTS…")
         resp = requests.get(AIRLINE_LOOKUP_URL, verify=False)
         resp.raise_for_status()
         df = pd.read_csv(StringIO(resp.text))
@@ -145,6 +146,7 @@ class FlightGraphFetcher:
         Returns:
             pd.DataFrame with columns ['faa','name','city','country','lat','lon']
         """
+        logger.info("Fetching airports dataset from OpenFlights…")
         df = pd.read_csv(
             AIRPORTS_URL,
             header=None,
@@ -220,6 +222,10 @@ class FlightGraphFetcher:
         Raises:
             ValueError if neither valid year/month nor date_range provided.
         """
+        logger.info(
+            f"Fetching flight performance data for {year}-{month:02d} "
+            f"or date range {date_range}…"
+        )
 
         def load_month(y, m):
             url = f"https://transtats.bts.gov/PREZIP/On_Time_Reporting_Carrier_On_Time_Performance_1987_present_{y}_{m}.zip"

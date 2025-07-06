@@ -1,21 +1,28 @@
-# graphfaker/fetchers/osm.py
 """
 OSM Fetcher module: wraps OSMnx functionality to retrieve and preprocess street networks.
 """
 
+from typing import Optional
 import networkx as nx
 import osmnx as ox
+
+from graphfaker.logger import logger
+
+# OSMnx settings
+
+ox.utils.settings.log_console = True
+
 
 class OSMGraphFetcher:
     @staticmethod
     def fetch_network(
-        place: str = None,
-        address: str = None,
-        bbox: tuple = None,
-        network_type: str =  "drive",
+        place: Optional[str] = None,
+        address: Optional[str] = None,
+        bbox: Optional[tuple[float, float, float, float]] = None,
+        network_type: str = "drive",
         simplify: bool = True,
         retain_all: bool = False,
-        dist: float = 1000
+        dist: float = 1000,
     ) -> nx.MultiDiGraph:
         """
         OSMGraphFetcher: Fetch and preprocess street networks from OpenStreetMap via OSMnx.
@@ -58,15 +65,42 @@ class OSMGraphFetcher:
             bbox = (37.79, 37.77, -122.41, -122.43)
             G3 = OSMGraphFetcher.fetch_network(bbox=bbox, network_type="walk")
         """
+        logger.info(
+            "Fetching OSM network with parameters: "
+            f"place={place}, address={address}, bbox={bbox}, "
+            f"network_type={network_type}, simplify={simplify}, "
+            f"retain_all={retain_all}, dist={dist}"
+        )
         if address:
-            G = ox.graph_from_address(address, dist=dist,network_type=network_type, simplify=simplify, retain_all=retain_all)
+            G = ox.graph_from_address(
+                address,
+                dist=dist,
+                network_type=network_type,
+                simplify=simplify,
+                retain_all=retain_all,
+            )
         elif place:
-            G = ox.graph_from_place(place, network_type=network_type, simplify=simplify, retain_all=retain_all)
+            G = ox.graph_from_place(
+                place,
+                network_type=network_type,
+                simplify=simplify,
+                retain_all=retain_all,
+            )
         elif bbox:
-            north, south, east, west = bbox
-            G = ox.graph_from_bbox(north, south, east, west, network_type=network_type, simplify=simplify, retain_all=retain_all)
+            G = ox.graph_from_bbox(
+                bbox,
+                network_type=network_type,
+                simplify=simplify,
+                retain_all=retain_all,
+            )
         else:
-            raise ValueError("Either 'place', 'address', or 'bbox' must be provided to fetch OSM network.")
+            logger.error(
+                "No valid input provided for fetching OSM network. "
+                "Please provide 'place', 'address', or 'bbox'."
+            )
+            raise ValueError(
+                "Either 'place', 'address', or 'bbox' must be provided to fetch OSM network."
+            )
 
         # Project to UTM for accurate distance-based metrics
         G_proj = ox.project_graph(G)
@@ -79,10 +113,8 @@ class OSMGraphFetcher:
         Compute basic statistics of the OSM network
         """
         stats = {
-            'nodes': G.number_of_nodes(),
-            'edges': G.number_of_edges(),
-            'avg_degree': sum(dict(G.degree()).values()) / float(G.number_of_nodes())
+            "nodes": G.number_of_nodes(),
+            "edges": G.number_of_edges(),
+            "avg_degree": sum(dict(G.degree()).values()) / float(G.number_of_nodes()),  # type: ignore
         }
         return stats
-
-

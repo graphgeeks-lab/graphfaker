@@ -86,24 +86,24 @@ python -m graphfaker.cli --help
 
 #### Generate a Synthetic Social Graph
 ```sh
-python -m graphfaker.cli gen \
-    --source faker \
+python -m graphfaker.cli  \
+    --fetcher faker \
     --total-nodes 100 \
     --total-edges 500
 ```
 
 #### Generate a Real-World Road Network (OSM)
 ```sh
-python -m graphfaker.cli gen \
-    --source osm \
+python -m graphfaker.cli  \
+    --fetcher osm \
     --place "Berlin, Germany" \
     --network-type drive
 ```
 
 #### Generate a Flight Network (Airlines/Airports/Flights)
 ```sh
-python -m graphfaker.cli gen \
-    --source flights \
+python -m graphfaker.cli \
+    --fetcher flights \
     --country "United States" \
     --year 2024 \
     --month 1
