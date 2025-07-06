@@ -5,9 +5,9 @@ Credits
 Development Lead
 ----------------
 
-* Dennis Irorere <denironyx@gmail.com>
+* Dennis Irorere
 
 Contributors
 ------------
+* Emmanuel Jolaiya 
 
-None yet. Why not be the first?

@@ -290,11 +290,9 @@ class GraphFaker:
         """
 
         if source == "faker":
-            logger.info(
-                f"Generating graph with source={source}, "
-                f"total_nodes={total_nodes}, total_edges={total_edges}"
+            return self._generate_faker(
+                total_nodes=total_nodes, total_edges=total_edges
             )
-            return self._generate_faker(total_nodes, total_edges)
         elif source == "osm":
             logger.info(
                 f"Generating OSM graph with source={source}, "
@@ -303,14 +301,20 @@ class GraphFaker:
                 f"retain_all={retain_all}, dist={dist}"
             )
             return self._generate_osm(
-                place, address, bbox, network_type, simplify, retain_all, dist
+                place=place,
+                address=address,
+                bbox=bbox,
+                network_type=network_type,
+                simplify=simplify,
+                retain_all=retain_all,
+                dist=dist,
             )
         elif source == "flights":
-            logger.info(
-                f"Generating flight graph with source={source}, "
-                f"country={country}, year={year}, month={month}, "
-                f"date_range={date_range}"
+            return self._generate_flights(
+                country=country,
+                year=year,
+                month=month,
+                date_range=date_range,
             )
-            return self._generate_flights(country, year, month, date_range)
         else:
             raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
