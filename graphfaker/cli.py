@@ -9,6 +9,7 @@ from graphfaker.enums import FetcherType
 from graphfaker.fetchers.osm import OSMGraphFetcher
 from graphfaker.fetchers.flights import FlightGraphFetcher
 from graphfaker.utils import parse_date_range
+import os
 
 app = typer.Typer()
 
@@ -111,8 +112,11 @@ def gen(
             f"Generated flight graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
         )
     
-    gf.export_graph(g, export)
-    logger.info(f"exported graph to {export}, with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges.")
+    abs_export_path = os.path.abspath(export)
+    os.makedirs(os.path.dirname(abs_export_path) or ".", exist_ok=True)
+    
+    gf.export_graph(g, source=fetcher, path=abs_export_path)
+    logger.info(f"exported graph to {abs_export_path}, with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges.")
 
 
 if __name__ == "__main__":

@@ -319,35 +319,43 @@ class GraphFaker:
             )
         else:
             raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
-
-    def export_graph(self, G: nx.Graph = None, path: str = "graph.graphml"):
-        """
-        Export the graph to a GraphML format.
-
-        args:
-            G: Optional Networkx graph. If None, uses self.G.
-            path: Destination file path for .graphml output.
         
+    def export_graph(self, G: nx.Graph = None, source: str = None, path: str = "graph.graphml"):
+        """
+        Export the graph to GraphML format.
+
+        Args:
+            G: Optional NetworkX graph. If None, uses self.G.
+            source: Optional string, if "osm" uses osmnx for export.
+            path: Destination file path for .graphml output.
+
         Notes:
-            GraphML is useful for visualization in tools like G.V(), Gephi or Cytoscape.
-            It supports node and edge attributes but may not handle complex types like tuples.
+            GraphML is useful for visualization in tools like Gephi or Cytoscape.
+            Node/edge attributes should be simple types (str, int, float).
         """
         import os
+
+        abs_path = os.path.abspath(path)
+        os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
 
         if G is None:
             G = self.G
         if G is None:
             raise ValueError("No graph available to export.")
-        
+
         # Sanitize attributes that are not GraphML-friendly
         for _, data in G.nodes(data=True):
             if 'coordinates' in data and isinstance(data['coordinates'], tuple):
                 lat, lon = data['coordinates']
                 data['coordinates'] = f"{lat},{lon}"
 
-        # Ensure directory exists
-        abs_path = os.path.abspath(path)
-        os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
+        if source == "osm":
+            try:
+                import osmnx as ox
+                ox.io.save_graphml(G, filepath=abs_path)
+            except ImportError:
+                raise ImportError("osmnx is required to export OSM graphs.")
+        else:
+            nx.write_graphml(G, abs_path)
 
-        nx.write_graphml(G, path)
-        print(f"✅ Graph exported to: {path}")
+        print(f"✅ Graph exported to: {abs_path}")
