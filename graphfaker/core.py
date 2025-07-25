@@ -2,6 +2,7 @@
 A multi-domain network connecting entities across social, geographical, and commercial dimensions.
 """
 
+import os
 from typing import Optional
 import networkx as nx
 import random
@@ -318,3 +319,35 @@ class GraphFaker:
             )
         else:
             raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
+
+    def export_graph(self, G: nx.Graph = None, path: str = "graph.graphml"):
+        """
+        Export the graph to a GraphML format.
+
+        args:
+            G: Optional Networkx graph. If None, uses self.G.
+            path: Destination file path for .graphml output.
+        
+        Notes:
+            GraphML is useful for visualization in tools like G.V(), Gephi or Cytoscape.
+            It supports node and edge attributes but may not handle complex types like tuples.
+        """
+        import os
+
+        if G is None:
+            G = self.G
+        if G is None:
+            raise ValueError("No graph available to export.")
+        
+        # Sanitize attributes that are not GraphML-friendly
+        for _, data in G.nodes(data=True):
+            if 'coordinates' in data and isinstance(data['coordinates'], tuple):
+                lat, lon = data['coordinates']
+                data['coordinates'] = f"{lat},{lon}"
+
+        # Ensure directory exists
+        abs_path = os.path.abspath(path)
+        os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
+
+        nx.write_graphml(G, path)
+        print(f"✅ Graph exported to: {path}")

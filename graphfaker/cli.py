@@ -50,6 +50,9 @@ def gen(
         None,
         help="Year, Month and day range (YYYY-MM-DD,YYYY-MM-DD) for flight data. e.g. '2024-01-01,2024-01-15'.",
     ),
+
+    # common
+    export: str = typer.Option("graph.graphml", help="File path to export GraphML"),
 ):
     """Generate a graph using GraphFaker."""
     gf = GraphFaker()
@@ -57,8 +60,9 @@ def gen(
     if fetcher == FetcherType.FAKER:
 
         g = gf.generate_graph(total_nodes=total_nodes, total_edges=total_edges)
-        print(g)
-        return g
+        logger.info(
+            f"Generated random graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
+        )
 
     elif fetcher == FetcherType.OSM:
         # parse bbox string if provided
@@ -75,8 +79,9 @@ def gen(
             retain_all=retain_all,
             dist=dist,
         )
-        print(g)
-        return g
+        logger.info(
+            f"Fetched OSM graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
+        )
     else:
         # Flight fetcher
         parsed_date_range = parse_date_range(date_range) if date_range else None
@@ -101,8 +106,13 @@ def gen(
         )
 
         g = FlightGraphFetcher.build_graph(airlines_df, airports_df, flights_df)
-        print(g)
-        return g
+        
+        logger.info(
+            f"Generated flight graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
+        )
+    
+    gf.export_graph(g, export)
+    logger.info(f"exported graph to {export}, with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges.")
 
 
 if __name__ == "__main__":
