@@ -2,6 +2,7 @@
 A multi-domain network connecting entities across social, geographical, and commercial dimensions.
 """
 
+from typing import Optional
 import networkx as nx
 import random
 from faker import Faker
@@ -203,9 +204,9 @@ class GraphFaker:
 
     def _generate_osm(
         self,
-        place: str = None,
-        address: str = None,
-        bbox: tuple = None,
+        place: Optional[str] = None,
+        address: Optional[str] = None,
+        bbox: Optional[tuple] = None,
         network_type: str = "drive",
         simplify: bool = True,
         retain_all: bool = False,
@@ -219,7 +220,7 @@ class GraphFaker:
             network_type=network_type,
             simplify=simplify,
             retain_all=retain_all,
-            dist=dist
+            dist=dist,
         )
         self.G = G
         return G
@@ -227,9 +228,9 @@ class GraphFaker:
     def _generate_flights(
         self,
         country: str = "United States",
-        year: int = None,
-        month: int = None,
-        date_range: tuple = None,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        date_range: Optional[tuple] = None,
     ):
         """
         Fetch flights, airport, and airline via FlightFetcher
@@ -250,7 +251,7 @@ class GraphFaker:
 
         G = FlightGraphFetcher.build_graph(airlines_df, airports_df, flights_df)
         self.G = G
-        return G
+
         # Inform users of which span was downloaded
         if date_range:
             start, end = date_range
@@ -258,6 +259,7 @@ class GraphFaker:
 
         else:
             logger.info(f"Flight data for {year}-{month:02d}")
+        return G
 
     def _generate_faker(self, total_nodes=100, total_edges=1000):
         """Generates the complete Social Knowledge Graph."""
@@ -270,9 +272,9 @@ class GraphFaker:
         source: str = "faker",
         total_nodes: int = 100,
         total_edges: int = 1000,
-        place: str = None,
-        address: str = None,
-        bbox: tuple = None,
+        place: Optional[str] = None,
+        address: Optional[str] = None,
+        bbox: Optional[tuple] = None,
         network_type: str = "drive",
         simplify: bool = True,
         retain_all: bool = False,
@@ -280,18 +282,24 @@ class GraphFaker:
         country: str = "United States",
         year: int = 2024,
         month: int = 1,
-        date_range: tuple = None,
+        date_range: Optional[tuple] = None,
     ) -> nx.DiGraph:
         """
         Unified entrypoint: choose 'random' or 'osm'.
         Pass kwargs depending on source.
         """
+
         if source == "faker":
             return self._generate_faker(
-                total_nodes=total_nodes,
-                total_edges=total_edges
+                total_nodes=total_nodes, total_edges=total_edges
             )
         elif source == "osm":
+            logger.info(
+                f"Generating OSM graph with source={source}, "
+                f"place={place}, address={address}, bbox={bbox}, "
+                f"network_type={network_type}, simplify={simplify}, "
+                f"retain_all={retain_all}, dist={dist}"
+            )
             return self._generate_osm(
                 place=place,
                 address=address,
