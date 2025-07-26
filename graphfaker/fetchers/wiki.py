@@ -21,7 +21,7 @@ Usage:
     print(page['sections'], page['links'][:5], page['references'][:5])
     wiki.export_page_json(page, "graph_theory.json")    
 """
-
+import os
 import json
 from typing import Dict, Any, List, Optional
 import wikipedia
@@ -73,6 +73,10 @@ class WikiFetcher:
             page_data: Dict returned by `fetch_page`.
             filename: Destination JSON file path.
         """
-        with open(filename, 'w', encoding='utf-8') as f:
+
+        abs_path = os.path.abspath(filename)
+        os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
+
+        with open(abs_path, 'w', encoding='utf-8') as f:
             json.dump(page, f, ensure_ascii=False, indent=2)
-        print(f"Exported Wikipedia page data to '{filename}'")
+        print(f"✅ Exported Wikipedia page data to '{abs_path}'")
