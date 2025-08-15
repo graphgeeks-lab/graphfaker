@@ -214,17 +214,25 @@ class GraphFaker:
         dist: float = 1000,
     ) -> nx.DiGraph:
         """Fetch an OSM network via OSMFetcher"""
-        G = OSMGraphFetcher.fetch_network(
-            place=place,
-            address=address,
-            bbox=bbox,
-            network_type=network_type,
-            simplify=simplify,
-            retain_all=retain_all,
-            dist=dist,
-        )
-        self.G = G
-        return G
+        try:
+            if bbox and len(bbox) != 4:
+                raise ValueError("Bounding box (bbox) must be a tuple of 4 values: (minx, miny, maxx, maxy).")
+            if dist <= 0:
+                raise ValueError("Distance (dist) must be greater than 0.")
+            G = OSMGraphFetcher.fetch_network(
+                place=place,
+                address=address,
+                bbox=bbox,
+                network_type=network_type,
+                simplify=simplify,
+                retain_all=retain_all,
+                dist=dist,
+            )
+            self.G = G
+            return G
+        except Exception as e:
+            logger.error(f"Failed to generate OSM graph: {e}")
+            raise
 
     def _generate_flights(
         self,
@@ -236,34 +244,47 @@ class GraphFaker:
         """
         Fetch flights, airport, and airline via FlightFetcher
         """
-        # 1) Fetch  airline and airport tables
-        airlines_df = FlightGraphFetcher.fetch_airlines()
-        airports_df = FlightGraphFetcher.fetch_airports(country=country)
+        try:
+            if year and (year < 1900 or year > 2100):
+                raise ValueError("Year must be between 1900 and 2100.")
+            if month and (month < 1 or month > 12):
+                raise ValueError("Month must be between 1 and 12.")
+            if date_range and len(date_range) != 2:
+                raise ValueError("Date range must be a tuple of two dates: (start_date, end_date).")
 
-        # Fetch flight transit on-time performance data
-        flights_df = FlightGraphFetcher.fetch_flights(
-            year=year, month=month, date_range=date_range
-        )
-        logger.info(
-            f"Fetched {len(airlines_df)} airlines, "
-            f"{len(airports_df)} airports, "
-            f"{len(flights_df)} flights."
-        )
+            # 1) Fetch  airline and airport tables
+            airlines_df = FlightGraphFetcher.fetch_airlines()
+            airports_df = FlightGraphFetcher.fetch_airports(country=country)
 
-        G = FlightGraphFetcher.build_graph(airlines_df, airports_df, flights_df)
-        self.G = G
+            # Fetch flight transit on-time performance data
+            flights_df = FlightGraphFetcher.fetch_flights(
+                year=year, month=month, date_range=date_range
+            )
+            logger.info(
+                f"Fetched {len(airlines_df)} airlines, "
+                f"{len(airports_df)} airports, "
+                f"{len(flights_df)} flights."
+            )
 
-        # Inform users of which span was downloaded
-        if date_range:
-            start, end = date_range
-            logger.info(f"Flight data covers {start} -> {end}")
+            G = FlightGraphFetcher.build_graph(airlines_df, airports_df, flights_df)
+            self.G = G
 
-        else:
-            logger.info(f"Flight data for {year}-{month:02d}")
-        return G
+            # Inform users of which span was downloaded
+            if date_range:
+                start, end = date_range
+                logger.info(f"Flight data covers {start} -> {end}")
+
+            else:
+                logger.info(f"Flight data for {year}-{month:02d}")
+            return G
+        except Exception as e:
+            logger.error(f"Failed to generate flight graph: {e}")
+            raise
+
 
     def _generate_faker(self, total_nodes=100, total_edges=1000):
         """Generates the complete Social Knowledge Graph."""
+        self.G = nx.DiGraph()  # Reset the graph to a new instance
         self.generate_nodes(total_nodes=total_nodes)
         self.generate_edges(total_edges=total_edges)
         return self.G
@@ -319,7 +340,7 @@ class GraphFaker:
             )
         else:
             raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
-        
+
     def export_graph(self, G: nx.Graph = None, source: str = None, path: str = "graph.graphml"):
         """
         Export the graph to GraphML format.
