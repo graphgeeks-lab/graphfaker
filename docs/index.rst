@@ -7,6 +7,7 @@ Welcome to graphfaker's documentation!
 
    readme
    installation
+   quickstart
    usage
    modules
    contributing
