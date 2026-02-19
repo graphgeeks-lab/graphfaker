@@ -2,14 +2,16 @@
 Command-line interface for GraphFaker.
 """
 
-from venv import logger
+import os
+
 import typer
+
 from graphfaker.core import GraphFaker
 from graphfaker.enums import FetcherType
 from graphfaker.fetchers.osm import OSMGraphFetcher
 from graphfaker.fetchers.flights import FlightGraphFetcher
+from graphfaker.logger import logger
 from graphfaker.utils import parse_date_range
-import os
 
 app = typer.Typer()
 
@@ -52,6 +54,32 @@ def gen(
         help="Year, Month and day range (YYYY-MM-DD,YYYY-MM-DD) for flight data. e.g. '2024-01-01,2024-01-15'.",
     ),
 
+    # for FetcherType.TRUST source
+    total_users: int = typer.Option(
+        10000, help="Number of user nodes for trust graph."
+    ),
+    avg_trust_links: int = typer.Option(
+        15, help="Average outgoing trust edges per user."
+    ),
+    reciprocity: float = typer.Option(
+        0.7, help="Fraction of trust edges that are mutual (0.0 to 1.0)."
+    ),
+    num_communities: int = typer.Option(
+        None, help="Number of community clusters. Defaults to sqrt(total_users)."
+    ),
+    community_mixing: float = typer.Option(
+        0.15, help="Fraction of edges crossing community boundaries (0.0 to 1.0)."
+    ),
+    avg_distrust_links: float = typer.Option(
+        2.0, help="Average DISTRUSTS edges per user (Poisson-distributed)."
+    ),
+    bot_fraction: float = typer.Option(
+        0.10, help="Fraction of nodes that are bots (0.0 to 1.0)."
+    ),
+    seed: int = typer.Option(
+        None, help="Random seed for reproducibility."
+    ),
+
     # common
     export: str = typer.Option("graph.graphml", help="File path to export GraphML"),
 ):
@@ -83,7 +111,23 @@ def gen(
         logger.info(
             f"Fetched OSM graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
         )
-    else:
+    elif fetcher == FetcherType.TRUST:
+        g = gf.generate_graph(
+            source="trust",
+            total_users=total_users,
+            avg_trust_links=avg_trust_links,
+            reciprocity=reciprocity,
+            num_communities=num_communities,
+            community_mixing=community_mixing,
+            avg_distrust_links=avg_distrust_links,
+            bot_fraction=bot_fraction,
+            seed=seed,
+        )
+        logger.info(
+            f"Generated trust graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
+        )
+
+    elif fetcher == FetcherType.FLIGHTS:
         # Flight fetcher
         parsed_date_range = parse_date_range(date_range) if date_range else None
 

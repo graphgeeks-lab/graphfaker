@@ -7,3 +7,4 @@ class FetcherType(str, Enum):
     OSM = "osm"
     FLIGHTS = "flights"
     FAKER = "faker"
+    TRUST = "trust"

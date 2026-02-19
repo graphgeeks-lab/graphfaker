@@ -21,6 +21,7 @@ keywords = ["faker", "graph-data", "flights", "osmnx", "graphs", "graphfaker"]
 dependencies = [
   "faker>=37.1.0",
   "networkx>=3.4.2",
+  "numpy>=1.24.0",
   "osmnx==2.0.2",
   "pandas>=2.2.2",
   "requests>=2.32.3",
