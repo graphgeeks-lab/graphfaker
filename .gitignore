@@ -109,3 +109,9 @@ ENV/
 .idea/
 
 cache/
+
+# Internal project notes (not for distribution)
+docs/internal/
+
+# Local workspace / scratch
+workspace/

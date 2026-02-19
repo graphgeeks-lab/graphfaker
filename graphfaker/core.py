@@ -9,6 +9,7 @@ import random
 from faker import Faker
 from graphfaker.fetchers.osm import OSMGraphFetcher
 from graphfaker.fetchers.flights import FlightGraphFetcher
+from graphfaker.fetchers.trust import TrustGraphFetcher
 from graphfaker.logger import logger
 
 fake = Faker()
@@ -289,6 +290,35 @@ class GraphFaker:
         self.generate_edges(total_edges=total_edges)
         return self.G
 
+    def _generate_trust(
+        self,
+        total_users: int = 10000,
+        avg_trust_links: int = 15,
+        reciprocity: float = 0.7,
+        num_communities: Optional[int] = None,
+        community_mixing: float = 0.15,
+        avg_distrust_links: float = 2.0,
+        bot_fraction: float = 0.10,
+        seed: Optional[int] = None,
+    ):
+        """Generate a directed social trust graph via TrustGraphFetcher."""
+        try:
+            G = TrustGraphFetcher.build_graph(
+                total_users=total_users,
+                avg_trust_links=avg_trust_links,
+                reciprocity=reciprocity,
+                num_communities=num_communities,
+                community_mixing=community_mixing,
+                avg_distrust_links=avg_distrust_links,
+                bot_fraction=bot_fraction,
+                seed=seed,
+            )
+            self.G = G
+            return G
+        except Exception as e:
+            logger.error(f"Failed to generate trust graph: {e}")
+            raise
+
     def generate_graph(
         self,
         source: str = "faker",
@@ -305,6 +335,15 @@ class GraphFaker:
         year: int = 2024,
         month: int = 1,
         date_range: Optional[tuple] = None,
+        # Trust graph parameters
+        total_users: int = 10000,
+        avg_trust_links: int = 15,
+        reciprocity: float = 0.7,
+        num_communities: Optional[int] = None,
+        community_mixing: float = 0.15,
+        avg_distrust_links: float = 2.0,
+        bot_fraction: float = 0.10,
+        seed: Optional[int] = None,
     ) -> nx.DiGraph:
         """
         Unified entrypoint: choose 'random' or 'osm'.
@@ -338,8 +377,22 @@ class GraphFaker:
                 month=month,
                 date_range=date_range,
             )
+        elif source == "trust":
+            return self._generate_trust(
+                total_users=total_users,
+                avg_trust_links=avg_trust_links,
+                reciprocity=reciprocity,
+                num_communities=num_communities,
+                community_mixing=community_mixing,
+                avg_distrust_links=avg_distrust_links,
+                bot_fraction=bot_fraction,
+                seed=seed,
+            )
         else:
-            raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
+            raise ValueError(
+                f"Unknown source '{source}'. "
+                f"Use 'faker', 'osm', 'flights', or 'trust'."
+            )
 
     def export_graph(self, G: nx.Graph = None, source: str = None, path: str = "graph.graphml"):
         """
