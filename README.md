@@ -29,6 +29,10 @@ GraphFaker is an open-source Python library designed to generate, load, and expo
   - `flights`: Flight/airline networks from Bureau of Transportation Statistics (airlines ↔ airports ↔ flight legs, complete with cancellation and delay flags)
 - **Unstructured Data Source:**
   - `WikiFetcher`: Raw Wikipedia page data (title, summary, content, sections, links, references) ready for custom graph or RAG pipelines
+- **Entity Resolution:**
+  - `resolve()`: find and merge duplicate nodes using attribute similarity **and** neighbourhood overlap — the graph signal tabular record-linkage tools cannot see
+  - `evaluate_clusters()`: score a predicted clustering against gold labels you supply (pairwise and B-cubed)
+- **Reproducible:** every synthetic graph is seedable
 - **Easy CLI & Python Library**
 
 This removes friction around data acquisition, letting you focus on algorithms, teaching or rapid prototyping.
@@ -134,31 +138,93 @@ You can also use `--date-range` for custom time spans (e.g., `--date-range "2024
 
 ---
 
-## Future Plans: Graph Export Formats
+## Entity Resolution
 
-- **GraphML**: General graph analysis/visualization (`--export graph.graphml`)
-- **JSON/JSON-LD**: Knowledge graphs/web apps (`--export data.json`)
-- **CSV**: Tabular analysis/database imports (`--export edges.csv`)
-- **RDF**: Semantic web/linked data (`--export graph.ttl`)
+LLM-built knowledge graphs routinely emit the same real-world entity as several
+nodes, and every edge attached to a false node is a false edge. Tabular
+record-linkage tools compare *rows*, so they cannot use the strongest signal a
+graph offers: **two nodes that share most of their neighbours are probably the
+same entity, however differently their names are spelled.**
+
+`resolve()` scores candidate pairs on attribute similarity *and* neighbourhood
+overlap, clusters the survivors, and merges each cluster onto one canonical node
+— rewiring its edges, dropping self-loops the merge creates, and recording what
+was absorbed.
+
+```python
+from graphfaker import GraphFaker
+
+gf = GraphFaker(seed=42)
+gf.generate_graph(source="faker", total_nodes=500, total_edges=2000)
+
+result = gf.resolve(on=["name", "email"], threshold=0.85)
+print(result.report())
+#   candidate pairs scored : 1284
+#   pairs above threshold  : 12
+#   clusters found         : 5
+#   duplicate nodes        : 7
+
+clean = result.apply()   # merged copy; the original is untouched
+```
+
+`structural_weight` controls how much shared-neighbour evidence may lift a
+pair's score. Structure can only *raise* a score, never lower it, so isolated
+nodes are never penalised for having few neighbours — set it to `0` to fall back
+to plain attribute matching:
+
+```python
+gf.resolve(on=["name"], structural_weight=0.0)   # attributes only
+gf.resolve(on=["name"], structural_weight=0.8)   # trust the graph structure
+```
+
+Already have labelled clusters? Score a prediction against them. This computes
+metrics only — it does not manufacture ground truth:
+
+```python
+from graphfaker import evaluate_clusters
+
+scores = evaluate_clusters(result.clusters, my_known_duplicates)
+print(scores["pairwise_f1"], scores["b_cubed_f1"])
+```
 
 ---
 
-## Future Plans: Integration with Graph Tools
+## Reproducibility
 
-GraphFaker generates NetworkX graph objects that can be easily integrated with:
-- **Graph databases**: Neo4j, Kuzu, TigerGraph
-- **Analysis tools**: NetworkX, SNAP, graph-tool
-- **ML frameworks**: PyTorch Geometric, DGL, TensorFlow GNN
-- **Visualization**: G.V, Gephi, Cytoscape, D3.js
+Synthetic generation is seedable, per instance. The same seed and the same
+arguments always produce an identical graph, and seeding does not disturb the
+global `random` module:
+
+```python
+GraphFaker(seed=42).generate_graph(source="faker", total_nodes=100)
+# or per call:
+gf.generate_graph(source="faker", total_nodes=100, seed=42)
+```
+
+```sh
+python -m graphfaker.cli --fetcher faker --total-nodes 100 --seed 42
+```
 
 ---
 
-## On the Horizon:
+## Scope
 
-- Handling large graph -> millions of nodes
-- Using NLP/LLM to fetch graph data -> "Fetch flight data for Jan 2024"
-- Connects to any graph database/engine of choice -> "Establish connections to graph database/engine of choice"
+GraphFaker generates NetworkX graph objects and exports to **GraphML**
+(`--export graph.graphml`), which most graph tooling — Gephi, Cytoscape, Neo4j,
+and the usual Python ML stacks — can import.
 
+Anything not documented above is not implemented. Please open an issue if you
+need something specific rather than assuming it is on the way.
+
+---
+
+## Notes on network access
+
+The `flights` fetcher downloads from BTS and OpenFlights with TLS verification
+enabled. Some systems fail to validate the BTS certificate chain; if you hit
+that, you can opt out with `GRAPHFAKER_INSECURE_TLS=1`, which logs a warning and
+means the downloaded data is no longer authenticated. Verification is never
+disabled silently.
 
 ---
 
