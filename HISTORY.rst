@@ -26,6 +26,17 @@ Graph-native entity resolution, reproducible generation, and several fixes.
 
 New:
 
+* ``graphfaker.export`` — export connectors that write files rather than
+  requiring a database driver: ``export_csv`` (key-union headers, so
+  heterogeneous node types keep their values in the right columns),
+  ``export_neo4j_csv`` (``neo4j-admin`` typed headers), and ``export_cypher``
+  for Neo4j, openCypher, and ISO GQL. Also exposed as ``--format`` on the CLI.
+* ``graphfaker.corpus`` — paired text/entity corpora for measuring how many
+  nodes a graph builder creates per real entity. Documents are clean prose, not
+  corrupted text; ``Corpus.audit()`` verifies that no surface form could be
+  claimed by two entities, and ``duplication_report()`` produces the counts.
+* ``examples/duplication_experiment.py`` — runs that measurement across several
+  graph-building frameworks and prints a comparison table.
 * ``graphfaker.resolve`` — find duplicate entities using attribute similarity
   **and** neighbourhood overlap, then merge each cluster onto one canonical node
   with its edges rewired. Available as ``GraphFaker.resolve()`` or the
