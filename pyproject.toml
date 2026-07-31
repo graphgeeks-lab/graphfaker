@@ -24,7 +24,9 @@ dependencies = [
   "osmnx==2.0.2",
   "pandas>=2.2.2",
   "requests>=2.32.3",
+  "tqdm>=4.66.0",
   "typer",
+  "urllib3>=2.0.0",
   "wikipedia>=1.4.0",
 ]
 
