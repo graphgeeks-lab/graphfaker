@@ -91,15 +91,33 @@ def _tokens(value: Any) -> list[str]:
     return normalize(value).split()
 
 
-def _string_similarity(a: str, b: str) -> float:
+#: Floor applied when one name's tokens are a subset of the other's, e.g.
+#: "Hill" inside "Allison Hill". Deliberately below the default threshold: a
+#: containment alone must not merge anything, it only lifts the pair far enough
+#: that shared-neighbour evidence can decide. Set `token_subset_floor=0.0` to
+#: disable.
+TOKEN_SUBSET_FLOOR = 0.75
+
+
+def _string_similarity(a: str, b: str, token_subset_floor: float = 0.0) -> float:
     """Ratio in [0, 1]; token-set agreement is taken into account.
 
     Plain sequence matching alone treats "Acme Corporation" and
     "Corporation Acme" as fairly different. Taking the better of the raw ratio
     and the sorted-token ratio makes the comparison order-insensitive.
+
+    `token_subset_floor` addresses a structural weakness of character ratios on
+    names. "Hill" against "Allison Hill" scores only 0.5, because most of the
+    longer string is unmatched — so with a 0.85 threshold the pair is discarded
+    before neighbourhood overlap is ever consulted, no matter how much context
+    the two nodes share. Shortening a name is one of the most common ways a
+    document refers to an entity it already introduced, so this case matters.
+
+    When one token set is contained in the other, the score is floored rather
+    than set to 1.0. Containment is suggestive, not conclusive — "Smith" may
+    well be a different person from "John Smith" — so the floor sits below the
+    default threshold and leaves the decision to the structural signal.
     """
-    if not a and not b:
-        return 0.0
     if not a or not b:
         return 0.0
     if a == b:
@@ -107,9 +125,22 @@ def _string_similarity(a: str, b: str) -> float:
     raw = SequenceMatcher(None, a, b).ratio()
     sorted_a = " ".join(sorted(a.split()))
     sorted_b = " ".join(sorted(b.split()))
-    if sorted_a == a and sorted_b == b:
-        return raw
-    return max(raw, SequenceMatcher(None, sorted_a, sorted_b).ratio())
+    if not (sorted_a == a and sorted_b == b):
+        raw = max(raw, SequenceMatcher(None, sorted_a, sorted_b).ratio())
+
+    if token_subset_floor > 0:
+        tokens_a, tokens_b = set(a.split()), set(b.split())
+        # Single-letter tokens are initials; "a hill" vs "b hill" would
+        # otherwise look like containment of a shared surname.
+        meaningful_a = {t for t in tokens_a if len(t) > 1}
+        meaningful_b = {t for t in tokens_b if len(t) > 1}
+        if (
+            meaningful_a
+            and meaningful_b
+            and (meaningful_a <= meaningful_b or meaningful_b <= meaningful_a)
+        ):
+            return max(raw, token_subset_floor)
+    return raw
 
 
 def attribute_similarity(
@@ -117,6 +148,7 @@ def attribute_similarity(
     b_data: dict[str, Any],
     on: Sequence[str],
     weights: dict[str, float] | None = None,
+    token_subset_floor: float = 0.0,
 ) -> float:
     """Weighted mean string similarity of two nodes' attributes.
 
@@ -135,7 +167,7 @@ def attribute_similarity(
         weight = float(weights.get(key, 1.0))
         if weight <= 0:
             continue
-        accumulated += weight * _string_similarity(left, right)
+        accumulated += weight * _string_similarity(left, right, token_subset_floor)
         total_weight += weight
     if total_weight == 0:
         return 0.0
@@ -348,6 +380,7 @@ def resolve_entities(
     respect_type: bool = True,
     relationship_aware: bool = False,
     weights: dict[str, float] | None = None,
+    token_subset_floor: float = TOKEN_SUBSET_FLOOR,
 ) -> ResolutionResult:
     """Find clusters of nodes that appear to be the same entity.
 
@@ -370,6 +403,13 @@ def resolve_entities(
             structural overlap requires the same relationship to the same
             target. Stricter, and useful when edge types are trustworthy.
         weights: Per-field weights for attribute similarity.
+        token_subset_floor: Minimum attribute score for a pair where one name's
+            tokens are contained in the other's ("Hill" inside "Allison Hill").
+            Character ratios score that pair around 0.5, so without this it is
+            discarded before the structural signal is ever consulted. The floor
+            sits below the default threshold on purpose, so containment alone
+            never merges anything — shared neighbours still have to agree. Pass
+            0.0 to disable.
 
     Returns:
         A `ResolutionResult`. The graph is untouched until you call `apply()`.
@@ -400,7 +440,9 @@ def resolve_entities(
 
     accepted: dict[tuple[Hashable, Hashable], float] = {}
     for left, right in sorted(pairs, key=repr):
-        attr = attribute_similarity(G.nodes[left], G.nodes[right], on, weights)
+        attr = attribute_similarity(
+            G.nodes[left], G.nodes[right], on, weights, token_subset_floor
+        )
         if attr <= 0:
             continue
         # Skip the structural computation when attributes alone already decide

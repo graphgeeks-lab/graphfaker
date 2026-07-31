@@ -94,6 +94,20 @@ def test_audit_detects_a_deliberately_ambiguous_corpus():
     assert audit["ambiguous_forms"]
 
 
+@pytest.mark.parametrize("seed", [1, 2, 7, 42, 99])
+def test_aliases_carry_no_dangling_punctuation(seed):
+    """The first word of "Barnes, Cole and Ramirez" is "Barnes," with a comma.
+
+    Aliases appear verbatim in the generated prose, so trailing punctuation
+    shows up as visible garbage in the corpus.
+    """
+    corpus = generate_corpus(seed=seed, n_entities=24, n_documents=10)
+    for entity in corpus.entities:
+        for alias in entity.aliases:
+            assert alias == alias.strip(" ,.;:"), (entity.id, alias)
+            assert ",," not in alias
+
+
 def test_aliases_never_duplicate_the_canonical_name():
     corpus = generate_corpus(seed=42, n_entities=24, n_documents=10)
     for entity in corpus.entities:
