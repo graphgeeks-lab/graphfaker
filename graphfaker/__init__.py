@@ -5,6 +5,14 @@ __email__ = "denironyx@gmail.com"
 __version__ = "0.4.0"
 
 from .core import GraphFaker
+from .corpus import (
+    Corpus,
+    DuplicationReport,
+    attribute_nodes,
+    duplication_report,
+    generate_corpus,
+)
+from .export import export_csv, export_cypher, export_neo4j_csv
 from .fetchers.wiki import WikiFetcher
 from .logger import add_file_logging, configure_logging, logger
 from .resolve import (
@@ -15,13 +23,21 @@ from .resolve import (
 )
 
 __all__ = [
+    "Corpus",
+    "DuplicationReport",
     "GraphFaker",
-    "WikiFetcher",
     "ResolutionResult",
-    "resolve_entities",
-    "merge_clusters",
-    "evaluate_clusters",
-    "logger",
-    "configure_logging",
+    "WikiFetcher",
     "add_file_logging",
+    "attribute_nodes",
+    "configure_logging",
+    "duplication_report",
+    "evaluate_clusters",
+    "export_csv",
+    "export_cypher",
+    "export_neo4j_csv",
+    "generate_corpus",
+    "logger",
+    "merge_clusters",
+    "resolve_entities",
 ]

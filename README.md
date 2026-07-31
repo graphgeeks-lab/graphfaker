@@ -32,6 +32,10 @@ GraphFaker is an open-source Python library designed to generate, load, and expo
 - **Entity Resolution:**
   - `resolve()`: find and merge duplicate nodes using attribute similarity **and** neighbourhood overlap — the graph signal tabular record-linkage tools cannot see
   - `evaluate_clusters()`: score a predicted clustering against gold labels you supply (pairwise and B-cubed)
+- **Export Connectors:**
+  - CSV, `neo4j-admin` bulk-import CSV, Cypher, openCypher, and ISO GQL — file-based, so no driver or running database is needed
+- **Measurement:**
+  - `generate_corpus()`: documents whose entities are known in advance, for counting how many nodes a graph builder creates per real entity
 - **Reproducible:** every synthetic graph is seedable
 - **Easy CLI & Python Library**
 
@@ -207,11 +211,90 @@ python -m graphfaker.cli --fetcher faker --total-nodes 100 --seed 42
 
 ---
 
-## Scope
+## Getting the graph into a database
 
-GraphFaker generates NetworkX graph objects and exports to **GraphML**
-(`--export graph.graphml`), which most graph tooling — Gephi, Cytoscape, Neo4j,
-and the usual Python ML stacks — can import.
+Rather than shipping a driver per database — each needing credentials, a version
+matrix, and a live service to test against — GraphFaker writes files that every
+engine's own loader already understands.
+
+```python
+from graphfaker.export import export_csv, export_neo4j_csv, export_cypher
+
+export_csv(G, "nodes.csv", "edges.csv")      # pandas, Gephi, any bulk loader
+export_neo4j_csv(G, "import/")               # neo4j-admin bulk import headers
+export_cypher(G, "load.cypher")              # Neo4j, Memgraph, Kuzu
+export_cypher(G, "load.gql", dialect="gql")  # ISO GQL
+```
+
+Or from the CLI:
+
+```sh
+python -m graphfaker.cli --fetcher faker --total-nodes 500 --format cypher --export load.cypher
+python -m graphfaker.cli --fetcher faker --total-nodes 500 --format neo4j-csv --export import/
+```
+
+| Format | Loads into |
+| --- | --- |
+| `graphml` | Gephi, Cytoscape, NetworkX, igraph |
+| `csv` | pandas, TigerGraph `LOAD`, Amazon Neptune bulk loader, Spark/GraphFrames |
+| `neo4j-csv` | `neo4j-admin database import` — the fast path for large graphs |
+| `cypher` | Neo4j, Memgraph, Kuzu |
+| `opencypher` | Amazon Neptune |
+| `gql` | ISO GQL engines (`INSERT` in place of `CREATE`) |
+
+Node labels come from the `type` attribute and relationship types from
+`relationship`, both configurable. Nodes of different types carry different
+attributes, so CSV headers are the **union** of all keys seen — a node missing a
+column gets an empty cell rather than having its values shifted into the wrong
+one. Container values (coordinate tuples, merge provenance) are flattened, and
+labels containing punctuation are sanitised.
+
+Once loaded, Neo4j Graph Data Science works directly on the result:
+
+```cypher
+CALL gds.graph.project('g', '*', '*');
+CALL gds.pageRank.stream('g') YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS name, score ORDER BY score DESC LIMIT 10;
+```
+
+---
+
+## Measuring entity duplication
+
+`graphfaker.corpus` builds documents whose entities are known in advance, so you
+can count how many nodes a graph builder creates for entities that are singular.
+
+```python
+from graphfaker.corpus import generate_corpus, duplication_report
+
+corpus = generate_corpus(seed=42, n_entities=60, n_documents=80)
+assert corpus.audit()["clean"]      # no surface form belongs to two entities
+corpus.write("corpus/")             # documents + gold.json
+
+# ...run any graph builder over corpus/, then:
+report = duplication_report(extracted_graph, corpus, framework="my-pipeline")
+print(report.summary())
+```
+
+Nothing is corrupted. The text is clean, well-formed English and every entity is
+unambiguous to a human reader, so a correct pipeline scores zero. Entities are
+referred to by the surface forms a normal writer uses — full name, surname
+alone, an accepted abbreviation — which is ordinary prose, not injected noise.
+
+That restraint is deliberate. Synthetic *corruption* is far easier than
+real-world error (Lam et al., IJPDS 2024, measured roughly a hundredfold gap),
+so a benchmark built on guessed error rates mostly measures its own noise model.
+Counting splits of entities a human would never split is a weaker claim, and one
+a generator can actually support.
+
+`examples/duplication_experiment.py` runs this across several frameworks and
+prints a comparison table. It refuses to run on an ambiguous corpus, includes a
+perfect-extractor control that must score zero, and names any framework it
+skipped rather than omitting it silently.
+
+---
+
+## Scope
 
 Anything not documented above is not implemented. Please open an issue if you
 need something specific rather than assuming it is on the way.

@@ -17,7 +17,20 @@ classifiers = [
 
 ]
 license = "MIT"
-keywords = ["faker", "graph-data", "flights", "osmnx", "graphs", "graphfaker"]
+requires-python = ">=3.10"
+keywords = [
+  "faker",
+  "graph-data",
+  "flights",
+  "osmnx",
+  "graphs",
+  "graphfaker",
+  "entity-resolution",
+  "knowledge-graph",
+  "graphrag",
+  "cypher",
+  "neo4j",
+]
 dependencies = [
   "faker>=37.1.0",
   "networkx>=3.4.2",
