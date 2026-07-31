@@ -181,6 +181,16 @@ gf.resolve(on=["name"], structural_weight=0.0)   # attributes only
 gf.resolve(on=["name"], structural_weight=0.8)   # trust the graph structure
 ```
 
+Shortened names get special handling. `"Hill"` against `"Allison Hill"` scores
+only ~0.5 on character similarity, because most of the longer string is
+unmatched — so it would be discarded before the structural signal was ever
+consulted, even though referring back to an entity by a shorter form is one of
+the commonest things a document does. When one name's tokens are contained in
+the other's, the score is *floored* at `token_subset_floor` (0.75 by default)
+rather than set to 1.0: containment is suggestive, not conclusive, so it lifts
+the pair into consideration and leaves the decision to shared neighbours. Pass
+`token_subset_floor=0.0` to switch it off.
+
 Already have labelled clusters? Score a prediction against them. This computes
 metrics only — it does not manufacture ground truth:
 
@@ -291,6 +301,21 @@ a generator can actually support.
 prints a comparison table. It refuses to run on an ambiguous corpus, includes a
 perfect-extractor control that must score zero, and names any framework it
 skipped rather than omitting it silently.
+
+**[`docs/notebooks/duplication_experiment.ipynb`](docs/notebooks/duplication_experiment.ipynb)**
+walks the whole thing end to end — build the corpus, audit it, run
+[Cognee](https://github.com/topoteretes/cognee), inspect what got split, repair
+it with `resolve()`, sweep the threshold to see the precision/recall tradeoff,
+and export the cleaned graph. Steps other than the Cognee run work without an
+LLM key, using a clearly-labelled simulated extraction so the notebook is
+runnable as a tutorial.
+
+On that simulated graph, `resolve()` takes duplication from **60% to 20%** and
+node inflation from 2.15× to 1.20× at precision 1.000 — but read the
+[caveats](docs/notebooks/duplication_experiment.ipynb) before quoting numbers
+like that. Structural matching only helps when duplicate nodes share
+neighbours; an extractor that *partitions* an entity's edges leaves almost no
+overlap to find, which is the hard case.
 
 ---
 

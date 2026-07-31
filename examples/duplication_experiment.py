@@ -33,7 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 import networkx as nx
 
@@ -152,8 +152,57 @@ def build_with_lightrag(corpus: Corpus) -> nx.DiGraph | None:
     return loaded
 
 
-def build_with_cognee(corpus: Corpus) -> nx.DiGraph | None:
-    """Cognee. Async, so this runs its own event loop."""
+#: Cognee node labels that represent extracted entities. Its graph also holds
+#: DocumentChunk, TextSummary, and TextDocument nodes, which are bookkeeping
+#: rather than entities and would otherwise be counted as unmatched noise.
+COGNEE_ENTITY_TYPES = tuple(
+    filter(None, os.environ.get("COGNEE_ENTITY_TYPES", "Entity").split(","))
+)
+
+
+def summarize_node_types(G: nx.Graph, type_attr: str = "type") -> dict[str, int]:
+    """Count node labels in an extracted graph.
+
+    Worth printing on a first run against any framework: the filter below is
+    only correct if it names the labels the framework actually emits, and that
+    schema is not guaranteed stable across versions.
+    """
+    counts: dict[str, int] = {}
+    for _, data in G.nodes(data=True):
+        key = str(data.get(type_attr, "<untyped>"))
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items(), key=lambda pair: -pair[1]))
+
+
+def build_with_cognee(
+    corpus: Corpus,
+    dataset_name: str | None = None,
+    entity_types: Sequence[str] | None = COGNEE_ENTITY_TYPES,
+    keep_export: bool = False,
+) -> nx.DiGraph | None:
+    """Cognee, via its GraphML export.
+
+    Verified against cognee 1.4.1: `add`, `cognify`, and `export` are all
+    coroutines, and `export` accepts ``format="graphml"``. There is no
+    ``get_graph_data`` function.
+
+    Requires an LLM API key — `add` itself runs a pipeline that tests the LLM
+    connection before ingesting, so nothing works without one. Set
+    ``LLM_API_KEY`` (or the provider variable cognee is configured for).
+
+    Writes into a run-specific dataset rather than calling ``cognee.prune``, so
+    an existing local cognee store is left intact. `export` is scoped to that
+    dataset, so other data cannot contaminate the measurement.
+
+    Args:
+        corpus: The corpus to ingest.
+        dataset_name: Dataset to write into. Defaults to one derived from the
+            corpus seed, so repeat runs of the same corpus land together and
+            different corpora stay separate.
+        entity_types: Node labels to keep. Pass None to keep every node, which
+            is the right choice when checking what cognee actually emits.
+        keep_export: Leave the intermediate .graphml on disk for inspection.
+    """
     try:
         import asyncio
 
@@ -161,23 +210,53 @@ def build_with_cognee(corpus: Corpus) -> nx.DiGraph | None:
     except ImportError:
         return None
 
-    async def run() -> nx.DiGraph:
-        for document in corpus.documents:
-            await cognee.add(document.text)
-        await cognee.cognify()
-        graph = await cognee.get_graph_data()
-        G = nx.DiGraph()
-        nodes, edges = graph if isinstance(graph, tuple) else (graph, [])
-        for node in nodes:
-            identifier = str(node[0] if isinstance(node, tuple) else node)
-            payload = node[1] if isinstance(node, tuple) and len(node) > 1 else {}
-            G.add_node(identifier, name=str(payload.get("name", identifier)))
-        for edge in edges:
-            if len(edge) >= 2:
-                G.add_edge(str(edge[0]), str(edge[1]), relationship=str(edge[2]) if len(edge) > 2 else "RELATED")
-        return G
+    dataset = dataset_name or f"graphfaker_dup_{corpus.seed}"
+    destination = os.path.abspath(f"{dataset}_export.graphml")
 
-    return asyncio.run(run())
+    async def run() -> nx.DiGraph:
+        # One add() call with the whole list: cognee batches internally, and
+        # per-document calls are markedly slower.
+        await cognee.add([d.text for d in corpus.documents], dataset_name=dataset)
+        # data_cache=False so a re-run genuinely re-extracts. Left on, a second
+        # run could replay the first run's output and look falsely stable.
+        await cognee.cognify(datasets=[dataset], data_cache=False)
+        await cognee.export(dataset=dataset, format="graphml", destination=destination)
+        return nx.read_graphml(destination)
+
+    graph = asyncio.run(run())
+
+    if not keep_export and os.path.exists(destination):
+        os.remove(destination)
+
+    # Cognee labels nodes by DataPoint class. Its GraphML export has been seen
+    # to use either 'type' or 'label', so check both before giving up.
+    type_attr = "type"
+    if not any("type" in data for _, data in graph.nodes(data=True)):
+        type_attr = "label" if any(
+            "label" in data for _, data in graph.nodes(data=True)
+        ) else "type"
+
+    print(f"    cognee node labels: {summarize_node_types(graph, type_attr)}")
+
+    if entity_types:
+        keep = [
+            node
+            for node, data in graph.nodes(data=True)
+            if str(data.get(type_attr, "")) in set(entity_types)
+        ]
+        if not keep:
+            # Filtering everything away would report 100% missed entities and
+            # look like a catastrophic result rather than a wrong filter.
+            print(
+                f"    WARNING: no nodes matched {entity_types!r}; keeping all nodes. "
+                f"Set COGNEE_ENTITY_TYPES to one of the labels above."
+            )
+        else:
+            graph = graph.subgraph(keep).copy()
+
+    for node, data in graph.nodes(data=True):
+        data.setdefault("name", data.get("text") or node)
+    return graph
 
 
 ADAPTERS: dict[str, Callable[[Corpus], nx.DiGraph | None]] = {

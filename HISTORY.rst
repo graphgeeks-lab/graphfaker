@@ -36,7 +36,20 @@ New:
   corrupted text; ``Corpus.audit()`` verifies that no surface form could be
   claimed by two entities, and ``duplication_report()`` produces the counts.
 * ``examples/duplication_experiment.py`` — runs that measurement across several
-  graph-building frameworks and prints a comparison table.
+  graph-building frameworks and prints a comparison table. The Cognee adapter is
+  written against the API verified in cognee 1.4.1 (``add``/``cognify``/``export``
+  are coroutines; ``export`` accepts ``format="graphml"``; there is no
+  ``get_graph_data``). It writes to a run-specific dataset instead of calling
+  ``cognee.prune``, so an existing local store is not destroyed.
+* ``docs/notebooks/duplication_experiment.ipynb`` — the same experiment end to
+  end, including repairing the graph with ``resolve()``, a threshold sweep
+  showing the precision/recall tradeoff, and export of the cleaned graph. Runs
+  without an LLM key using a labelled simulated extraction.
+* ``resolve_entities(token_subset_floor=...)`` — floors the attribute score when
+  one name's tokens are contained in the other's ("Hill" inside "Allison Hill").
+  Character ratios score that pair near 0.5, so it was previously discarded
+  before neighbourhood overlap was consulted. The floor sits below the default
+  threshold deliberately, so containment alone never merges anything.
 * ``graphfaker.resolve`` — find duplicate entities using attribute similarity
   **and** neighbourhood overlap, then merge each cluster onto one canonical node
   with its edges rewired. Available as ``GraphFaker.resolve()`` or the

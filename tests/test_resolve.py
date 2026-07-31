@@ -79,6 +79,103 @@ def test_attribute_similarity_with_no_comparable_fields_is_zero():
     assert attribute_similarity({}, {}, ["name"]) == 0.0
 
 
+def test_token_subset_lifts_a_shortened_name():
+    """"Hill" vs "Allison Hill" scores ~0.5 on character ratio alone."""
+    plain = attribute_similarity({"name": "Hill"}, {"name": "Allison Hill"}, ["name"])
+    lifted = attribute_similarity(
+        {"name": "Hill"}, {"name": "Allison Hill"}, ["name"], token_subset_floor=0.75
+    )
+    assert plain < 0.6
+    assert lifted == pytest.approx(0.75)
+
+
+def test_token_subset_floor_never_reaches_certainty():
+    """Containment is suggestive, not conclusive, so it must stay below 1.0."""
+    from graphfaker.resolve import TOKEN_SUBSET_FLOOR
+
+    assert TOKEN_SUBSET_FLOOR < 1.0
+    score = attribute_similarity(
+        {"name": "Smith"}, {"name": "John Smith"}, ["name"],
+        token_subset_floor=TOKEN_SUBSET_FLOOR,
+    )
+    assert score < 1.0
+
+
+def test_initials_are_dropped_so_a_shortened_name_still_matches():
+    """"A. Hill" reduces to its meaningful token, "hill".
+
+    That token is contained in "allison hill", so the pair is lifted — which is
+    the intent: an initialised form is one of the commonest ways a document
+    refers back to a person it already named.
+    """
+    score = attribute_similarity(
+        {"name": "A. Hill"}, {"name": "Allison Hill"}, ["name"], token_subset_floor=0.75
+    )
+    assert score == pytest.approx(0.75)
+    assert (
+        attribute_similarity(
+            {"name": "A. Hill"}, {"name": "Allison Hill"}, ["name"],
+            token_subset_floor=0.0,
+        )
+        < 0.75
+    )
+
+
+def test_same_surname_different_initial_is_a_known_precision_hazard():
+    """Documents a real weakness rather than asserting it is absent.
+
+    "A. Hill" and "B. Hill" are different people, but character ratio scores
+    them ~0.83 because five of six characters agree. Nothing in this module
+    fixes that; it is why `structural_weight` exists and why a resolution result
+    should be reviewed rather than applied blindly.
+    """
+    score = attribute_similarity({"name": "A. Hill"}, {"name": "B. Hill"}, ["name"])
+    assert score > 0.8
+
+    # Structure is what separates them: with no shared neighbours they are not
+    # merged at the default threshold.
+    G = nx.Graph()
+    G.add_node("a", type="Person", name="A. Hill")
+    G.add_node("b", type="Person", name="B. Hill")
+    G.add_edge("a", "acme")
+    G.add_edge("b", "zenith")
+    assert resolve_entities(G, on=["name"], threshold=0.9).clusters == []
+
+
+def test_containment_alone_does_not_merge_without_structural_support():
+    """The floor must lift a pair into consideration, not decide it."""
+    G = nx.Graph()
+    G.add_node("a", type="Person", name="Hill")
+    G.add_node("b", type="Person", name="Allison Hill")
+    # No shared neighbours at all.
+    result = resolve_entities(G, on=["name"], threshold=0.85, structural_weight=0.5)
+    assert result.clusters == []
+
+
+def test_containment_plus_shared_neighbours_does_merge():
+    G = nx.Graph()
+    G.add_node("a", type="Person", name="Hill")
+    G.add_node("b", type="Person", name="Allison Hill")
+    for shared in ("acme", "london", "project_x", "team_y"):
+        G.add_edge("a", shared)
+        G.add_edge("b", shared)
+    result = resolve_entities(G, on=["name"], threshold=0.85, structural_weight=0.5)
+    assert result.clusters == [["a", "b"]]
+
+
+def test_token_subset_can_be_disabled():
+    G = nx.Graph()
+    G.add_node("a", type="Person", name="Hill")
+    G.add_node("b", type="Person", name="Allison Hill")
+    for shared in ("acme", "london", "project_x", "team_y"):
+        G.add_edge("a", shared)
+        G.add_edge("b", shared)
+    off = resolve_entities(
+        G, on=["name"], threshold=0.85, structural_weight=0.5, token_subset_floor=0.0
+    )
+    assert off.clusters == []
+
+
 def test_neighbor_overlap_ignores_the_direct_edge_between_candidates():
     G = nx.DiGraph()
     G.add_edge("a", "b")  # only connection is to each other

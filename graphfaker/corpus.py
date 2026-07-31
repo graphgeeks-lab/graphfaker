@@ -349,7 +349,10 @@ def _org_aliases(name: str) -> list[str]:
             break
     if trimmed != name:
         aliases.append(trimmed)
-    head = trimmed.split()[0]
+    # Strip trailing punctuation: the first word of "Barnes, Cole and Ramirez"
+    # is "Barnes," and an alias with a dangling comma appears verbatim in the
+    # generated prose.
+    head = trimmed.split()[0].strip(",.;:")
     if len(head) > 3 and head.lower() not in {"the"}:
         aliases.append(head)
     words = [word for word in trimmed.split() if word[:1].isupper()]
