@@ -3,14 +3,18 @@ A multi-domain network connecting entities across social, geographical, and comm
 """
 
 import os
-from typing import Optional
+from typing import Any, Dict, Optional, Sequence
 import networkx as nx
 import random
 from faker import Faker
 from graphfaker.fetchers.osm import OSMGraphFetcher
 from graphfaker.fetchers.flights import FlightGraphFetcher
 from graphfaker.logger import logger
+from graphfaker.resolve import ResolutionResult, resolve_entities
 
+#: Module-level Faker kept for backwards compatibility only. Generation uses
+#: the per-instance `GraphFaker._fake` so that seeding is reproducible without
+#: reaching into global state.
 fake = Faker()
 
 # Define subtypes for each node category
@@ -42,9 +46,31 @@ EDGE_DISTRIBUTION = {
 
 
 class GraphFaker:
-    def __init__(self):
+    """Generate or load graphs into NetworkX.
+
+    Args:
+        seed: Optional integer making synthetic generation reproducible. The
+            same seed and the same arguments always produce an identical graph.
+            Seeding is per-instance: two `GraphFaker(seed=1)` objects do not
+            interfere with each other or with the global `random` module.
+    """
+
+    def __init__(self, seed: Optional[int] = None):
         # We'll use a directed graph for directional relationships.
         self.G = nx.DiGraph()
+        self.seed = seed
+        self._rand = random.Random(seed)
+        self._fake = Faker()
+        if seed is not None:
+            self._fake.seed_instance(seed)
+
+    def reseed(self, seed: Optional[int]) -> None:
+        """Reset the random state so the next generation call is reproducible."""
+        self.seed = seed
+        self._rand = random.Random(seed)
+        self._fake = Faker()
+        if seed is not None:
+            self._fake.seed_instance(seed)
 
     def generate_nodes(self, total_nodes=100):
         """
@@ -67,68 +93,68 @@ class GraphFaker:
         # Generate People
         for i in range(counts["Person"]):
             node_id = f"person_{i}"
-            subtype = random.choice(PERSON_SUBTYPES)
+            subtype = self._rand.choice(PERSON_SUBTYPES)
             self.G.add_node(
                 node_id,
                 type="Person",
-                name=fake.name(),
-                age=random.randint(18, 80),
-                occupation=fake.job(),
-                email=fake.email(),
-                education_level=random.choice(
+                name=self._fake.name(),
+                age=self._rand.randint(18, 80),
+                occupation=self._fake.job(),
+                email=self._fake.email(),
+                education_level=self._rand.choice(
                     ["High School", "Bachelor", "Master", "PhD"]
                 ),
-                skills=", ".join(fake.words(nb=3)),
+                skills=", ".join(self._fake.words(nb=3)),
                 subtype=subtype,
             )
         # Generate Places
         for i in range(counts["Place"]):
             node_id = f"place_{i}"
-            subtype = random.choice(PLACE_SUBTYPES)
+            subtype = self._rand.choice(PLACE_SUBTYPES)
             self.G.add_node(
                 node_id,
                 type="Place",
-                name=fake.city(),
+                name=self._fake.city(),
                 place_type=subtype,
-                population=random.randint(10000, 1000000),
-                coordinates=(fake.latitude(), fake.longitude()),
+                population=self._rand.randint(10000, 1000000),
+                coordinates=(self._fake.latitude(), self._fake.longitude()),
             )
         # Generate Organizations
         for i in range(counts["Organization"]):
             node_id = f"org_{i}"
-            subtype = random.choice(ORG_SUBTYPES)
+            subtype = self._rand.choice(ORG_SUBTYPES)
             self.G.add_node(
                 node_id,
                 type="Organization",
-                name=fake.company(),
-                industry=fake.job(),
-                revenue=round(random.uniform(1e6, 1e9), 2),
-                employee_count=random.randint(50, 5000),
+                name=self._fake.company(),
+                industry=self._fake.job(),
+                revenue=round(self._rand.uniform(1e6, 1e9), 2),
+                employee_count=self._rand.randint(50, 5000),
                 subtype=subtype,
             )
         # Generate Events
         for i in range(counts["Event"]):
             node_id = f"event_{i}"
-            subtype = random.choice(EVENT_SUBTYPES)
+            subtype = self._rand.choice(EVENT_SUBTYPES)
             self.G.add_node(
                 node_id,
                 type="Event",
-                name=fake.catch_phrase(),
+                name=self._fake.catch_phrase(),
                 event_type=subtype,
-                start_date=fake.date(),
-                duration=random.randint(1, 5),
+                start_date=self._fake.date(),
+                duration=self._rand.randint(1, 5),
             )  # days
         # Generate Products
         for i in range(counts["Product"]):
             node_id = f"product_{i}"
-            subtype = random.choice(PRODUCT_SUBTYPES)
+            subtype = self._rand.choice(PRODUCT_SUBTYPES)
             self.G.add_node(
                 node_id,
                 type="Product",
-                name=fake.word().capitalize(),
+                name=self._fake.word().capitalize(),
                 category=subtype,
-                price=round(random.uniform(10, 1000), 2),
-                release_date=fake.date(),
+                price=round(self._rand.uniform(10, 1000), 2),
+                release_date=self._fake.date(),
             )
 
     def add_relationship(
@@ -171,23 +197,23 @@ class GraphFaker:
                 continue
 
             for _ in range(num_edges):
-                source = random.choice(src_nodes)
-                target = random.choice(tgt_nodes)
+                source = self._rand.choice(src_nodes)
+                target = self._rand.choice(tgt_nodes)
                 # Avoid self-loop in same category if not desired
                 if src_type == tgt_type and source == target:
                     continue
-                rel = random.choice(possible_rels)
+                rel = self._rand.choice(possible_rels)
                 attr = {}
                 # Add additional attributes for specific relationships
                 if rel == "VISITED":
-                    attr["visit_count"] = random.randint(1, 20)
+                    attr["visit_count"] = self._rand.randint(1, 20)
                 elif rel == "WORKS_AT":
-                    attr["position"] = fake.job()
+                    attr["position"] = self._fake.job()
                 elif rel == "PURCHASED":
-                    attr["date"] = fake.date()
-                    attr["amount"] = round(random.uniform(1, 500), 2)
+                    attr["date"] = self._fake.date()
+                    attr["amount"] = round(self._rand.uniform(1, 500), 2)
                 elif rel == "REVIEWED":
-                    attr["rating"] = random.randint(1, 5)
+                    attr["rating"] = self._rand.randint(1, 5)
 
                 # Define directionality and bidirectionality
                 # For Person-Person FRIENDS_WITH and COLLEAGUES, treat as bidirectional
@@ -305,11 +331,19 @@ class GraphFaker:
         year: int = 2024,
         month: int = 1,
         date_range: Optional[tuple] = None,
+        seed: Optional[int] = None,
     ) -> nx.DiGraph:
         """
-        Unified entrypoint: choose 'random' or 'osm'.
+        Unified entrypoint: choose 'faker', 'osm', or 'flights'.
         Pass kwargs depending on source.
+
+        Args:
+            seed: Reseed before generating, making the result reproducible.
+                Only affects the 'faker' source; 'osm' and 'flights' fetch real
+                data and are not randomised.
         """
+        if seed is not None:
+            self.reseed(seed)
 
         if source == "faker":
             return self._generate_faker(
@@ -339,7 +373,49 @@ class GraphFaker:
                 date_range=date_range,
             )
         else:
-            raise ValueError(f"Unknown source '{source}'. Use 'random' or 'osm'.")
+            raise ValueError(
+                f"Unknown source '{source}'. Use 'faker', 'osm', or 'flights'."
+            )
+
+    def resolve(
+        self,
+        G: Optional[nx.Graph] = None,
+        on: Sequence[str] = ("name",),
+        threshold: float = 0.85,
+        structural_weight: float = 0.5,
+        **kwargs: Any,
+    ) -> ResolutionResult:
+        """Find nodes that look like duplicates of the same entity.
+
+        Scores candidate pairs on attribute similarity *and* neighbourhood
+        overlap — the signal a tabular record-linkage tool cannot see. Nothing
+        is modified; call `.apply()` on the result to get a merged graph.
+
+        Args:
+            G: Graph to resolve. Defaults to the graph held on this instance.
+            on: Attribute keys to compare, most identifying first.
+            threshold: Minimum combined score to link a pair, in [0, 1].
+            structural_weight: How much shared-neighbour evidence may lift a
+                pair's score. 0 reduces this to plain attribute matching.
+            **kwargs: Passed through to
+                :func:`graphfaker.resolve.resolve_entities`.
+
+        Example:
+            >>> gf = GraphFaker(seed=42)
+            >>> _ = gf.generate_graph(source="faker", total_nodes=100)
+            >>> result = gf.resolve(on=["name", "email"], threshold=0.9)
+            >>> clean = result.apply()
+        """
+        target = self.G if G is None else G
+        if target is None:
+            raise ValueError("No graph available to resolve.")
+        return resolve_entities(
+            target,
+            on=on,
+            threshold=threshold,
+            structural_weight=structural_weight,
+            **kwargs,
+        )
 
     def export_graph(self, G: nx.Graph = None, source: str = None, path: str = "graph.graphml"):
         """
@@ -364,11 +440,20 @@ class GraphFaker:
         if G is None:
             raise ValueError("No graph available to export.")
 
-        # Sanitize attributes that are not GraphML-friendly
+        # Sanitize attributes that are not GraphML-friendly. GraphML only
+        # accepts scalars, so containers (coordinate tuples, merge provenance
+        # from resolve(), anything a user attached) are flattened to strings.
         for _, data in G.nodes(data=True):
             if 'coordinates' in data and isinstance(data['coordinates'], tuple):
                 lat, lon = data['coordinates']
                 data['coordinates'] = f"{lat},{lon}"
+            for key, value in list(data.items()):
+                if isinstance(value, (list, tuple, set)):
+                    data[key] = ",".join(str(item) for item in value)
+                elif isinstance(value, dict):
+                    data[key] = "; ".join(
+                        f"{k}={v}" for k, v in sorted(value.items(), key=str)
+                    )
 
         if source == "osm":
             try:

@@ -2,7 +2,7 @@
 Command-line interface for GraphFaker.
 """
 
-from venv import logger
+from graphfaker.logger import logger
 import typer
 from graphfaker.core import GraphFaker
 from graphfaker.enums import FetcherType
@@ -53,14 +53,21 @@ def gen(
     ),
 
     # common
+    seed: int = typer.Option(
+        None, help="Seed for reproducible synthetic generation (faker fetcher)."
+    ),
     export: str = typer.Option("graph.graphml", help="File path to export GraphML"),
 ):
     """Generate a graph using GraphFaker."""
-    gf = GraphFaker()
+    gf = GraphFaker(seed=seed)
 
     if fetcher == FetcherType.FAKER:
 
-        g = gf.generate_graph(total_nodes=total_nodes, total_edges=total_edges)
+        g = gf.generate_graph(
+            source=FetcherType.FAKER.value,
+            total_nodes=total_nodes,
+            total_edges=total_edges,
+        )
         logger.info(
             f"Generated random graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
         )
