@@ -53,6 +53,9 @@ coverage.xml
 
 # Django stuff:
 *.log
+
+# Exported graph artifacts
+*.graphml
 local_settings.py
 
 # Flask stuff:
