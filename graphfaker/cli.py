@@ -2,14 +2,17 @@
 Command-line interface for GraphFaker.
 """
 
-from venv import logger
-import typer
-from graphfaker.core import GraphFaker
-from graphfaker.enums import FetcherType
-from graphfaker.fetchers.osm import OSMGraphFetcher
-from graphfaker.fetchers.flights import FlightGraphFetcher
-from graphfaker.utils import parse_date_range
 import os
+
+import typer
+
+from graphfaker.core import GraphFaker
+from graphfaker.enums import ExportFormat, FetcherType
+from graphfaker.export import export_csv, export_cypher, export_neo4j_csv
+from graphfaker.fetchers.flights import FlightGraphFetcher
+from graphfaker.fetchers.osm import OSMGraphFetcher
+from graphfaker.logger import logger
+from graphfaker.utils import parse_date_range
 
 app = typer.Typer()
 
@@ -53,14 +56,29 @@ def gen(
     ),
 
     # common
-    export: str = typer.Option("graph.graphml", help="File path to export GraphML"),
+    seed: int = typer.Option(
+        None, help="Seed for reproducible synthetic generation (faker fetcher)."
+    ),
+    export: str = typer.Option(
+        "graph.graphml",
+        help="Output path. For csv/neo4j-csv this is used as a directory or stem.",
+    ),
+    export_format: ExportFormat = typer.Option(
+        ExportFormat.GRAPHML,
+        "--format",
+        help="Output format: graphml | csv | neo4j-csv | cypher | opencypher | gql.",
+    ),
 ):
     """Generate a graph using GraphFaker."""
-    gf = GraphFaker()
+    gf = GraphFaker(seed=seed)
 
     if fetcher == FetcherType.FAKER:
 
-        g = gf.generate_graph(total_nodes=total_nodes, total_edges=total_edges)
+        g = gf.generate_graph(
+            source=FetcherType.FAKER.value,
+            total_nodes=total_nodes,
+            total_edges=total_edges,
+        )
         logger.info(
             f"Generated random graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
         )
@@ -114,9 +132,23 @@ def gen(
     
     abs_export_path = os.path.abspath(export)
     os.makedirs(os.path.dirname(abs_export_path) or ".", exist_ok=True)
-    
-    gf.export_graph(g, source=fetcher, path=abs_export_path)
-    logger.info(f"exported graph to {abs_export_path}, with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges.")
+
+    if export_format == ExportFormat.GRAPHML:
+        gf.export_graph(g, source=fetcher, path=abs_export_path)
+    elif export_format == ExportFormat.CSV:
+        stem, _ = os.path.splitext(abs_export_path)
+        export_csv(g, f"{stem}_nodes.csv", f"{stem}_edges.csv")
+    elif export_format == ExportFormat.NEO4J_CSV:
+        stem, _ = os.path.splitext(abs_export_path)
+        export_neo4j_csv(g, stem)
+    else:
+        dialect = "neo4j" if export_format == ExportFormat.CYPHER else export_format.value
+        export_cypher(g, abs_export_path, dialect=dialect)
+
+    logger.info(
+        f"exported graph as {export_format.value} to {abs_export_path}, "
+        f"with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
+    )
 
 
 if __name__ == "__main__":

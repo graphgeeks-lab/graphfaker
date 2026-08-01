@@ -29,6 +29,14 @@ GraphFaker is an open-source Python library designed to generate, load, and expo
   - `flights`: Flight/airline networks from Bureau of Transportation Statistics (airlines ↔ airports ↔ flight legs, complete with cancellation and delay flags)
 - **Unstructured Data Source:**
   - `WikiFetcher`: Raw Wikipedia page data (title, summary, content, sections, links, references) ready for custom graph or RAG pipelines
+- **Entity Resolution:**
+  - `resolve()`: find and merge duplicate nodes using attribute similarity **and** neighbourhood overlap — the graph signal tabular record-linkage tools cannot see
+  - `evaluate_clusters()`: score a predicted clustering against gold labels you supply (pairwise and B-cubed)
+- **Export Connectors:**
+  - CSV, `neo4j-admin` bulk-import CSV, Cypher, openCypher, and ISO GQL — file-based, so no driver or running database is needed
+- **Measurement:**
+  - `generate_corpus()`: documents whose entities are known in advance, for counting how many nodes a graph builder creates per real entity
+- **Reproducible:** every synthetic graph is seedable
 - **Easy CLI & Python Library**
 
 This removes friction around data acquisition, letting you focus on algorithms, teaching or rapid prototyping.
@@ -134,31 +142,255 @@ You can also use `--date-range` for custom time spans (e.g., `--date-range "2024
 
 ---
 
-## Future Plans: Graph Export Formats
+## Entity Resolution
 
-- **GraphML**: General graph analysis/visualization (`--export graph.graphml`)
-- **JSON/JSON-LD**: Knowledge graphs/web apps (`--export data.json`)
-- **CSV**: Tabular analysis/database imports (`--export edges.csv`)
-- **RDF**: Semantic web/linked data (`--export graph.ttl`)
+LLM-built knowledge graphs routinely emit the same real-world entity as several
+nodes, and every edge attached to a false node is a false edge. Tabular
+record-linkage tools compare *rows*, so they cannot use the strongest signal a
+graph offers: **two nodes that share most of their neighbours are probably the
+same entity, however differently their names are spelled.**
+
+`resolve()` scores candidate pairs on attribute similarity *and* neighbourhood
+overlap, clusters the survivors, and merges each cluster onto one canonical node
+— rewiring its edges, dropping self-loops the merge creates, and recording what
+was absorbed.
+
+```python
+from graphfaker import GraphFaker
+
+gf = GraphFaker(seed=42)
+gf.generate_graph(source="faker", total_nodes=500, total_edges=2000)
+
+result = gf.resolve(on=["name", "email"], threshold=0.85)
+print(result.report())
+#   candidate pairs scored : 1284
+#   pairs above threshold  : 12
+#   clusters found         : 5
+#   duplicate nodes        : 7
+
+clean = result.apply()   # merged copy; the original is untouched
+```
+
+`structural_weight` controls how much shared-neighbour evidence may lift a
+pair's score. Structure can only *raise* a score, never lower it, so isolated
+nodes are never penalised for having few neighbours — set it to `0` to fall back
+to plain attribute matching:
+
+```python
+gf.resolve(on=["name"], structural_weight=0.0)   # attributes only
+gf.resolve(on=["name"], structural_weight=0.8)   # trust the graph structure
+```
+
+Shortened names get special handling. `"Hill"` against `"Allison Hill"` scores
+only ~0.5 on character similarity, because most of the longer string is
+unmatched — so it would be discarded before the structural signal was ever
+consulted, even though referring back to an entity by a shorter form is one of
+the commonest things a document does. When one name's tokens are contained in
+the other's, the score is *floored* at `token_subset_floor` (0.75 by default)
+rather than set to 1.0: containment is suggestive, not conclusive, so it lifts
+the pair into consideration and leaves the decision to shared neighbours. Pass
+`token_subset_floor=0.0` to switch it off.
+
+Already have labelled clusters? Score a prediction against them. This computes
+metrics only — it does not manufacture ground truth:
+
+```python
+from graphfaker import evaluate_clusters
+
+scores = evaluate_clusters(result.clusters, my_known_duplicates)
+print(scores["pairwise_f1"], scores["b_cubed_f1"])
+```
 
 ---
 
-## Future Plans: Integration with Graph Tools
+## Graph structure
 
-GraphFaker generates NetworkX graph objects that can be easily integrated with:
-- **Graph databases**: Neo4j, Kuzu, TigerGraph
-- **Analysis tools**: NetworkX, SNAP, graph-tool
-- **ML frameworks**: PyTorch Geometric, DGL, TensorFlow GNN
-- **Visualization**: G.V, Gephi, Cytoscape, D3.js
+Synthetic graphs are built to look structurally like real ones. Until 0.5 both
+endpoints of every edge were drawn uniformly at random, which produces an
+Erdős–Rényi graph: a Poisson degree distribution with no hubs, effectively no
+clustering, and no community structure. Edges are now formed by **preferential
+attachment** (popular nodes attract more), **triadic closure** (friends of
+friends become friends), and **homophily** over latent communities.
+
+Measured on 600 nodes / 2,400 edges, seed 1 — reproduce with
+`graphfaker.metrics.compare_topology`:
+
+| metric | realistic | uniform (pre-0.5) | real graphs |
+| --- | --- | --- | --- |
+| degree Fano factor | **7.9** | 1.7 | ≫ 1 |
+| max degree | **88** | 19 | hubs exist |
+| degree Gini | **0.45** | 0.26 | unequal |
+| average clustering | **0.180** | 0.013 | ≫ random baseline |
+| community modularity | **0.72** | −0.004 | 0.4–0.7 |
+| age homophily | **0.81** | 0.01 | positive |
+| isolated nodes | **0** | 4 | giant component |
+
+The Fano factor — degree variance over mean — is the clearest single test: a
+Poisson distribution has variance equal to its mean, so uniform attachment sits
+near 1 by construction and cannot be made to look otherwise.
+
+The friendship layer alone (Person–Person edges) has clustering 0.51, modularity
+0.91, and *positive* degree assortativity, which is what social networks look
+like. The graph as a whole is mildly disassortative because it is multipartite —
+people attach to hub cities and large employers — as real knowledge graphs are.
+
+```python
+from graphfaker.metrics import compare_topology, graph_stats
+
+realistic = GraphFaker(seed=1).generate_graph(total_nodes=600, total_edges=2400)
+uniform = GraphFaker(seed=1).generate_graph(total_nodes=600, total_edges=2400,
+                                           topology="uniform")
+print(compare_topology({"realistic": realistic, "uniform": uniform}))
+```
+
+`topology="uniform"` is kept only for this comparison. It is not a supported way
+to generate data.
+
+**Why it matters beyond looking right:** on a realistic graph, entity resolution
+is measurably *harder*. Injecting the same known duplicates into both and running
+`resolve()` gives precision 1.000 on the uniform graph but 0.88 on the realistic
+one — because homophily means genuinely distinct people share attributes and
+neighbours. Anything benchmarked against the old generator was flattered by it.
+
+Attributes are also no longer independent of structure. `population` tracks a
+place's connectivity, `employee_count` correlates 0.95 with the number of
+`WORKS_AT` edges actually present, ages cluster by community, and `industry`
+holds an industry rather than the job title `fake.job()` used to supply.
+`LIVES_IN` and `BORN_IN` are singular — previously a person could live in four
+cities at once.
 
 ---
 
-## On the Horizon:
+## Reproducibility
 
-- Handling large graph -> millions of nodes
-- Using NLP/LLM to fetch graph data -> "Fetch flight data for Jan 2024"
-- Connects to any graph database/engine of choice -> "Establish connections to graph database/engine of choice"
+Synthetic generation is seedable, per instance. The same seed and the same
+arguments always produce an identical graph, and seeding does not disturb the
+global `random` module:
 
+```python
+GraphFaker(seed=42).generate_graph(source="faker", total_nodes=100)
+# or per call:
+gf.generate_graph(source="faker", total_nodes=100, seed=42)
+```
+
+```sh
+python -m graphfaker.cli --fetcher faker --total-nodes 100 --seed 42
+```
+
+---
+
+## Getting the graph into a database
+
+Rather than shipping a driver per database — each needing credentials, a version
+matrix, and a live service to test against — GraphFaker writes files that every
+engine's own loader already understands.
+
+```python
+from graphfaker.export import export_csv, export_neo4j_csv, export_cypher
+
+export_csv(G, "nodes.csv", "edges.csv")      # pandas, Gephi, any bulk loader
+export_neo4j_csv(G, "import/")               # neo4j-admin bulk import headers
+export_cypher(G, "load.cypher")              # Neo4j, Memgraph, Kuzu
+export_cypher(G, "load.gql", dialect="gql")  # ISO GQL
+```
+
+Or from the CLI:
+
+```sh
+python -m graphfaker.cli --fetcher faker --total-nodes 500 --format cypher --export load.cypher
+python -m graphfaker.cli --fetcher faker --total-nodes 500 --format neo4j-csv --export import/
+```
+
+| Format | Loads into |
+| --- | --- |
+| `graphml` | Gephi, Cytoscape, NetworkX, igraph |
+| `csv` | pandas, TigerGraph `LOAD`, Amazon Neptune bulk loader, Spark/GraphFrames |
+| `neo4j-csv` | `neo4j-admin database import` — the fast path for large graphs |
+| `cypher` | Neo4j, Memgraph, Kuzu |
+| `opencypher` | Amazon Neptune |
+| `gql` | ISO GQL engines (`INSERT` in place of `CREATE`) |
+
+Node labels come from the `type` attribute and relationship types from
+`relationship`, both configurable. Nodes of different types carry different
+attributes, so CSV headers are the **union** of all keys seen — a node missing a
+column gets an empty cell rather than having its values shifted into the wrong
+one. Container values (coordinate tuples, merge provenance) are flattened, and
+labels containing punctuation are sanitised.
+
+Once loaded, Neo4j Graph Data Science works directly on the result:
+
+```cypher
+CALL gds.graph.project('g', '*', '*');
+CALL gds.pageRank.stream('g') YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS name, score ORDER BY score DESC LIMIT 10;
+```
+
+---
+
+## Measuring entity duplication
+
+`graphfaker.corpus` builds documents whose entities are known in advance, so you
+can count how many nodes a graph builder creates for entities that are singular.
+
+```python
+from graphfaker.corpus import generate_corpus, duplication_report
+
+corpus = generate_corpus(seed=42, n_entities=60, n_documents=80)
+assert corpus.audit()["clean"]      # no surface form belongs to two entities
+corpus.write("corpus/")             # documents + gold.json
+
+# ...run any graph builder over corpus/, then:
+report = duplication_report(extracted_graph, corpus, framework="my-pipeline")
+print(report.summary())
+```
+
+Nothing is corrupted. The text is clean, well-formed English and every entity is
+unambiguous to a human reader, so a correct pipeline scores zero. Entities are
+referred to by the surface forms a normal writer uses — full name, surname
+alone, an accepted abbreviation — which is ordinary prose, not injected noise.
+
+That restraint is deliberate. Synthetic *corruption* is far easier than
+real-world error (Lam et al., IJPDS 2024, measured roughly a hundredfold gap),
+so a benchmark built on guessed error rates mostly measures its own noise model.
+Counting splits of entities a human would never split is a weaker claim, and one
+a generator can actually support.
+
+`examples/duplication_experiment.py` runs this across several frameworks and
+prints a comparison table. It refuses to run on an ambiguous corpus, includes a
+perfect-extractor control that must score zero, and names any framework it
+skipped rather than omitting it silently.
+
+**[`docs/notebooks/duplication_experiment.ipynb`](docs/notebooks/duplication_experiment.ipynb)**
+walks the whole thing end to end — build the corpus, audit it, run
+[Cognee](https://github.com/topoteretes/cognee), inspect what got split, repair
+it with `resolve()`, sweep the threshold to see the precision/recall tradeoff,
+and export the cleaned graph. Steps other than the Cognee run work without an
+LLM key, using a clearly-labelled simulated extraction so the notebook is
+runnable as a tutorial.
+
+On that simulated graph, `resolve()` takes duplication from **60% to 20%** and
+node inflation from 2.15× to 1.20× at precision 1.000 — but read the
+[caveats](docs/notebooks/duplication_experiment.ipynb) before quoting numbers
+like that. Structural matching only helps when duplicate nodes share
+neighbours; an extractor that *partitions* an entity's edges leaves almost no
+overlap to find, which is the hard case.
+
+---
+
+## Scope
+
+Anything not documented above is not implemented. Please open an issue if you
+need something specific rather than assuming it is on the way.
+
+---
+
+## Notes on network access
+
+The `flights` fetcher downloads from BTS and OpenFlights with TLS verification
+enabled. Some systems fail to validate the BTS certificate chain; if you hit
+that, you can opt out with `GRAPHFAKER_INSECURE_TLS=1`, which logs a warning and
+means the downloaded data is no longer authenticated. Verification is never
+disabled silently.
 
 ---
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphfaker"
-version = "0.3.0"
+version = "0.5.0"
 description = "an open-source python library for generating, and loading both synthetic and real-world graph datasets"
 readme = "README.md"
 authors = [
@@ -17,14 +17,29 @@ classifiers = [
 
 ]
 license = "MIT"
-keywords = ["faker", "graph-data", "flights", "osmnx", "graphs", "graphfaker"]
+requires-python = ">=3.10"
+keywords = [
+  "faker",
+  "graph-data",
+  "flights",
+  "osmnx",
+  "graphs",
+  "graphfaker",
+  "entity-resolution",
+  "knowledge-graph",
+  "graphrag",
+  "cypher",
+  "neo4j",
+]
 dependencies = [
   "faker>=37.1.0",
   "networkx>=3.4.2",
   "osmnx==2.0.2",
   "pandas>=2.2.2",
   "requests>=2.32.3",
+  "tqdm>=4.66.0",
   "typer",
+  "urllib3>=2.0.0",
   "wikipedia>=1.4.0",
 ]
 
@@ -63,3 +78,9 @@ warn_unreachable = true
 warn_no_return = true
 
 
+
+
+[tool.pytest.ini_options]
+markers = [
+  "network: test reaches the internet; deselect with -m 'not network'",
+]
