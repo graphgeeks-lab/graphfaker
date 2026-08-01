@@ -203,6 +203,64 @@ print(scores["pairwise_f1"], scores["b_cubed_f1"])
 
 ---
 
+## Graph structure
+
+Synthetic graphs are built to look structurally like real ones. Until 0.5 both
+endpoints of every edge were drawn uniformly at random, which produces an
+Erdős–Rényi graph: a Poisson degree distribution with no hubs, effectively no
+clustering, and no community structure. Edges are now formed by **preferential
+attachment** (popular nodes attract more), **triadic closure** (friends of
+friends become friends), and **homophily** over latent communities.
+
+Measured on 600 nodes / 2,400 edges, seed 1 — reproduce with
+`graphfaker.metrics.compare_topology`:
+
+| metric | realistic | uniform (pre-0.5) | real graphs |
+| --- | --- | --- | --- |
+| degree Fano factor | **7.9** | 1.7 | ≫ 1 |
+| max degree | **88** | 19 | hubs exist |
+| degree Gini | **0.45** | 0.26 | unequal |
+| average clustering | **0.180** | 0.013 | ≫ random baseline |
+| community modularity | **0.72** | −0.004 | 0.4–0.7 |
+| age homophily | **0.81** | 0.01 | positive |
+| isolated nodes | **0** | 4 | giant component |
+
+The Fano factor — degree variance over mean — is the clearest single test: a
+Poisson distribution has variance equal to its mean, so uniform attachment sits
+near 1 by construction and cannot be made to look otherwise.
+
+The friendship layer alone (Person–Person edges) has clustering 0.51, modularity
+0.91, and *positive* degree assortativity, which is what social networks look
+like. The graph as a whole is mildly disassortative because it is multipartite —
+people attach to hub cities and large employers — as real knowledge graphs are.
+
+```python
+from graphfaker.metrics import compare_topology, graph_stats
+
+realistic = GraphFaker(seed=1).generate_graph(total_nodes=600, total_edges=2400)
+uniform = GraphFaker(seed=1).generate_graph(total_nodes=600, total_edges=2400,
+                                           topology="uniform")
+print(compare_topology({"realistic": realistic, "uniform": uniform}))
+```
+
+`topology="uniform"` is kept only for this comparison. It is not a supported way
+to generate data.
+
+**Why it matters beyond looking right:** on a realistic graph, entity resolution
+is measurably *harder*. Injecting the same known duplicates into both and running
+`resolve()` gives precision 1.000 on the uniform graph but 0.88 on the realistic
+one — because homophily means genuinely distinct people share attributes and
+neighbours. Anything benchmarked against the old generator was flattered by it.
+
+Attributes are also no longer independent of structure. `population` tracks a
+place's connectivity, `employee_count` correlates 0.95 with the number of
+`WORKS_AT` edges actually present, ages cluster by community, and `industry`
+holds an industry rather than the job title `fake.job()` used to supply.
+`LIVES_IN` and `BORN_IN` are singular — previously a person could live in four
+cities at once.
+
+---
+
 ## Reproducibility
 
 Synthetic generation is seedable, per instance. The same seed and the same

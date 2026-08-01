@@ -2,7 +2,7 @@
 
 __author__ = """Dennis Irorere"""
 __email__ = "denironyx@gmail.com"
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from .core import GraphFaker
 from .corpus import (
@@ -15,6 +15,7 @@ from .corpus import (
 from .export import export_csv, export_cypher, export_neo4j_csv
 from .fetchers.wiki import WikiFetcher
 from .logger import add_file_logging, configure_logging, logger
+from .metrics import compare_topology, graph_stats
 from .resolve import (
     ResolutionResult,
     evaluate_clusters,
@@ -30,6 +31,7 @@ __all__ = [
     "WikiFetcher",
     "add_file_logging",
     "attribute_nodes",
+    "compare_topology",
     "configure_logging",
     "duplication_report",
     "evaluate_clusters",
@@ -37,6 +39,7 @@ __all__ = [
     "export_cypher",
     "export_neo4j_csv",
     "generate_corpus",
+    "graph_stats",
     "logger",
     "merge_clusters",
     "resolve_entities",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphfaker"
-version = "0.4.0"
+version = "0.5.0"
 description = "an open-source python library for generating, and loading both synthetic and real-world graph datasets"
 readme = "README.md"
 authors = [
@@ -78,3 +78,9 @@ warn_unreachable = true
 warn_no_return = true
 
 
+
+
+[tool.pytest.ini_options]
+markers = [
+  "network: test reaches the internet; deselect with -m 'not network'",
+]
