@@ -19,6 +19,62 @@ This release expands GraphFaker’s scope with a new data sources to support gra
 
 Upgrade now to effortlessly pull in unstructured Wikipedia data
 
+0.5.0 (2026-08-01)
+------------------
+
+Realistic graph topology.
+
+Until now both endpoints of every edge were drawn uniformly at random, so the
+synthetic generator produced an Erdos-Renyi graph: Poisson degree distribution,
+no hubs, effectively no clustering, no community structure, and attributes
+statistically independent of the topology. It was labelled "realistic" but was
+not, and anything measured against it was measured against noise.
+
+Edges are now formed by preferential attachment, triadic closure, and homophily
+over latent communities. Measured on 600 nodes / 2400 edges, seed 1:
+
+===========================  ===========  =================
+metric                       realistic    uniform (pre-0.5)
+===========================  ===========  =================
+degree Fano factor           7.9          1.7
+max degree                   88           19
+degree Gini                  0.45         0.26
+average clustering           0.180        0.013
+community modularity         0.72         -0.004
+age homophily                0.81         0.01
+isolated nodes               0            4
+===========================  ===========  =================
+
+* ``graphfaker.metrics`` — ``graph_stats()`` and ``compare_topology()``, so the
+  claim is checkable rather than asserted. The tests are differential: each
+  property is compared against ``topology="uniform"``, which reproduces the old
+  behaviour and is retained solely as a baseline.
+* Every node carries a latent ``community``; attributes are drawn from
+  community-specific distributions, which is what makes homophily possible.
+* Places, organizations, events, and products carry a heavy-tailed ``prominence``
+  driving popularity.
+* ``population`` tracks connectivity and ``employee_count`` now correlates 0.95
+  with the ``WORKS_AT`` edges actually present, instead of contradicting them.
+* ``industry`` holds an industry rather than ``fake.job()``'s job titles.
+* ``LIVES_IN``, ``BORN_IN``, and ``HEADQUARTERED_IN`` are singular. A person
+  could previously live in four cities.
+* ``total_edges`` now means what ``number_of_edges()`` reports. Counting loop
+  iterations overshot by ~14% when bidirectional friendships dominated and
+  undershot by ~12% when skipped functional relationships did.
+* No isolated nodes. Preferential attachment alone left 24% of a 600-node graph
+  unreachable, so coverage and top-up passes guarantee a giant component.
+
+Fixed:
+
+* GraphML export raised on ``None`` attribute values, which broke export for any
+  graph small enough to leave a community without a place.
+
+Note for anyone comparing results across versions: entity resolution is
+measurably harder on a realistic graph. The same injected duplicates give
+``resolve()`` precision 1.000 on a uniform graph and 0.88 on a realistic one,
+because homophily means distinct people share attributes and neighbours. Numbers
+produced before 0.5 were flattered by the generator.
+
 0.4.0 (2026-07-31)
 ------------------
 
