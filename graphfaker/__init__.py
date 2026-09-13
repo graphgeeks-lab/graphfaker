@@ -4,6 +4,7 @@ __author__ = """Dennis Irorere"""
 __email__ = "denironyx@gmail.com"
 __version__ = "0.5.0"
 
+from .backends import GraphTables
 from .core import GraphFaker
 from .corpus import (
     Corpus,
@@ -12,6 +13,7 @@ from .corpus import (
     duplication_report,
     generate_corpus,
 )
+from .engine import GraphRun, Manifest, generate
 from .export import export_csv, export_cypher, export_neo4j_csv
 from .fetchers.wiki import WikiFetcher
 from .logger import add_file_logging, configure_logging, logger
@@ -22,11 +24,16 @@ from .resolve import (
     merge_clusters,
     resolve_entities,
 )
+from .schema import GraphSchema
 
 __all__ = [
     "Corpus",
     "DuplicationReport",
     "GraphFaker",
+    "GraphRun",
+    "GraphSchema",
+    "GraphTables",
+    "Manifest",
     "ResolutionResult",
     "WikiFetcher",
     "add_file_logging",
@@ -38,6 +45,7 @@ __all__ = [
     "export_csv",
     "export_cypher",
     "export_neo4j_csv",
+    "generate",
     "generate_corpus",
     "graph_stats",
     "logger",

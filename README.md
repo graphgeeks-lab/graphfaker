@@ -261,6 +261,67 @@ cities at once.
 
 ---
 
+## Schemas
+
+Since 0.6, synthetic generation is schema-driven. The social graph above is a
+`GraphSchema` — node types with attribute samplers, latent factors shared across
+them, edge families, and a topology model — and any schema can be generated the
+same way:
+
+```python
+from graphfaker import GraphFaker, GraphSchema
+from graphfaker.domains import social
+
+schema = social.schema(total_nodes=1000, total_edges=8000, communities=8)
+schema.to_yaml("social.yaml")          # edit, version, share
+schema = GraphSchema.from_yaml("social.yaml")
+
+run = GraphFaker(seed=42).generate(schema)
+run.tables.nodes["Person"]             # polars DataFrame per node type
+run.tables.edges["WORKS_AT"]           # polars DataFrame per relationship
+run.truth["community"]                 # the latent groups and their parameters
+run.manifest                           # schema digest, seed, shard size, versions
+run.write("out/")                      # nodes/, edges/, truth/, schema.yaml, manifest.json
+G = run.to_networkx()                  # the NetworkX view, as before
+```
+
+Writing your own schema:
+
+```python
+from graphfaker.schema import *
+
+schema = GraphSchema(
+    name="tiny_payments",
+    latent=[LatentFactor(name="region", groups=4,
+                         params={"log_wealth": GaussianSampler(mean=8, sd=0.6)})],
+    nodes=[
+        NodeType(name="Account", count=500, attributes={
+            "owner":   FakerSampler(provider="name"),
+            "balance": LognormalSampler(mu="@region.log_wealth", sigma=1.0, decimals=2),
+            "tier":    CategorySampler(values=["basic", "plus", "premium"], weights=[7, 2, 1]),
+        }),
+    ],
+    edges=[EdgeType(source="Account", target="Account", share=1.0,
+                    relationships=[Relationship(name="PAYS",
+                        attributes={"amount": UniformSampler(low=5, high=500, decimals=2)})])],
+    total_edges=4000,
+    topology=SocialTopology(group="region"),
+)
+```
+
+Samplers: `constant, category, subcategory, uniform, gaussian, lognormal,
+poisson, bernoulli, faker, expression, reference, mixture, foreign_key`. A
+parameter written as `"@factor.param"` varies by latent group, which is how
+attributes end up correlated with community — and, through the topology model,
+with structure. Everything a schema declares is validated before generation and
+hashed into the manifest.
+
+Determinism: a run is a pure function of the schema, the seed and the shard
+size, in any process and on any machine. Node generation is sharded so it can
+be parallelised without changing the result.
+
+---
+
 ## Reproducibility
 
 Synthetic generation is seedable, per instance. The same seed and the same

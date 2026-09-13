@@ -2,6 +2,30 @@
 History
 =======
 
+0.6.0 (unreleased)
+------------------
+
+Schema-driven generation. This is Phase 0 of the plan in
+``docs/design/synthetic-at-scale.md``.
+
+* ``graphfaker.schema``: declarative ``GraphSchema`` — node types with
+  attribute samplers, latent factors with per-group parameters, edge families,
+  topology models. Validated with pydantic; round-trips through YAML/JSON;
+  content-hashed.
+* ``graphfaker.engine``: ``generate(schema, seed, shard_size)`` → ``GraphRun``
+  with columnar tables (polars), ground truth, and a manifest. Reproducible
+  across processes; node generation is sharded with independent seeded streams.
+* ``graphfaker.backends.GraphTables``: node table per type, edge table per
+  relationship; NetworkX view; Parquet read/write.
+* ``graphfaker.domains.social``: the built-in social graph re-expressed as a
+  schema. Same realism metrics as 0.5; every former magic number is now a
+  schema field.
+* ``GraphFaker.generate(schema)`` alongside the unchanged ``generate_graph``.
+* Place nodes carry ``latitude`` / ``longitude`` columns instead of a
+  ``coordinates`` tuple.
+* New dependencies: pydantic, polars, pyarrow, numpy, pyyaml.
+* Removed the superseded proposal documents.
+
 0.1.0 (2025-04-02)
 ------------------
 
