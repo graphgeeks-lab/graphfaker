@@ -403,12 +403,10 @@ releases.
 | Python | ≥ 3.10 (unchanged) | |
 | OSM / flights fetchers | keep as `sources`, reposition as seed substrates | real backbones for synthetic layers |
 
-## 9. Open questions
+## 9. Resolved questions
 
-1. Scale-factor semantics per domain: keep gen-fraud-graph's `1.0 = 10M accounts` for the
-   fraud pack for comparability, or define our own?
-2. Realism targets: ship literature-derived defaults per domain (e.g. clustering ≈ 0.1–0.3
-   for social, merchant degree exponent ≈ 2.1) or require users to state them?
-3. RDF edge attributes: RDF-star by default (rdflib supports it) with reification fallback,
-   or pick one?
-4. Whether to approach the Santander team early about convergence, or ship first.
+1. **Scale factor:** keep gen-fraud-graph's convention for the fraud pack —
+   `1.0 = 10M accounts / ~90M transactions` — so datasets are directly comparable.
+2. **Realism targets:** ship literature-derived defaults per domain; users may override.
+3. **RDF edge attributes:** RDF-star by default, reification fallback (decide in Phase 2).
+4. **Santander:** ship first, then approach.
