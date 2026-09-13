@@ -49,6 +49,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+examples = [
+    "matplotlib>=3.8",
+    "kuzu>=0.11",  # LadybugDB-compatible embedded graph database for the notebook queries
+    "nbformat",
+    "nbclient",
+    "ipykernel",
+    "notebook",
+]
 dev = [
     "coverage",  # testing
     "mypy",  # linting

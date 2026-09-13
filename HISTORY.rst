@@ -34,6 +34,9 @@ Schema-driven generation. This is Phase 0 of the plan in
   ``graphfaker fraud``, ``graphfaker evaluate``; ``graphfaker`` console script.
 * ``workers`` parallelises node sampling across processes without changing
   the result. osmnx is imported on first use, halving import time.
+* ``docs/notebooks/graphfaker_tour.ipynb`` (executed, with charts) and
+  ``examples/fraud_tour.py``: schemas, the fraud pack, exploration, ground
+  truth, hardness, detectors, read/write/query. ``graphfaker[examples]`` extra.
 * Place nodes carry ``latitude`` / ``longitude`` columns instead of a
   ``coordinates`` tuple.
 * New dependencies: pydantic, polars, pyarrow, numpy, pyyaml.

@@ -396,14 +396,15 @@ Shipped as `graphfaker.domains.fraud` plus `graphfaker.sinks`. What was learned
 by measuring rather than asserting:
 
 - **Amount signals blend away as designed** — transaction-level `amount` AUC
-  0.95 → 0.81 → 0.68 across low/medium/high.
-- **Degree does not.** Under the scale convention an account makes ~9
-  transactions a quarter, so even a five-member ring is a local degree outlier
-  (`in_partners` AUC ≈ 0.85 at `high`). Hardness now shrinks ring sizes and
-  recruits members among active accounts, which is what real launderers do,
-  but the acceptance target of 0.7 is met only for amount and timing features.
+  0.94 → 0.79 → 0.62 across low/medium/high.
+- **Degree mostly does not.** Under the scale convention an account makes ~9
+  transactions a quarter, so a ring adds partners an ordinary account lacks
+  (`in_partners` AUC ≈ 0.73 at `high`, against a 0.7 target). Ring size is the
+  lever that works. Recruiting members among *active* accounts — tried as
+  camouflage — measured as the opposite: hubs are outliers already, so rings
+  built from hubs are found by degree alone; recruitment is uniform now.
   Options for later: a `density` knob decoupled from the scale convention, or
-  camouflage that *adds* activity to pattern accounts rather than only keeping it.
+  camouflage that *adds* ordinary activity to pattern accounts.
 - **Structuring and bust-out are single-feature typologies by definition**
   (near-threshold amounts; spend escalation). They are reported per typology;
   the "all" row is the number to quote.

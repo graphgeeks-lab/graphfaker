@@ -110,11 +110,12 @@ class TypologyContext:
         self.allow_overlap = True
         usable = np.isin(pop.account_type, ["checking", "business", "savings"]) & (pop.account_status != "closed")
         self.eligible = np.flatnonzero(usable)
-        # Recruitment weights: under camouflage, pattern members are drawn
-        # from accounts that are already active, so the extra transactions do
-        # not make them outliers by count alone.
-        activity = pop.account_weight + 1e-9
-        self.recruit_weight = activity ** self.profile.activity_camouflage
+        # Recruitment is uniform over eligible accounts. Weighting it towards
+        # active accounts was tried as camouflage and measured to do the
+        # opposite: hubs are outliers already, so rings built from hubs are
+        # found by degree alone. Ordinary accounts plus a few extra edges hide
+        # better; ring size (``size_scale``) is the lever for degree.
+        self.recruit_weight = np.ones(pop.n_accounts)
         self.credit = np.flatnonzero((pop.account_type == "credit") & (pop.account_status == "active"))
         self.rows: dict[str, list[tuple]] = {PAYS: [], TRANSFERS: [], WIRES: []}
         self.shared_devices: list[tuple[int, int]] = []

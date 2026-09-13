@@ -261,6 +261,69 @@ cities at once.
 
 ---
 
+## Walkthrough
+
+The quickest way to see the current state of GraphFaker is the tour notebook:
+[`docs/notebooks/graphfaker_tour.ipynb`](docs/notebooks/graphfaker_tour.ipynb)
+— executed, with charts, so it reads on GitHub without running anything. It
+covers schemas, the fraud pack, exploration (amounts, seasonality, merchant
+popularity, repeat partners), the ground truth drawn on the graph, the hardness
+measurement across levels, scoring naive detectors, and reading, writing and
+querying the result with Polars, Cypher (embedded LadybugDB/Kùzu) and NetworkX.
+The same tour as a script is [`examples/fraud_tour.py`](examples/fraud_tour.py).
+
+```bash
+pip install "graphfaker[examples]"          # matplotlib, kuzu, jupyter
+python examples/fraud_tour.py --scale 0.002 --hardness medium --out ./fraud_tour
+jupyter notebook docs/notebooks/graphfaker_tour.ipynb
+```
+
+The essentials, end to end:
+
+```python
+import polars as pl
+from graphfaker import GraphTables, Manifest
+from graphfaker.domains import fraud
+from graphfaker.domains.fraud.hardness import hardness_report
+from graphfaker.domains.fraud.evaluate import evaluate
+from graphfaker.sinks import write_ladybug
+
+# generate: a bank with labelled laundering patterns, reproducible by seed
+run = fraud.generate(scale=0.002, hardness="medium", seed=42)
+
+# explore: node tables per type, edge tables per relationship — plain Polars
+transfers = run.tables.edges["TRANSFERS"]
+transfers.group_by("target").agg(pl.col("source").n_unique().alias("senders")).sort("senders", descending=True).head()
+
+# truth: every pattern, its accounts and roles, its transactions
+run.truth["patterns"].filter(pl.col("typology") == "cycle")
+
+# measure: how visible is the fraud to a naive detector?
+print(hardness_report(run).summary())
+
+# write, read back
+run.write("bank")                                   # nodes/, edges/, truth/, schema.yaml, manifest.json
+tables = GraphTables.read_parquet("bank"); manifest = Manifest.read("bank/manifest.json")
+
+# query: load an embedded graph database and ask it in Cypher (pip install kuzu, or ladybug)
+import kuzu
+write_ladybug(tables, "bank", db_path="bank.db")
+conn = kuzu.Connection(kuzu.Database("bank.db"))
+res = conn.execute("""
+    MATCH (a:Account)-[:TRANSFERS]->(b)-[:TRANSFERS]->(c)-[:TRANSFERS]->(d)-[:TRANSFERS]->(a)
+    WHERE a.id < b.id AND a.id < c.id AND a.id < d.id
+    RETURN a.id, b.id, c.id, d.id""")
+flagged = {x for row in res.get_all() for x in row}
+
+# score: precision / recall at account, transaction and pattern level
+print(evaluate(run, flagged_accounts=flagged, ring_threshold=0.5).summary())
+
+# or the NetworkX view, when you want algorithms and drawing
+G = run.to_networkx()
+```
+
+---
+
 ## Fraud / AML graphs
 
 The `fraud` domain pack generates a bank: customers, accounts, merchants,
@@ -314,13 +377,14 @@ AUC it achieves against the truth. Measured on a 20K-account run:
 
 | hardness | transaction `amount` AUC | best account-level feature AUC |
 |---|---|---|
-| low | 0.95 | 0.85 (`max_amount`) |
-| medium | 0.81 | 0.80 (`max_amount`) |
-| high | 0.68 | 0.85 (`in_partners`) |
+| low | 0.94 | 0.85 (`max_amount`) |
+| medium | 0.79 | 0.75 (`max_amount`) |
+| high | 0.62 | 0.73 (`in_partners`) |
 
-Degree stays informative at `high`: with ~9 transactions per account per
-quarter (the density the scale convention implies) even a small ring is a
-local outlier. That is a property of the convention, reported rather than hidden.
+Degree is the signal that survives: with ~9 transactions per account per
+quarter (the density the scale convention implies) even a small ring adds
+partners an ordinary account does not have. That is a property of the
+convention, reported rather than hidden.
 
 **Performance:** at `scale=0.01` the transaction process takes ~2 seconds; the
 run is dominated by Faker-generated customer attributes (~70 s single-process,
