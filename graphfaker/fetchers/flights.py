@@ -22,18 +22,15 @@ Usage:
     flights_df  = FlightGraphFetcher.fetch_flights(year=2024, month=1)
     G = FlightGraphFetcher.build_graph(airlines_df, airports_df, flights_df)
 """
-import os
 import io
+import os
 import zipfile
 from datetime import datetime, timedelta
-from typing import Tuple, Optional
 from io import StringIO
-from graphfaker.logger import logger
-import requests
-import pandas as pd
-from tqdm.auto import tqdm
-import networkx as nx
 
+import networkx as nx
+import pandas as pd
+import requests
 
 # TLS certificate verification is ON by default. The BTS host has historically
 # served a chain that some systems fail to validate, which is why this was once
@@ -43,7 +40,10 @@ import networkx as nx
 # Set GRAPHFAKER_INSECURE_TLS=1 to skip verification, and understand that doing
 # so means the downloaded data is no longer authenticated.
 import urllib3
+from tqdm.auto import tqdm
 from urllib3.exceptions import InsecureRequestWarning
+
+from graphfaker.logger import logger
 
 VERIFY_TLS = os.environ.get("GRAPHFAKER_INSECURE_TLS", "").strip().lower() not in (
     "1",
@@ -149,7 +149,7 @@ class FlightGraphFetcher:
 
     @staticmethod
     def fetch_airports(
-        country: Optional[str] = "United States", keep_only_with_faa: bool = True
+        country: str | None = "United States", keep_only_with_faa: bool = True
     ) -> pd.DataFrame:
         """
         Download and tidy the OpenFlights airports dataset:
@@ -216,9 +216,9 @@ class FlightGraphFetcher:
 
     @staticmethod
     def fetch_flights(
-        year: Optional[int] = None,
-        month: Optional[int] = None,
-        date_range: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None,
+        year: int | None = None,
+        month: int | None = None,
+        date_range: tuple[tuple[int, int], tuple[int, int]] | None = None,
     ) -> pd.DataFrame:
         """
         Fetch BTS on-time performance data for a given month or a range of months.

@@ -378,8 +378,8 @@ attribution in `NOTICE`.
 
 | Phase | Scope | Outcome |
 |---|---|---|
-| **0 — Foundations** | `schema` models; columnar backend with NetworkX view; seed sharding; manifest; port the social generator onto the schema without regressing `test_topology` | Same graphs as v0.5, now declarative and reproducible per shard |
-| **1 — Fraud pack** | data model, `TransactionProcess`, typology catalog, labels, `hardness_report`, `evaluate`; Parquet, Neo4j admin, LadybugDB sinks | The demo dataset for graph DBs, GNNs and AML teams |
+| **0 — Foundations** ✅ | `schema` models; columnar backend with NetworkX view; seed sharding; manifest; port the social generator onto the schema without regressing `test_topology` | Same graphs as v0.5, now declarative and reproducible per shard |
+| **1 — Fraud pack** ✅ | data model, `TransactionProcess`, typology catalog, labels, `hardness_report`, `evaluate`; Parquet, Neo4j admin, LadybugDB sinks | The demo dataset for graph DBs, GNNs and AML teams |
 | **2 — Sinks & interchange** | RDF, PyG/DGL, Neptune, live Neo4j driver, gen-fraud-graph compat; YAML schemas; domain entry points; docs site | "Land it anywhere" |
 | **3 — Scale** | igraph/networkit/cuGraph adapters; vectorised triadic closure; 10⁹-edge target; optional Ray executor | Benchmark-grade sizes |
 | **4 — Semantic** | Data Designer interop extra; LLM schema authoring; text attribute providers; fit-from-seed | Enterprise synthetic twins |
@@ -389,6 +389,38 @@ signature; new capability lands beside it and the old paths are deprecated over 
 releases.
 
 ---
+
+### Phase 1 status (2026-09-13)
+
+Shipped as `graphfaker.domains.fraud` plus `graphfaker.sinks`. What was learned
+by measuring rather than asserting:
+
+- **Amount signals blend away as designed** — transaction-level `amount` AUC
+  0.95 → 0.81 → 0.68 across low/medium/high.
+- **Degree does not.** Under the scale convention an account makes ~9
+  transactions a quarter, so even a five-member ring is a local degree outlier
+  (`in_partners` AUC ≈ 0.85 at `high`). Hardness now shrinks ring sizes and
+  recruits members among active accounts, which is what real launderers do,
+  but the acceptance target of 0.7 is met only for amount and timing features.
+  Options for later: a `density` knob decoupled from the scale convention, or
+  camouflage that *adds* activity to pattern accounts rather than only keeping it.
+- **Structuring and bust-out are single-feature typologies by definition**
+  (near-threshold amounts; spend escalation). They are reported per typology;
+  the "all" row is the number to quote.
+- **The legitimate tail matters as much as the fraud.** A thin transfer-amount
+  tail made every four-figure transfer an outlier; the process now uses a
+  mixture with a large-transfer component (p99 ≈ $6–8K).
+- **Small-scale artefacts are real artefacts.** With 50 merchants across 8
+  regions, category mix became a spurious regional signal that inverted income
+  elasticity; merchant density is now ~1 per 50 accounts.
+- **Process vs. attributes.** The vectorised transaction process handles 900K
+  events in ~2 s; Faker attributes cost ~1 ms per customer and dominate. A
+  vectorised person sampler (Data Designer's managed-dataset approach) is the
+  Phase 3 item that unlocks `scale=1.0` in minutes rather than an hour.
+- **Not done in Phase 1:** running-balance enforcement; chunked/streaming
+  writes for 90M-row edge tables; the generic `Process`/`Pattern` schema
+  members — the fraud pack implements them concretely, and they will be lifted
+  into the schema once a second domain needs them.
 
 ## 8. Decisions
 

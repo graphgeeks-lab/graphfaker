@@ -99,9 +99,9 @@ class GraphTables:
         (root / "nodes").mkdir(parents=True, exist_ok=True)
         (root / "edges").mkdir(parents=True, exist_ok=True)
         for node_type, frame in self.nodes.items():
-            frame.write_parquet(root / "nodes" / f"{node_type}.parquet")
+            write_parquet(frame, root / "nodes" / f"{node_type}.parquet")
         for relationship, frame in self.edges.items():
-            frame.write_parquet(root / "edges" / f"{relationship}.parquet")
+            write_parquet(frame, root / "edges" / f"{relationship}.parquet")
         return root
 
     @classmethod
@@ -114,6 +114,13 @@ class GraphTables:
             path.stem: pl.read_parquet(path) for path in sorted((root / "edges").glob("*.parquet"))
         }
         return cls(nodes=nodes, edges=edges)
+
+
+def write_parquet(frame: pl.DataFrame, path: str | Path) -> None:
+    """Write through pyarrow: its timestamp annotation is what third-party
+    loaders (Kùzu/LadybugDB ``COPY``, Spark) read; polars' native writer
+    produces one Kùzu rejects as INT64."""
+    frame.write_parquet(path, use_pyarrow=True)
 
 
 def _drop_none(data: dict[str, Any]) -> dict[str, Any]:

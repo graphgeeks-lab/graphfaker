@@ -2,23 +2,31 @@
 OSM Fetcher module: wraps OSMnx functionality to retrieve and preprocess street networks.
 """
 
-from typing import Optional
+
 import networkx as nx
-import osmnx as ox
 
 from graphfaker.logger import logger
 
 # OSMnx settings
 
-ox.utils.settings.log_console = True
+
+
+def _osmnx():
+    """osmnx (and its geopandas stack) takes seconds to import, so it is
+    loaded on first use rather than with the package."""
+    import osmnx as ox
+
+    ox.utils.settings.log_console = True
+    return ox
+
 
 
 class OSMGraphFetcher:
     @staticmethod
     def fetch_network(
-        place: Optional[str] = None,
-        address: Optional[str] = None,
-        bbox: Optional[tuple[float, float, float, float]] = None,
+        place: str | None = None,
+        address: str | None = None,
+        bbox: tuple[float, float, float, float] | None = None,
         network_type: str = "drive",
         simplify: bool = True,
         retain_all: bool = False,
@@ -71,6 +79,7 @@ class OSMGraphFetcher:
             f"network_type={network_type}, simplify={simplify}, "
             f"retain_all={retain_all}, dist={dist}"
         )
+        ox = _osmnx()
         if address:
             G = ox.graph_from_address(
                 address,

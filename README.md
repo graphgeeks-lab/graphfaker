@@ -110,12 +110,12 @@ g = gf.generate_graph(source="flights", date_range=("2024-01-01", "2024-01-15"))
 
 Show help:
 ```sh
-python -m graphfaker.cli --help
+graphfaker --help
 ```
 
 #### Generate a Synthetic Social Graph
 ```sh
-python -m graphfaker.cli  \
+graphfaker gen \
     --fetcher faker \
     --total-nodes 100 \
     --total-edges 500
@@ -123,7 +123,7 @@ python -m graphfaker.cli  \
 
 #### Generate a Real-World Road Network (OSM)
 ```sh
-python -m graphfaker.cli  \
+graphfaker gen \
     --fetcher osm \
     --place "Berlin, Germany" \
     --network-type drive
@@ -131,7 +131,7 @@ python -m graphfaker.cli  \
 
 #### Generate a Flight Network (Airlines/Airports/Flights)
 ```sh
-python -m graphfaker.cli \
+graphfaker gen \
     --fetcher flights \
     --country "United States" \
     --year 2024 \
@@ -261,6 +261,75 @@ cities at once.
 
 ---
 
+## Fraud / AML graphs
+
+The `fraud` domain pack generates a bank: customers, accounts, merchants,
+devices and external counterparties; a realistic transaction process (salary
+on payday, rent on the first, subscriptions, repeat P2P partners, merchant
+popularity, hour-of-day and weekday seasonality, income-scaled amounts); and
+injected, **labelled** laundering typologies whose difficulty is measured, not
+asserted.
+
+```bash
+graphfaker fraud --scale 0.01 --hardness medium --seed 42 --out ./data          # ~100K accounts, ~900K transactions
+graphfaker fraud --scale 0.01 --sink ladybug --out ./data                       # + an embedded LadybugDB/Kùzu database
+graphfaker fraud --scale 0.01 --sink neo4j-admin --out ./data                   # + neo4j-admin import files
+graphfaker fraud --scale 0.01 --sink gen-fraud-graph --out ./data               # + gen-fraud-graph compatible CSVs
+graphfaker evaluate ./data --accounts flagged.txt --ring-threshold 0.5           # score a detector against the truth
+```
+
+```python
+from graphfaker.domains import fraud
+from graphfaker.domains.fraud.hardness import hardness_report, realism_report
+from graphfaker.domains.fraud.evaluate import evaluate
+
+run = fraud.generate(scale=0.01, hardness="high", seed=42, workers=8)
+run.tables.edges["TRANSFERS"]        # source, target, tx_id, timestamp, amount, memo, recurring
+run.truth["patterns"]                # pattern_id, typology, is_fraud, accounts, roles, start, end
+run.truth["accounts"]                # account_id, pattern_id, typology, role, is_fraud
+run.truth["transactions"]            # tx_id, pattern_id, typology, is_fraud
+print(hardness_report(run).summary())
+evaluate(run, flagged_accounts=my_detector(run)).summary()
+```
+
+**Scale** follows gen-fraud-graph: `1.0` = ~10M accounts / ~90M transactions.
+
+**Typologies:** `fan_in, fan_out, gather_scatter, scatter_gather, cycle, stack,
+bipartite` (the AMLworld set) plus `structuring` (under the reporting
+threshold), `mule_network` (pass-through within hours, shared device, fresh
+accounts), `bust_out` (credit escalation then max-out) and
+`synthetic_identity` (customers sharing phone, address and device). Every
+pattern is recorded with its accounts, roles and transactions; the edge tables
+themselves carry no labels, and `tx_id`s are assigned in time order so the id
+does not leak what was injected.
+
+**Hardness** (`low | medium | high`) blends signature amounts into the
+legitimate distribution, stretches timing from hours to weeks, overlaps rings,
+recruits pattern members among active accounts, shrinks ring sizes, and adds
+*decoys* — legitimate payroll fan-outs, marketplace fan-ins and supplier
+cycles that are labelled not-fraud. `hardness_report` scores every single
+feature a naive detector could threshold on (amount, round amounts, proximity
+to the threshold, degree, pass-through ratio, burstiness, account age) by the
+AUC it achieves against the truth. Measured on a 20K-account run:
+
+| hardness | transaction `amount` AUC | best account-level feature AUC |
+|---|---|---|
+| low | 0.95 | 0.85 (`max_amount`) |
+| medium | 0.81 | 0.80 (`max_amount`) |
+| high | 0.68 | 0.85 (`in_partners`) |
+
+Degree stays informative at `high`: with ~9 transactions per account per
+quarter (the density the scale convention implies) even a small ring is a
+local outlier. That is a property of the convention, reported rather than hidden.
+
+**Performance:** at `scale=0.01` the transaction process takes ~2 seconds; the
+run is dominated by Faker-generated customer attributes (~70 s single-process,
+~45 s with `workers=12` on a 6-core laptop). Entity sampling is sharded and
+parallelisable without changing the result; a vectorised person sampler is the
+next step for full-scale runs.
+
+---
+
 ## Schemas
 
 Since 0.6, synthetic generation is schema-driven. The social graph above is a
@@ -335,7 +404,7 @@ gf.generate_graph(source="faker", total_nodes=100, seed=42)
 ```
 
 ```sh
-python -m graphfaker.cli --fetcher faker --total-nodes 100 --seed 42
+graphfaker gen --fetcher faker --total-nodes 100 --seed 42
 ```
 
 ---
@@ -358,8 +427,8 @@ export_cypher(G, "load.gql", dialect="gql")  # ISO GQL
 Or from the CLI:
 
 ```sh
-python -m graphfaker.cli --fetcher faker --total-nodes 500 --format cypher --export load.cypher
-python -m graphfaker.cli --fetcher faker --total-nodes 500 --format neo4j-csv --export import/
+graphfaker gen --fetcher faker --total-nodes 500 --format cypher --export load.cypher
+graphfaker gen --fetcher faker --total-nodes 500 --format neo4j-csv --export import/
 ```
 
 | Format | Loads into |

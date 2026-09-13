@@ -14,6 +14,7 @@ processes will, and it is what the shard boundary here is for.
 from __future__ import annotations
 
 import math
+from concurrent.futures import Executor, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
@@ -42,7 +43,7 @@ from graphfaker.schema.samplers import (
     parse_ref,
 )
 
-DEFAULT_SHARD_SIZE = 50_000
+DEFAULT_SHARD_SIZE = 10_000
 
 
 @dataclass
@@ -219,26 +220,34 @@ def shard_bounds(count: int, shard_size: int) -> list[tuple[int, int]]:
     return [(start, min(shard_size, count - start)) for start in range(0, count, shard_size)]
 
 
+def fk_indexes(node: NodeType, tables: dict[str, pl.DataFrame]) -> dict[tuple[str, str | None], dict[Any, list[str]]]:
+    """Every foreign-key lookup a node type needs, built once per type so
+    shards (and worker processes) receive the index, not the whole table."""
+    indexes: dict[tuple[str, str | None], dict[Any, list[str]]] = {}
+    for sampler in node.attributes.values():
+        if isinstance(sampler, ForeignKeySampler):
+            key = (sampler.node_type, sampler.same_group)
+            indexes.setdefault(key, fk_index(tables, *key))
+            indexes.setdefault((sampler.node_type, None), fk_index(tables, sampler.node_type, None))
+    return indexes
+
+
 def sample_node_shard(
     node: NodeType,
     factors: list[LatentFactor],
     latent: dict[str, GroupParams],
-    tables: dict[str, pl.DataFrame],
-    streams: Streams,
+    indexes: dict[tuple[str, str | None], dict[Any, list[str]]],
+    sequence: np.random.SeedSequence,
     start: int,
     count: int,
 ) -> pl.DataFrame:
-    ctx = RowContext(streams=streams, latent=latent)
+    """One shard of a node type. Takes a seed sequence rather than streams so
+    it can run in another process; every argument is picklable."""
+    streams = Streams.from_sequence(sequence)
+    ctx = RowContext(streams=streams, latent=latent, fk_index=indexes)
     for factor in factors:
         groups = latent[factor.name].groups
         ctx.group_ids[factor.name] = streams.rng.integers(0, groups, size=count)
-    for sampler in node.attributes.values():
-        if isinstance(sampler, ForeignKeySampler):
-            key = (sampler.node_type, sampler.same_group)
-            ctx.fk_index.setdefault(key, fk_index(tables, *key))
-            ctx.fk_index.setdefault(
-                (sampler.node_type, None), fk_index(tables, sampler.node_type, None)
-            )
 
     data: dict[str, list[Any]] = {ID: [f"{node.prefix}_{start + i}" for i in range(count)]}
     for name, sampler in node.attributes.items():
@@ -250,6 +259,10 @@ def sample_node_shard(
     return pl.DataFrame(data, strict=False)
 
 
+def _run_shard(job: tuple) -> pl.DataFrame:
+    return sample_node_shard(*job)
+
+
 def sample_nodes(
     node: NodeType,
     schema: GraphSchema,
@@ -257,15 +270,31 @@ def sample_nodes(
     tables: dict[str, pl.DataFrame],
     streams: Streams,
     shard_size: int = DEFAULT_SHARD_SIZE,
+    workers: int = 1,
+    executor: Executor | None = None,
 ) -> pl.DataFrame:
-    """All rows of one node type, sharded, each shard on its own stream."""
+    """All rows of one node type, sharded, each shard on its own stream.
+
+    ``workers > 1`` runs shards in a process pool (``executor`` reuses one
+    across node types — spawning a pool per type costs more than it saves).
+    The result does not depend on either: shard seeds come from the spawn
+    tree, not from which process happened to draw them.
+    """
     bounds = shard_bounds(node.count, shard_size)
     if not bounds:
         columns = [ID, *node.attributes, *(factor.name for factor in schema.latent)]
         return pl.DataFrame({column: [] for column in columns})
-    children = streams.spawn(len(bounds))
-    frames = [
-        sample_node_shard(node, schema.latent, latent, tables, child, start, count)
+    children = streams.sequence.spawn(len(bounds))
+    indexes = fk_indexes(node, tables)
+    jobs = [
+        (node, schema.latent, latent, indexes, child, start, count)
         for (start, count), child in zip(bounds, children)
     ]
+    if executor is not None and len(jobs) > 1:
+        frames = list(executor.map(_run_shard, jobs))
+    elif workers > 1 and len(jobs) > 1:
+        with ProcessPoolExecutor(max_workers=min(workers, len(jobs))) as pool:
+            frames = list(pool.map(_run_shard, jobs))
+    else:
+        frames = [_run_shard(job) for job in jobs]
     return pl.concat(frames, how="vertical_relaxed") if len(frames) > 1 else frames[0]

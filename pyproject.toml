@@ -56,6 +56,9 @@ dev = [
     "ruff"  # linting
 ]
 
+[project.scripts]
+graphfaker = "graphfaker.cli:app"
+
 [project.urls]
 
 bugs = "https://github.com/graphgeeks-lab/graphfaker/issues"

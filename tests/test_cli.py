@@ -37,6 +37,7 @@ def test_faker_mode_generates_graph(tmp_path):
     result = runner.invoke(
         app,
         [
+            "gen",
             "--fetcher",
             "faker",
             "--total-nodes",
@@ -58,6 +59,7 @@ def test_faker_mode_is_reproducible_with_seed(tmp_path):
         return runner.invoke(
             app,
             [
+                "gen",
                 "--fetcher",
                 "faker",
                 "--total-nodes",
@@ -85,6 +87,7 @@ def test_osm_mode_with_place(mock_fetch, tmp_path):
     result = runner.invoke(
         app,
         [
+            "gen",
             "--fetcher",
             "osm",
             "--place",
@@ -117,6 +120,7 @@ def test_flight_mode_valid_inputs(
     result = runner.invoke(
         app,
         [
+            "gen",
             "--fetcher",
             "flights",
             "--year",
@@ -138,7 +142,7 @@ def test_flight_mode_valid_inputs(
 
 def test_invalid_month():
     result = runner.invoke(
-        app, ["--fetcher", "flights", "--year", "2024", "--month", "13"]
+        app, ["gen", "--fetcher", "flights", "--year", "2024", "--month", "13"]
     )
 
     assert result.exit_code != 0
@@ -146,14 +150,14 @@ def test_invalid_month():
 
 def test_invalid_year():
     result = runner.invoke(
-        app, ["--fetcher", "flights", "--year", "2200", "--month", "1"]
+        app, ["gen", "--fetcher", "flights", "--year", "2200", "--month", "1"]
     )
     assert result.exit_code != 0
 
 
 def test_invalid_daterange():
     result = runner.invoke(
-        app, ["--fetcher", "flights", "--date-range", "2024-01-,2024-01-10"]
+        app, ["gen", "--fetcher", "flights", "--date-range", "2024-01-,2024-01-10"]
     )
     assert result.exit_code != 0
 
@@ -172,6 +176,7 @@ def test_flight_mode_with_date_range(mock_fetch_flights, tmp_path):
         result = runner.invoke(
             app,
             [
+                "gen",
                 "--fetcher",
                 "flights",
                 "--year",

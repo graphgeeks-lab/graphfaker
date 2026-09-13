@@ -21,6 +21,19 @@ Schema-driven generation. This is Phase 0 of the plan in
   schema. Same realism metrics as 0.5; every former magic number is now a
   schema field.
 * ``GraphFaker.generate(schema)`` alongside the unchanged ``generate_graph``.
+* ``graphfaker.domains.fraud``: the fraud / AML domain pack — customers,
+  accounts, merchants, devices, counterparties; a vectorised transaction
+  process with recurring flows, repeat partners, merchant popularity,
+  seasonality and income scaling; eleven labelled typologies with decoys;
+  ``hardness_report`` (single-feature AUCs), ``realism_report`` and an
+  ``evaluate`` harness compatible with gen-fraud-graph's.
+* ``graphfaker.sinks``: Neo4j admin-import files, LadybugDB/Kùzu (DDL +
+  ``COPY`` from Parquet, loads when a driver is installed), and a
+  gen-fraud-graph compatible layout.
+* CLI is now multi-command: ``graphfaker gen`` (the previous behaviour),
+  ``graphfaker fraud``, ``graphfaker evaluate``; ``graphfaker`` console script.
+* ``workers`` parallelises node sampling across processes without changing
+  the result. osmnx is imported on first use, halving import time.
 * Place nodes carry ``latitude`` / ``longitude`` columns instead of a
   ``coordinates`` tuple.
 * New dependencies: pydantic, polars, pyarrow, numpy, pyyaml.

@@ -9,16 +9,20 @@ engine version.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
+from collections.abc import Iterator
+from concurrent.futures import Executor, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import networkx as nx
 import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
-from graphfaker.backends.tables import ID, GraphTables
+from graphfaker.backends.tables import ID, GraphTables, write_parquet
 from graphfaker.engine.sampling import (
     DEFAULT_SHARD_SIZE,
     GroupParams,
@@ -47,6 +51,9 @@ class Manifest(BaseModel):
     created_at: str
     node_counts: dict[str, int] = Field(default_factory=dict)
     edge_counts: dict[str, int] = Field(default_factory=dict)
+    #: Domain-pack configuration and anything else needed to reproduce the
+    #: run beyond the schema (e.g. ``{"fraud": FraudConfig.model_dump()}``).
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     def write(self, path: str | Path) -> Path:
         target = Path(path)
@@ -76,10 +83,20 @@ class GraphRun:
         self.tables.write_parquet(root)
         (root / "truth").mkdir(parents=True, exist_ok=True)
         for name, frame in self.truth.items():
-            frame.write_parquet(root / "truth" / f"{name}.parquet")
+            write_parquet(frame, root / "truth" / f"{name}.parquet")
         self.schema.to_yaml(root / "schema.yaml")
         self.manifest.write(root / "manifest.json")
         return root
+
+
+@contextlib.contextmanager
+def node_pool(workers: int) -> Iterator[Executor | None]:
+    """One process pool for a whole run, or ``None`` for in-process."""
+    if workers <= 1:
+        yield None
+        return
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        yield pool
 
 
 def _truth_frames(latent: dict[str, GroupParams]) -> dict[str, pl.DataFrame]:
@@ -94,8 +111,12 @@ def generate(
     schema: GraphSchema,
     seed: int | None = None,
     shard_size: int = DEFAULT_SHARD_SIZE,
+    workers: int = 1,
 ) -> GraphRun:
     """Generate every node type in foreign-key order, then form edges.
+
+    ``workers`` parallelises node sampling across processes without
+    changing the result; ``shard_size`` does change it and is recorded.
 
     Streams are spawned in a fixed order — latent factors, then one child per
     node type in schema order, then one for edges — so adding a node type at
@@ -110,11 +131,12 @@ def generate(
     edge_streams = root.spawn(1)[0]
 
     tables: dict[str, pl.DataFrame] = {}
-    for node in schema.generation_order():
-        tables[node.name] = sample_nodes(
-            node, schema, latent, tables, node_streams[node.name], shard_size=shard_size
-        )
-        logger.debug("nodes: %s x %d", node.name, tables[node.name].height)
+    with node_pool(workers) as executor:
+        for node in schema.generation_order():
+            tables[node.name] = sample_nodes(
+                node, schema, latent, tables, node_streams[node.name], shard_size=shard_size, executor=executor
+            )
+            logger.debug("nodes: %s x %d", node.name, tables[node.name].height)
 
     # Preserve schema order in the output regardless of generation order.
     ordered = GraphTables(nodes={node.name: tables[node.name] for node in schema.nodes})
