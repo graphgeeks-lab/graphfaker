@@ -33,31 +33,39 @@ uv venv && uv pip install -e ".[dev,examples]"
 
 ## Three things to try
 
-A social graph with realistic structure:
-
-```python
-from graphfaker import GraphFaker
-
-G = GraphFaker(seed=42).generate_graph(source="faker", total_nodes=500, total_edges=2500)
-```
-
-A bank with labelled laundering patterns, written to disk with its truth:
+See what can be generated:
 
 ```sh
-graphfaker fraud --scale 0.01 --hardness medium --seed 42 --out ./bank
+graphfaker domains
 ```
 
-The same bank loaded into an embedded graph database and queried in Cypher:
+Generate a bank with labelled laundering patterns, written to disk with its ground truth:
+
+```sh
+graphfaker generate fraud --scale 0.01 --hardness medium --seed 42 --out ./bank
+```
+
+Load it into an embedded graph database and ask it a question in Cypher:
 
 ```sh
 pip install kuzu
-graphfaker fraud --scale 0.01 --seed 42 --out ./bank --sink ladybug
+graphfaker generate fraud --scale 0.01 --seed 42 --out ./bank --sink ladybug
 ```
 
 ```python
 import kuzu
 conn = kuzu.Connection(kuzu.Database("bank/graph.lbdb"))
 conn.execute("MATCH (a:Account)-[t:TRANSFERS]->(b:Account) WHERE t.amount > 9000 RETURN a.id, count(t) ORDER BY count(t) DESC LIMIT 5").get_all()
+```
+
+The same from Python:
+
+```python
+from graphfaker import GraphFaker
+from graphfaker.domains import fraud
+
+G = GraphFaker(seed=42).generate_graph(source="faker", total_nodes=500, total_edges=2500)   # a social graph, as NetworkX
+run = fraud.generate(scale=0.01, hardness="medium", seed=42)                                   # the bank, as tables plus truth
 ```
 
 ## Where to read next
@@ -204,20 +212,74 @@ fraud.generate(scale=0.001, seed=42)
 
 ## Command line
 
-```
-graphfaker domains                                    list domains and their options
-graphfaker generate <domain> --key value --out DIR    generate any domain; options are validated
-graphfaker fraud --scale 0.01 --hardness high         the fraud pack, with hardness and realism reports
-graphfaker evaluate DIR --accounts flagged.txt        score a detector against a fraud run
-graphfaker gen --fetcher faker|osm|flights ...        the social graph, or a real-world network, exported to a file
+Every domain can be generated from the command line. `graphfaker domains` shows what is available and which options each one takes; `graphfaker generate <domain>` runs one, with the domain's options passed as `--name value`.
+
+```sh
+graphfaker domains
 ```
 
-Examples for the real-world sources:
+```
+fraud: A bank: customers, accounts, merchants, devices; transactions; labelled laundering typologies.
+    --scale <float>  default 0.001
+    --hardness <low | medium | high>  default 'medium'
+    --period-days <int>  default 90
+    ...
+social: People, places, organizations, events and products with realistic social structure.
+    --total-nodes <int>  default 100
+    --total-edges <int>  default 1000
+    --topology <realistic | uniform>  default 'realistic'
+    --communities <int | None>  default None
+```
+
+Generate a social graph of 2,000 people, places, organizations, events and products with 12,000 relationships:
+
+```sh
+graphfaker generate social --total-nodes 2000 --total-edges 12000 --seed 42 --out ./social
+```
+
+Generate a bank with 100K accounts and labelled laundering patterns that are hard to find:
+
+```sh
+graphfaker generate fraud --scale 0.01 --hardness high --seed 42 --out ./bank
+```
+
+Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json` under `--out`. Options shared by every domain:
+
+| option | meaning |
+|---|---|
+| `--out DIR` | where to write (default `graphfaker_out`) |
+| `--seed N` | reproducible output; the same seed gives the same bytes on any machine |
+| `--workers N` | processes for node sampling; faster, does not change the result |
+| `--sink parquet\|neo4j-admin\|ladybug\|gen-fraud-graph` | also write a database loader layout (Parquet is always written) |
+
+Load the bank straight into an embedded graph database, or produce Neo4j import files:
+
+```sh
+graphfaker generate fraud --scale 0.01 --seed 42 --out ./bank --sink ladybug        # ./bank/graph.lbdb, query it in Cypher
+graphfaker generate fraud --scale 0.01 --seed 42 --out ./bank --sink neo4j-admin    # ./bank/neo4j/, run import.sh
+```
+
+`graphfaker fraud` is a shortcut for the fraud domain that also prints the hardness and realism reports:
+
+```sh
+graphfaker fraud --scale 0.01 --hardness medium --seed 42 --out ./bank
+```
+
+Score a detector's flagged accounts (one id per line) against the truth of a run:
+
+```sh
+graphfaker evaluate ./bank --accounts flagged.txt --ring-threshold 0.5
+```
+
+The real-world networks are loaded with `graphfaker gen` and exported to a single file (`--format graphml|csv|neo4j-csv|cypher|opencypher|gql`):
 
 ```sh
 graphfaker gen --fetcher osm --place "Berlin, Germany" --network-type drive --export berlin.graphml
 graphfaker gen --fetcher flights --country "United States" --year 2024 --month 1 --export flights.graphml
+graphfaker gen --fetcher faker --total-nodes 500 --total-edges 2500 --format cypher --export social.cypher
 ```
+
+`graphfaker --help` and `graphfaker <command> --help` list every option.
 
 ## Entity resolution
 

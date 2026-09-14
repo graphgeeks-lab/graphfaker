@@ -2,11 +2,11 @@
 History
 =======
 
-0.6.0 (unreleased)
+0.5.0 (unreleased)
 ------------------
 
-Schema-driven generation. This is Phase 0 of the plan in
-``docs/design/synthetic-at-scale.md``.
+Schema-driven generation, the fraud domain pack, sinks, and realistic
+graph topology. The plan is in ``docs/design/synthetic-at-scale.md``.
 
 * ``graphfaker.schema``: declarative ``GraphSchema``: node types with
   attribute samplers, latent factors with per-group parameters, edge families,
@@ -42,27 +42,7 @@ Schema-driven generation. This is Phase 0 of the plan in
 * New dependencies: pydantic, polars, pyarrow, numpy, pyyaml.
 * Removed the superseded proposal documents.
 
-0.1.0 (2025-04-02)
-------------------
-
-* First release on PyPI.
-
-0.2.0 (2025-06-08)
-------------------
-GraphFaker v0.2.0 – June 2025
-
-This release expands GraphFaker’s scope with a new data sources to support graph construction and entity recognition tutorials:
-
-* Wikipedia fetcher (WikiFetcher)
-  - Retrieve raw page data (title, summary, content, sections, links, references) via the wikipedia package
-  - Export JSON dumps of article fields
-
-Upgrade now to effortlessly pull in unstructured Wikipedia data
-
-0.5.0 (2026-08-01)
-------------------
-
-Realistic graph topology.
+Realistic graph topology (2026-08-01):
 
 Until now both endpoints of every edge were drawn uniformly at random, so the
 synthetic generator produced an Erdos-Renyi graph: Poisson degree distribution,
@@ -178,3 +158,21 @@ Docs:
 
 * README no longer advertises unimplemented features (RDF/JSON-LD export,
   Neo4j/Kuzu/TigerGraph integration, million-node scale, LLM-driven fetching).
+
+0.2.0 (2025-06-08)
+------------------
+GraphFaker v0.2.0 – June 2025
+
+This release expands GraphFaker’s scope with a new data sources to support graph construction and entity recognition tutorials:
+
+* Wikipedia fetcher (WikiFetcher)
+  - Retrieve raw page data (title, summary, content, sections, links, references) via the wikipedia package
+  - Export JSON dumps of article fields
+
+Upgrade now to effortlessly pull in unstructured Wikipedia data
+
+0.1.0 (2025-04-02)
+------------------
+
+* First release on PyPI.
+
