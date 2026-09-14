@@ -55,6 +55,12 @@ def test_parse_options():
     }
 
 
+def test_parse_options_decodes_json_values():
+    assert _parse_options(["--patterns", '{"cycle": 3}']) == {"patterns": {"cycle": 3}}
+    with pytest.raises(Exception, match="not valid JSON"):
+        _parse_options(["--patterns", "{cycle: 3}"])
+
+
 def test_cli_domains_lists_options():
     result = runner.invoke(app, ["domains"])
     assert result.exit_code == 0, result.output

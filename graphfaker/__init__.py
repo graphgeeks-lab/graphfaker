@@ -1,4 +1,10 @@
-"""Top-level package for graphfaker."""
+"""GraphFaker: synthetic graph data that behaves like the real thing.
+
+Generate realistic graph datasets from a schema, or pick a ready-made domain
+such as a bank with laundering patterns, and get entities, relationships and
+events whose structure, attributes and timing agree, with the ground truth
+included.
+"""
 
 __author__ = """Dennis Irorere"""
 __email__ = "denironyx@gmail.com"

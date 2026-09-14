@@ -1,5 +1,7 @@
-Welcome to graphfaker's documentation!
-======================================
+GraphFaker
+==========
+
+Synthetic graph data that behaves like the real thing. Generate realistic graph datasets from a schema, or pick a ready-made domain such as a bank with laundering patterns, and get entities, relationships and events whose structure, attributes and timing agree, with the ground truth included.
 
 .. toctree::
    :maxdepth: 2

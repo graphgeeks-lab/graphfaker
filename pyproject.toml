@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "graphfaker"
 version = "0.5.0"
-description = "an open-source python library for generating, and loading both synthetic and real-world graph datasets"
+description = "Generate realistic graph datasets from a schema: entities, relationships and events whose structure, attributes and timing agree."
 readme = "README.md"
 authors = [
   {name = "Dennis Irorere", email = "denironyx@gmail.com"}
@@ -14,22 +14,42 @@ maintainers = [
   {name = "Dennis Irorere", email = "denironyx@gmail.com"}
 ]
 classifiers = [
-
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Database",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 license = "MIT"
 requires-python = ">=3.10"
 keywords = [
-  "faker",
+  "synthetic-data",
   "graph-data",
-  "flights",
-  "osmnx",
-  "graphs",
-  "graphfaker",
-  "entity-resolution",
+  "graph-generator",
   "knowledge-graph",
+  "fraud-detection",
+  "anti-money-laundering",
+  "benchmark",
+  "ground-truth",
+  "entity-resolution",
   "graphrag",
-  "cypher",
   "neo4j",
+  "kuzu",
+  "ladybugdb",
+  "cypher",
+  "networkx",
+  "polars",
+  "parquet",
+  "osmnx",
+  "flights",
+  "faker",
 ]
 dependencies = [
   "faker>=37.1.0",
@@ -68,10 +88,12 @@ dev = [
 graphfaker = "graphfaker.cli:app"
 
 [project.urls]
-
-bugs = "https://github.com/graphgeeks-lab/graphfaker/issues"
-changelog = "https://github.com/graphgeeks-lab/graphfaker/blob/master/changelog.md"
 homepage = "https://github.com/graphgeeks-lab/graphfaker/"
+documentation = "https://graphfaker.readthedocs.io"
+repository = "https://github.com/graphgeeks-lab/graphfaker"
+changelog = "https://github.com/graphgeeks-lab/graphfaker/blob/main/HISTORY.rst"
+issues = "https://github.com/graphgeeks-lab/graphfaker/issues"
+discord = "https://discord.gg/mQQz9bRRpH"
 
 [tool.setuptools]
 package-dir = {"graphfaker" = "graphfaker"}

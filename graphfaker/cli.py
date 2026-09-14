@@ -2,6 +2,7 @@
 Command-line interface for GraphFaker.
 """
 
+import json
 import os
 
 import typer
@@ -177,12 +178,13 @@ def _write_sink(run, out: str, sink: str) -> None:
         raise typer.BadParameter(f"unknown sink {sink!r}")
 
 
-def _parse_options(args: list[str]) -> dict[str, str]:
+def _parse_options(args: list[str]) -> dict[str, object]:
     """``--total-nodes 500 --topology uniform`` -> ``{"total_nodes": "500", ...}``.
 
-    Values are strings; the domain's options model converts them.
+    Values are strings, which the domain's options model converts; a value
+    that looks like JSON (``--patterns '{"cycle": 5}'``) is decoded first.
     """
-    options: dict[str, str] = {}
+    options: dict[str, object] = {}
     i = 0
     while i < len(args):
         token = args[i]
@@ -196,6 +198,11 @@ def _parse_options(args: list[str]) -> dict[str, str]:
             i += 1
         else:
             value = "true"
+        if value[:1] in "{[":
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise typer.BadParameter(f"--{token[2:]}: not valid JSON ({exc.msg})") from exc
         options[key] = value
         i += 1
     return options

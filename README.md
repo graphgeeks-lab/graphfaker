@@ -1,6 +1,8 @@
 # graphfaker
 
-GraphFaker generates synthetic graph datasets that behave like real ones, and loads a few real ones. You declare what a graph should look like, or pick a ready-made domain such as a bank with laundering patterns, and get tables you can put into Neo4j, LadybugDB, Parquet or NetworkX, with the ground truth attached.
+**Synthetic graph data that behaves like the real thing.**
+
+GraphFaker generates synthetic graph datasets that look and behave like real ones. You describe the graph you need, or pick a ready-made domain such as a bank with laundering patterns, and GraphFaker produces the entities, the relationships between them and the events over time, with attributes, structure and timing that agree with each other, and a record of everything it planted. Use it to build and demo graph applications without touching real data, to benchmark graph databases and algorithms at any size, and to train and evaluate fraud detectors, entity resolution and knowledge-graph pipelines against a known answer.
 
 [![PyPI version](https://img.shields.io/pypi/v/graphfaker.svg)](https://pypi.python.org/pypi/graphfaker)
 [![Docs Status](https://readthedocs.org/projects/graphfaker/badge/?version=latest)](https://graphfaker.readthedocs.io/en/latest/?version=latest)
@@ -10,11 +12,11 @@ Join our Discord server: [![](https://dcbadge.limes.pink/api/server/https://disc
 
 *The authors and GraphGeeks Lab do not hold any responsibility for the correctness of this generator.*
 
-## Why
+## Why graphs need their own generator
 
-Graph data is hard to get. The graphs people most want to test against, such as who pays whom, who knows whom, or who shares a device with whom, are the ones that cannot be shared. Existing generators either produce structure with no attributes, or attributes with no structure, and almost none of them tell you what they planted.
+Tabular generators such as NVIDIA Data Designer, SDV and Mostly AI produce rows. A graph needs more than rows joined together: a degree distribution with hubs, clustering and communities, events that happen in a plausible order over time, and labels for what was injected. None of that comes from generating a table of people and a table of payments and joining them. Data Designer generates the tables; GraphFaker generates the connections.
 
-GraphFaker makes graphs where attributes and structure agree, where events happen over time, and where every injected pattern is recorded. That makes the output usable for three things: developing and demonstrating graph applications, benchmarking graph databases and graph algorithms, and training and evaluating detectors (fraud models, entity resolution, GraphRAG builders) against a known answer.
+The graphs people most want to test against, such as who pays whom, who knows whom, or who shares a device with whom, are the ones that cannot be shared. GraphFaker makes them, and because it made them it can tell you the answer: which accounts are the mules, which two nodes are the same person, which community a node belongs to.
 
 ## Install
 
@@ -44,6 +46,8 @@ Generate a bank with labelled laundering patterns, written to disk with its grou
 ```sh
 graphfaker generate fraud --scale 0.01 --hardness medium --seed 42 --out ./bank
 ```
+
+`--scale 0.01` is the size (about 100,000 accounts and 900,000 transactions; `1.0` is a full-size bank). `--hardness medium` is how well the fraud hides among normal activity. `--seed 42` is any whole number you choose; run the same command with the same seed on any machine and you get the same data, change it and you get a different bank of the same shape. The options are explained under [Command line](#command-line).
 
 Load it into an embedded graph database and ask it a question in Cypher:
 
@@ -251,6 +255,48 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 | `--seed N` | reproducible output; the same seed gives the same bytes on any machine |
 | `--workers N` | processes for node sampling; faster, does not change the result |
 | `--sink parquet\|neo4j-admin\|ladybug\|gen-fraud-graph` | also write a database loader layout (Parquet is always written) |
+
+### What the options mean
+
+**Options every domain has**
+
+- `--seed N`: any whole number. Generation is random, but the randomness is derived from the seed, so the same seed with the same options produces the same bytes on any machine. Use a seed when you want a dataset others can regenerate (a benchmark, a tutorial, a bug report). Leave it out and every run produces a different dataset.
+- `--out DIR`: the folder to write. It will contain `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json`. The manifest records the seed and every option, so a run can always be reproduced from its folder.
+- `--workers N`: how many processes generate node attributes. Use it on large runs; it changes the speed and nothing else.
+- `--sink`: what else to write besides Parquet. `ladybug` builds an embedded graph database you can query in Cypher; `neo4j-admin` writes CSVs and the `neo4j-admin database import` command; `gen-fraud-graph` writes the layout of Santander's generator for pipelines built on it.
+
+**`fraud` options** (see [docs/fraud-generation.md](docs/fraud-generation.md) for the mechanics)
+
+- `--scale`: the size of the bank. `1.0` follows gen-fraud-graph's convention of about 10 million accounts and 90 million transactions; everything else scales with it. Pick from this table:
+
+  | scale | accounts | transactions | patterns | typical time on a laptop |
+  |---|---|---|---|---|
+  | 0.001 | 10,000 | 90,000 | 22 | seconds |
+  | 0.01 | 100,000 | 900,000 | 22 | about a minute |
+  | 0.1 | 1,000,000 | 9,000,000 | 100 | tens of minutes |
+  | 1.0 | 10,000,000 | 90,000,000 | 1,000 | not yet practical single-machine; see Performance and limits |
+
+- `--hardness`: how well the injected fraud hides in normal activity. It changes the amounts, the timing, the ring sizes, whether pattern accounts also have ordinary activity, and whether look-alike legitimate structures (decoys) are added.
+
+  | level | what the fraud looks like | use it for |
+  |---|---|---|
+  | `low` | round amounts, a whole pattern within hours, single-purpose accounts, no decoys; a simple rule finds most of it | demos and tutorials where the pattern should be visible |
+  | `medium` | half the amounts look ordinary, patterns spread over days, most pattern accounts also behave normally, decoys added | the default; realistic enough to develop against |
+  | `high` | amounts and timing look ordinary, small rings, all pattern accounts behave normally, as many decoys as patterns; only structure and context give it away | benchmarking detectors and graph algorithms |
+
+  `graphfaker fraud` prints a hardness report that measures this: for each simple feature (amount, round numbers, degree, and so on), how well a threshold on it alone separates fraud from legitimate accounts.
+
+- `--period-days` and `--period-start`: the span of transaction history, 90 days from 2024-01-01 by default. Longer periods give recurring flows more cycles and patterns more room.
+- `--reporting-threshold`: the cash reporting threshold that structuring stays under, 10,000 by default.
+- `--patterns`: override how many of each typology to inject, for example `--patterns '{"cycle": 10, "fan_in": 5}'`. By default the count follows `--scale` with at least two of each.
+- `--regions`: the number of latent regions (8 by default). Income, balances, merchant choice and transfer partners are correlated within a region.
+
+**`social` options**
+
+- `--total-nodes`: how many nodes, split 50% people, 20% places, 15% organizations, 10% events, 5% products.
+- `--total-edges`: how many relationships across the seven edge families (friendships, where people live and work, what organizations make, and so on).
+- `--communities`: how many latent communities. Ages, education and regions cluster by community, and people mostly connect within their community. Defaults to about one per 25 nodes.
+- `--topology`: `realistic` forms edges by preferential attachment, triadic closure and homophily; `uniform` connects nodes at random and exists only to show the difference.
 
 Load the bank straight into an embedded graph database, or produce Neo4j import files:
 
