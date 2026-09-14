@@ -1,345 +1,142 @@
 # graphfaker
 
-graphfaker is a Python library for generating and loading synthetic and real-world datasets tailored for graph-based applications. It supports `faker`  as social graph, OpenStreetMap (OSM) road networks, and real airline flight networks. Use it for data science, research, teaching, rapid prototyping, and more!
-
-*Note: The authors and graphgeeks labs do not hold any responsibility for the correctness of this generator.*
+GraphFaker generates synthetic graph datasets that behave like real ones, and loads a few real ones. You declare what a graph should look like, or pick a ready-made domain such as a bank with laundering patterns, and get tables you can put into Neo4j, LadybugDB, Parquet or NetworkX, with the ground truth attached.
 
 [![PyPI version](https://img.shields.io/pypi/v/graphfaker.svg)](https://pypi.python.org/pypi/graphfaker)
 [![Docs Status](https://readthedocs.org/projects/graphfaker/badge/?version=latest)](https://graphfaker.readthedocs.io/en/latest/?version=latest)
-[![Dependency Status](https://pyup.io/repos/github/denironyx/graphfaker/shield.svg)](https://pyup.io/repos/github/denironyx/graphfaker/)
 [![image](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
----
+Join our Discord server: [![](https://dcbadge.limes.pink/api/server/https://discord.gg/mQQz9bRRpH)](https://discord.gg/mQQz9bRRpH)
 
-Join our Discord server 👇
+*The authors and GraphGeeks Lab do not hold any responsibility for the correctness of this generator.*
 
-[![](https://dcbadge.limes.pink/api/server/https://discord.gg/mQQz9bRRpH)](https://discord.gg/mQQz9bRRpH)
+## Why
 
+Graph data is hard to get. The graphs people most want to test against, such as who pays whom, who knows whom, or who shares a device with whom, are the ones that cannot be shared. Existing generators either produce structure with no attributes, or attributes with no structure, and almost none of them tell you what they planted.
 
-### Problem Statement
-Graph data is essential for solving complex problems in various fields, including social network analysis, transportation modeling, recommendation systems, and fraud detection. However, many professionals, researchers, and students face a common challenge: a lack of easily accessible, realistic graph datasets for testing, learning, and benchmarking. Real-world graph data is often restricted due to privacy concerns, complexity, or large size, making experimentation difficult.
+GraphFaker makes graphs where attributes and structure agree, where events happen over time, and where every injected pattern is recorded. That makes the output usable for three things: developing and demonstrating graph applications, benchmarking graph databases and graph algorithms, and training and evaluating detectors (fraud models, entity resolution, GraphRAG builders) against a known answer.
 
-### Solution: graphfaker
-GraphFaker is an open-source Python library designed to generate, load, and export synthetic graph datasets in a user-friendly and configurable way. It enables users to generate graph tailored to their specific needs, allowing for better experimentation and learning without needing to think about where the data is coming from or how to fetch the data.
+## Install
 
-## Features
-- **Multiple Graph Sources:**
-  - `faker`: Synthetic “social-knowledge” graphs powered by Faker (people, places, organizations, events, products with rich attributes and relationships)
-  - `osm`: Real-world street networks directly from OpenStreetMap (by place name, address, or bounding box)
-  - `flights`: Flight/airline networks from Bureau of Transportation Statistics (airlines ↔ airports ↔ flight legs, complete with cancellation and delay flags)
-- **Unstructured Data Source:**
-  - `WikiFetcher`: Raw Wikipedia page data (title, summary, content, sections, links, references) ready for custom graph or RAG pipelines
-- **Entity Resolution:**
-  - `resolve()`: find and merge duplicate nodes using attribute similarity **and** neighbourhood overlap — the graph signal tabular record-linkage tools cannot see
-  - `evaluate_clusters()`: score a predicted clustering against gold labels you supply (pairwise and B-cubed)
-- **Export Connectors:**
-  - CSV, `neo4j-admin` bulk-import CSV, Cypher, openCypher, and ISO GQL — file-based, so no driver or running database is needed
-- **Measurement:**
-  - `generate_corpus()`: documents whose entities are known in advance, for counting how many nodes a graph builder creates per real entity
-- **Reproducible:** every synthetic graph is seedable
-- **Easy CLI & Python Library**
-
-This removes friction around data acquisition, letting you focus on algorithms, teaching or rapid prototyping.
-
-## ✨ Key Features
-
-| Source        | What It Gives You                                                                                                                                                                                     |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Faker**     | Synthetic social-knowledge graphs with configurable sizes, weighted and directional relationships.                                                      |
-| **OSM**       | Real road or walking networks via OSMnx under the hood—fetch by place, address, or bounding box; simplify topology; project to UTM.                                                |
-| **Flights**   | Airline/airport graph from BTS on-time performance data: nodes for carriers, airports, flights; edges for OPERATED\_BY, DEPARTS\_FROM, ARRIVES\_AT; batch or date-range support; subgraph sampling.   |
-| **WikiFetcher** | Raw page dumps (title, summary, content, sections, links, references) as JSON |
-
-
----
-
-*Disclaimer: This is still a work in progress (WIP). With logging and debugging print statement. Our goal for releasing early is to get feedback and reiterate.*
-
-## Installation
-
-Install from PyPI:
 ```sh
-uv pip install graphfaker
+pip install graphfaker
+pip install "graphfaker[examples]"    # adds matplotlib, kuzu and jupyter for the notebooks
 ```
 
 For development:
+
 ```sh
 git clone https://github.com/graphgeeks-lab/graphfaker.git
 cd graphfaker
-uv pip install -e .
+uv venv && uv pip install -e ".[dev,examples]"
 ```
 
----
+## Three things to try
 
-## Quick Start
-
----
-
-### Python Library Usage
+A social graph with realistic structure:
 
 ```python
 from graphfaker import GraphFaker
 
-gf = GraphFaker()
-# Synthetic social/knowledge graph
-g1 = gf.generate_graph(source="faker", total_nodes=200, total_edges=800)
-# OSM road network
-g2 = gf.generate_graph(source="osm", place="Chinatown, San Francisco, California", network_type="drive")
-# Flight network
-g3 = gf.generate_graph(source="flights", year=2024, month=1)
-
-# Fetch Wikipedia page data
-from graphfaker import WikiFetcher
-page = WikiFetcher.fetch_page("Graph theory")
-print(page['summary'])
-print(page['content'])
-WikiFetcher.export_page_json(page, "graph_theory.json")
-
+G = GraphFaker(seed=42).generate_graph(source="faker", total_nodes=500, total_edges=2500)
 ```
 
-#### Advanced: Date Range for Flights
+A bank with labelled laundering patterns, written to disk with its truth:
 
-Note this isn't recommended and it's still being tested. We are working on ways to make this faster.
-
-```python
-g = gf.generate_graph(source="flights", date_range=("2024-01-01", "2024-01-15"))
-```
-
-
-### CLI Usage (WIP)
-
-Show help:
 ```sh
-graphfaker --help
+graphfaker fraud --scale 0.01 --hardness medium --seed 42 --out ./bank
 ```
 
-#### Generate a Synthetic Social Graph
+The same bank loaded into an embedded graph database and queried in Cypher:
+
 ```sh
-graphfaker gen \
-    --fetcher faker \
-    --total-nodes 100 \
-    --total-edges 500
+pip install kuzu
+graphfaker fraud --scale 0.01 --seed 42 --out ./bank --sink ladybug
 ```
-
-#### Generate a Real-World Road Network (OSM)
-```sh
-graphfaker gen \
-    --fetcher osm \
-    --place "Berlin, Germany" \
-    --network-type drive
-```
-
-#### Generate a Flight Network (Airlines/Airports/Flights)
-```sh
-graphfaker gen \
-    --fetcher flights \
-    --country "United States" \
-    --year 2024 \
-    --month 1
-```
-
-You can also use `--date-range` for custom time spans (e.g., `--date-range "2024-01-01,2024-01-15"`).
-
----
-
-## Entity Resolution
-
-LLM-built knowledge graphs routinely emit the same real-world entity as several
-nodes, and every edge attached to a false node is a false edge. Tabular
-record-linkage tools compare *rows*, so they cannot use the strongest signal a
-graph offers: **two nodes that share most of their neighbours are probably the
-same entity, however differently their names are spelled.**
-
-`resolve()` scores candidate pairs on attribute similarity *and* neighbourhood
-overlap, clusters the survivors, and merges each cluster onto one canonical node
-— rewiring its edges, dropping self-loops the merge creates, and recording what
-was absorbed.
 
 ```python
-from graphfaker import GraphFaker
-
-gf = GraphFaker(seed=42)
-gf.generate_graph(source="faker", total_nodes=500, total_edges=2000)
-
-result = gf.resolve(on=["name", "email"], threshold=0.85)
-print(result.report())
-#   candidate pairs scored : 1284
-#   pairs above threshold  : 12
-#   clusters found         : 5
-#   duplicate nodes        : 7
-
-clean = result.apply()   # merged copy; the original is untouched
-```
-
-`structural_weight` controls how much shared-neighbour evidence may lift a
-pair's score. Structure can only *raise* a score, never lower it, so isolated
-nodes are never penalised for having few neighbours — set it to `0` to fall back
-to plain attribute matching:
-
-```python
-gf.resolve(on=["name"], structural_weight=0.0)   # attributes only
-gf.resolve(on=["name"], structural_weight=0.8)   # trust the graph structure
-```
-
-Shortened names get special handling. `"Hill"` against `"Allison Hill"` scores
-only ~0.5 on character similarity, because most of the longer string is
-unmatched — so it would be discarded before the structural signal was ever
-consulted, even though referring back to an entity by a shorter form is one of
-the commonest things a document does. When one name's tokens are contained in
-the other's, the score is *floored* at `token_subset_floor` (0.75 by default)
-rather than set to 1.0: containment is suggestive, not conclusive, so it lifts
-the pair into consideration and leaves the decision to shared neighbours. Pass
-`token_subset_floor=0.0` to switch it off.
-
-Already have labelled clusters? Score a prediction against them. This computes
-metrics only — it does not manufacture ground truth:
-
-```python
-from graphfaker import evaluate_clusters
-
-scores = evaluate_clusters(result.clusters, my_known_duplicates)
-print(scores["pairwise_f1"], scores["b_cubed_f1"])
-```
-
----
-
-## Graph structure
-
-Synthetic graphs are built to look structurally like real ones. Until 0.5 both
-endpoints of every edge were drawn uniformly at random, which produces an
-Erdős–Rényi graph: a Poisson degree distribution with no hubs, effectively no
-clustering, and no community structure. Edges are now formed by **preferential
-attachment** (popular nodes attract more), **triadic closure** (friends of
-friends become friends), and **homophily** over latent communities.
-
-Measured on 600 nodes / 2,400 edges, seed 1 — reproduce with
-`graphfaker.metrics.compare_topology`:
-
-| metric | realistic | uniform (pre-0.5) | real graphs |
-| --- | --- | --- | --- |
-| degree Fano factor | **7.9** | 1.7 | ≫ 1 |
-| max degree | **88** | 19 | hubs exist |
-| degree Gini | **0.45** | 0.26 | unequal |
-| average clustering | **0.180** | 0.013 | ≫ random baseline |
-| community modularity | **0.72** | −0.004 | 0.4–0.7 |
-| age homophily | **0.81** | 0.01 | positive |
-| isolated nodes | **0** | 4 | giant component |
-
-The Fano factor — degree variance over mean — is the clearest single test: a
-Poisson distribution has variance equal to its mean, so uniform attachment sits
-near 1 by construction and cannot be made to look otherwise.
-
-The friendship layer alone (Person–Person edges) has clustering 0.51, modularity
-0.91, and *positive* degree assortativity, which is what social networks look
-like. The graph as a whole is mildly disassortative because it is multipartite —
-people attach to hub cities and large employers — as real knowledge graphs are.
-
-```python
-from graphfaker.metrics import compare_topology, graph_stats
-
-realistic = GraphFaker(seed=1).generate_graph(total_nodes=600, total_edges=2400)
-uniform = GraphFaker(seed=1).generate_graph(total_nodes=600, total_edges=2400,
-                                           topology="uniform")
-print(compare_topology({"realistic": realistic, "uniform": uniform}))
-```
-
-`topology="uniform"` is kept only for this comparison. It is not a supported way
-to generate data.
-
-**Why it matters beyond looking right:** on a realistic graph, entity resolution
-is measurably *harder*. Injecting the same known duplicates into both and running
-`resolve()` gives precision 1.000 on the uniform graph but 0.88 on the realistic
-one — because homophily means genuinely distinct people share attributes and
-neighbours. Anything benchmarked against the old generator was flattered by it.
-
-Attributes are also no longer independent of structure. `population` tracks a
-place's connectivity, `employee_count` correlates 0.95 with the number of
-`WORKS_AT` edges actually present, ages cluster by community, and `industry`
-holds an industry rather than the job title `fake.job()` used to supply.
-`LIVES_IN` and `BORN_IN` are singular — previously a person could live in four
-cities at once.
-
----
-
-## Walkthrough
-
-The quickest way to see the current state of GraphFaker is the tour notebook:
-[`docs/notebooks/graphfaker_tour.ipynb`](docs/notebooks/graphfaker_tour.ipynb)
-— executed, with charts, so it reads on GitHub without running anything. It
-covers schemas, the fraud pack, exploration (amounts, seasonality, merchant
-popularity, repeat partners), the ground truth drawn on the graph, the hardness
-measurement across levels, scoring naive detectors, and reading, writing and
-querying the result with Polars, Cypher (embedded LadybugDB/Kùzu) and NetworkX.
-The same tour as a script is [`examples/fraud_tour.py`](examples/fraud_tour.py).
-
-```bash
-pip install "graphfaker[examples]"          # matplotlib, kuzu, jupyter
-python examples/fraud_tour.py --scale 0.002 --hardness medium --out ./fraud_tour
-jupyter notebook docs/notebooks/graphfaker_tour.ipynb
-```
-
-The essentials, end to end:
-
-```python
-import polars as pl
-from graphfaker import GraphTables, Manifest
-from graphfaker.domains import fraud
-from graphfaker.domains.fraud.hardness import hardness_report
-from graphfaker.domains.fraud.evaluate import evaluate
-from graphfaker.sinks import write_ladybug
-
-# generate: a bank with labelled laundering patterns, reproducible by seed
-run = fraud.generate(scale=0.002, hardness="medium", seed=42)
-
-# explore: node tables per type, edge tables per relationship — plain Polars
-transfers = run.tables.edges["TRANSFERS"]
-transfers.group_by("target").agg(pl.col("source").n_unique().alias("senders")).sort("senders", descending=True).head()
-
-# truth: every pattern, its accounts and roles, its transactions
-run.truth["patterns"].filter(pl.col("typology") == "cycle")
-
-# measure: how visible is the fraud to a naive detector?
-print(hardness_report(run).summary())
-
-# write, read back
-run.write("bank")                                   # nodes/, edges/, truth/, schema.yaml, manifest.json
-tables = GraphTables.read_parquet("bank"); manifest = Manifest.read("bank/manifest.json")
-
-# query: load an embedded graph database and ask it in Cypher (pip install kuzu, or ladybug)
 import kuzu
-write_ladybug(tables, "bank", db_path="bank.db")
-conn = kuzu.Connection(kuzu.Database("bank.db"))
-res = conn.execute("""
-    MATCH (a:Account)-[:TRANSFERS]->(b)-[:TRANSFERS]->(c)-[:TRANSFERS]->(d)-[:TRANSFERS]->(a)
-    WHERE a.id < b.id AND a.id < c.id AND a.id < d.id
-    RETURN a.id, b.id, c.id, d.id""")
-flagged = {x for row in res.get_all() for x in row}
-
-# score: precision / recall at account, transaction and pattern level
-print(evaluate(run, flagged_accounts=flagged, ring_threshold=0.5).summary())
-
-# or the NetworkX view, when you want algorithms and drawing
-G = run.to_networkx()
+conn = kuzu.Connection(kuzu.Database("bank/graph.lbdb"))
+conn.execute("MATCH (a:Account)-[t:TRANSFERS]->(b:Account) WHERE t.amount > 9000 RETURN a.id, count(t) ORDER BY count(t) DESC LIMIT 5").get_all()
 ```
 
----
+## Where to read next
 
-## Fraud / AML graphs
+| you want to | read |
+|---|---|
+| see everything in one place, with charts | [docs/notebooks/graphfaker_tour.ipynb](docs/notebooks/graphfaker_tour.ipynb), or run [examples/fraud_tour.py](examples/fraud_tour.py) |
+| understand how a schema becomes a graph | [docs/how-it-works.md](docs/how-it-works.md) |
+| understand how the bank and its fraud are generated | [docs/fraud-generation.md](docs/fraud-generation.md) |
+| know which generation methods exist and which GraphFaker uses | [docs/methods.md](docs/methods.md) |
+| add your own domain (supply chain, claims, telecom, ...) | [docs/adding-a-domain.md](docs/adding-a-domain.md) |
+| see the plan and the reasoning behind it | [docs/design/synthetic-at-scale.md](docs/design/synthetic-at-scale.md) |
 
-The `fraud` domain pack generates a bank: customers, accounts, merchants,
-devices and external counterparties; a realistic transaction process (salary
-on payday, rent on the first, subscriptions, repeat P2P partners, merchant
-popularity, hour-of-day and weekday seasonality, income-scaled amounts); and
-injected, **labelled** laundering typologies whose difficulty is measured, not
-asserted.
+## What you can generate
 
-```bash
-graphfaker fraud --scale 0.01 --hardness medium --seed 42 --out ./data          # ~100K accounts, ~900K transactions
-graphfaker fraud --scale 0.01 --sink ladybug --out ./data                       # + an embedded LadybugDB/Kùzu database
-graphfaker fraud --scale 0.01 --sink neo4j-admin --out ./data                   # + neo4j-admin import files
-graphfaker fraud --scale 0.01 --sink gen-fraud-graph --out ./data               # + gen-fraud-graph compatible CSVs
-graphfaker evaluate ./data --accounts flagged.txt --ring-threshold 0.5           # score a detector against the truth
+| domain | what it is | how |
+|---|---|---|
+| `social` | people, places, organizations, events and products; heavy-tailed degrees, clustering, communities, attributes that agree with structure | `GraphFaker.generate_graph(source="faker")` or `graphfaker generate social` |
+| `fraud` | a bank: customers, accounts, merchants, devices, counterparties; a realistic transaction process; eleven labelled laundering typologies with decoys and a measured hardness | `graphfaker fraud` or `graphfaker generate fraud` |
+| your own | a `GraphSchema`, or a process with injected patterns | [docs/adding-a-domain.md](docs/adding-a-domain.md) |
+
+Real-world sources, loaded rather than generated:
+
+| source | what it gives you |
+|---|---|
+| `osm` | road, walking or cycling networks from OpenStreetMap, by place name, address or bounding box |
+| `flights` | airline, airport and flight-leg networks from BTS on-time data, for a month or a date range |
+| `WikiFetcher` | Wikipedia page text, sections, links and references as JSON, for building your own graph or RAG pipeline |
+
+List the domains and their options with `graphfaker domains`.
+
+## Schemas
+
+A synthetic graph is declared as a `GraphSchema`: node types with attribute samplers, latent factors shared across them, edge families, and a topology model. The social graph is one; you can read it, change it and save it.
+
+```python
+from graphfaker import GraphFaker, GraphSchema
+from graphfaker.domains import social
+
+schema = social.schema(total_nodes=1000, total_edges=8000, communities=8)
+schema.to_yaml("social.yaml")
+schema = GraphSchema.from_yaml("social.yaml")
+
+run = GraphFaker(seed=42).generate(schema)
+run.tables.nodes["Person"]      # a Polars frame per node type
+run.tables.edges["WORKS_AT"]    # a Polars frame per relationship
+run.truth["community"]          # the latent groups and their parameters
+run.manifest                    # schema digest, seed, shard size, versions
+run.write("out/")               # nodes/, edges/, truth/, schema.yaml, manifest.json
+G = run.to_networkx()           # the NetworkX view
 ```
+
+A small schema of your own:
+
+```python
+from graphfaker.schema import *
+
+schema = GraphSchema(
+    name="tiny_payments",
+    latent=[LatentFactor(name="region", groups=4, params={"log_wealth": GaussianSampler(mean=8, sd=0.6)})],
+    nodes=[
+        NodeType(name="Account", count=500, attributes={
+            "owner": FakerSampler(provider="name"),
+            "balance": LognormalSampler(mu="@region.log_wealth", sigma=1.0, decimals=2),
+            "tier": CategorySampler(values=["basic", "plus", "premium"], weights=[7, 2, 1]),
+        }),
+    ],
+    edges=[EdgeType(source="Account", target="Account", share=1.0,
+                    relationships=[Relationship(name="PAYS", attributes={"amount": UniformSampler(low=5, high=500, decimals=2)})])],
+    total_edges=4000,
+    topology=SocialTopology(group="region"),
+)
+```
+
+A parameter written as `"@factor.param"` varies by latent group. That is how attributes end up correlated with each other and, through the topology model, with structure. The samplers are `constant`, `category`, `subcategory`, `uniform`, `gaussian`, `lognormal`, `poisson`, `bernoulli`, `faker`, `expression`, `reference`, `mixture` and `foreign_key`. The full mechanism is in [docs/how-it-works.md](docs/how-it-works.md).
+
+## The fraud pack
+
+`fraud.generate` builds a bank and a period of activity: salary on payday, rent on the first, subscriptions, card payments that follow merchant popularity, transfers that go mostly to the same few contacts, seasonality by hour and weekday, amounts that scale with income. Then it injects laundering typologies and records them.
 
 ```python
 from graphfaker.domains import fraud
@@ -347,33 +144,19 @@ from graphfaker.domains.fraud.hardness import hardness_report, realism_report
 from graphfaker.domains.fraud.evaluate import evaluate
 
 run = fraud.generate(scale=0.01, hardness="high", seed=42, workers=8)
-run.tables.edges["TRANSFERS"]        # source, target, tx_id, timestamp, amount, memo, recurring
-run.truth["patterns"]                # pattern_id, typology, is_fraud, accounts, roles, start, end
-run.truth["accounts"]                # account_id, pattern_id, typology, role, is_fraud
-run.truth["transactions"]            # tx_id, pattern_id, typology, is_fraud
+run.tables.edges["TRANSFERS"]    # source, target, tx_id, timestamp, amount, memo, recurring
+run.truth["patterns"]            # pattern_id, typology, is_fraud, accounts, roles, start, end
+run.truth["accounts"]            # account_id, pattern_id, typology, role, is_fraud
+run.truth["transactions"]        # tx_id, pattern_id, typology, is_fraud
 print(hardness_report(run).summary())
-evaluate(run, flagged_accounts=my_detector(run)).summary()
+print(evaluate(run, flagged_accounts=my_detector(run)).summary())
 ```
 
-**Scale** follows gen-fraud-graph: `1.0` = ~10M accounts / ~90M transactions.
+`scale` follows gen-fraud-graph: `1.0` is about 10M accounts and 90M transactions.
 
-**Typologies:** `fan_in, fan_out, gather_scatter, scatter_gather, cycle, stack,
-bipartite` (the AMLworld set) plus `structuring` (under the reporting
-threshold), `mule_network` (pass-through within hours, shared device, fresh
-accounts), `bust_out` (credit escalation then max-out) and
-`synthetic_identity` (customers sharing phone, address and device). Every
-pattern is recorded with its accounts, roles and transactions; the edge tables
-themselves carry no labels, and `tx_id`s are assigned in time order so the id
-does not leak what was injected.
+The typologies are `fan_in`, `fan_out`, `gather_scatter`, `scatter_gather`, `cycle`, `stack`, `bipartite` (the AMLworld set), plus `structuring` (deposits under the reporting threshold), `mule_network` (pass-through within hours, a shared device, freshly opened accounts), `bust_out` (credit built up then maxed out) and `synthetic_identity` (customers sharing phone, address and device). The edge tables carry no labels, and transaction ids are assigned in time order so the id does not reveal what was injected.
 
-**Hardness** (`low | medium | high`) blends signature amounts into the
-legitimate distribution, stretches timing from hours to weeks, overlaps rings,
-recruits pattern members among active accounts, shrinks ring sizes, and adds
-*decoys* — legitimate payroll fan-outs, marketplace fan-ins and supplier
-cycles that are labelled not-fraud. `hardness_report` scores every single
-feature a naive detector could threshold on (amount, round amounts, proximity
-to the threshold, degree, pass-through ratio, burstiness, account age) by the
-AUC it achieves against the truth. Measured on a 20K-account run:
+`hardness` (`low`, `medium`, `high`) blends signature amounts into legitimate ones, spreads timing from hours to weeks, overlaps rings, shrinks ring sizes, keeps or strips normal activity on pattern accounts, and adds decoys: payroll fan-outs, marketplace fan-ins and supplier cycles that are labelled as not fraud. `hardness_report` measures the result: for each single feature a simple rule might threshold on (amount, round amounts, proximity to the threshold, degree, pass-through, burstiness, account age), the AUC it achieves against the truth. On a 20K-account run:
 
 | hardness | transaction `amount` AUC | best account-level feature AUC |
 |---|---|---|
@@ -381,226 +164,108 @@ AUC it achieves against the truth. Measured on a 20K-account run:
 | medium | 0.79 | 0.75 (`max_amount`) |
 | high | 0.62 | 0.73 (`in_partners`) |
 
-Degree is the signal that survives: with ~9 transactions per account per
-quarter (the density the scale convention implies) even a small ring adds
-partners an ordinary account does not have. That is a property of the
-convention, reported rather than hidden.
+Amount signals fade as intended. Degree fades less, because the scale convention gives an account about nine transactions a quarter and a ring adds partners an ordinary account does not have. The full method, every typology's signature, and what each hardness parameter changes are in [docs/fraud-generation.md](docs/fraud-generation.md).
 
-**Performance:** at `scale=0.01` the transaction process takes ~2 seconds; the
-run is dominated by Faker-generated customer attributes (~70 s single-process,
-~45 s with `workers=12` on a 6-core laptop). Entity sampling is sharded and
-parallelisable without changing the result; a vectorised person sampler is the
-next step for full-scale runs.
+`evaluate` scores flagged accounts and transactions at account, transaction and pattern level, the way gen-fraud-graph's evaluator does. From the command line: `graphfaker evaluate ./bank --accounts flagged.txt --ring-threshold 0.5`.
 
----
+## Write, read, query
 
-## Schemas
+`run.write(dir)` writes Parquet (`nodes/`, `edges/`, `truth/`), `schema.yaml` and `manifest.json`. `GraphTables.read_parquet(dir)` and `Manifest.read(path)` read them back.
 
-Since 0.6, synthetic generation is schema-driven. The social graph above is a
-`GraphSchema` — node types with attribute samplers, latent factors shared across
-them, edge families, and a topology model — and any schema can be generated the
-same way:
+Sinks put the same tables into a database's own loader format:
+
+| sink | what it writes | use |
+|---|---|---|
+| `write_ladybug` | DDL and `COPY FROM` Parquet; loads the database when `kuzu` or `ladybug` is installed | an embedded graph database, one file, Cypher, no server |
+| `write_neo4j_admin` | typed CSVs and the `neo4j-admin database import` command | the fast path into Neo4j |
+| `write_gen_fraud_graph` | gen-fraud-graph's `accounts/`, `transactions/`, `fraud/` layout | pipelines built on that generator |
+| `export_csv`, `export_neo4j_csv`, `export_cypher` | from a NetworkX graph: CSV, neo4j-admin CSV, Cypher, openCypher, ISO GQL | Memgraph, Neptune, TigerGraph, any bulk loader |
+| `export_graph` | GraphML | Gephi, Cytoscape, igraph |
 
 ```python
-from graphfaker import GraphFaker, GraphSchema
-from graphfaker.domains import social
+from graphfaker import GraphTables, Manifest
+from graphfaker.sinks import write_ladybug, write_neo4j_admin
 
-schema = social.schema(total_nodes=1000, total_edges=8000, communities=8)
-schema.to_yaml("social.yaml")          # edit, version, share
-schema = GraphSchema.from_yaml("social.yaml")
-
-run = GraphFaker(seed=42).generate(schema)
-run.tables.nodes["Person"]             # polars DataFrame per node type
-run.tables.edges["WORKS_AT"]           # polars DataFrame per relationship
-run.truth["community"]                 # the latent groups and their parameters
-run.manifest                           # schema digest, seed, shard size, versions
-run.write("out/")                      # nodes/, edges/, truth/, schema.yaml, manifest.json
-G = run.to_networkx()                  # the NetworkX view, as before
+tables = GraphTables.read_parquet("bank")
+write_neo4j_admin(tables, "bank/neo4j")
+write_ladybug(tables, "bank", db_path="bank/graph.lbdb")
 ```
 
-Writing your own schema:
-
-```python
-from graphfaker.schema import *
-
-schema = GraphSchema(
-    name="tiny_payments",
-    latent=[LatentFactor(name="region", groups=4,
-                         params={"log_wealth": GaussianSampler(mean=8, sd=0.6)})],
-    nodes=[
-        NodeType(name="Account", count=500, attributes={
-            "owner":   FakerSampler(provider="name"),
-            "balance": LognormalSampler(mu="@region.log_wealth", sigma=1.0, decimals=2),
-            "tier":    CategorySampler(values=["basic", "plus", "premium"], weights=[7, 2, 1]),
-        }),
-    ],
-    edges=[EdgeType(source="Account", target="Account", share=1.0,
-                    relationships=[Relationship(name="PAYS",
-                        attributes={"amount": UniformSampler(low=5, high=500, decimals=2)})])],
-    total_edges=4000,
-    topology=SocialTopology(group="region"),
-)
-```
-
-Samplers: `constant, category, subcategory, uniform, gaussian, lognormal,
-poisson, bernoulli, faker, expression, reference, mixture, foreign_key`. A
-parameter written as `"@factor.param"` varies by latent group, which is how
-attributes end up correlated with community — and, through the topology model,
-with structure. Everything a schema declares is validated before generation and
-hashed into the manifest.
-
-Determinism: a run is a pure function of the schema, the seed and the shard
-size, in any process and on any machine. Node generation is sharded so it can
-be parallelised without changing the result.
-
----
+On the command line, `--sink parquet|neo4j-admin|ladybug|gen-fraud-graph` on `graphfaker fraud` and `graphfaker generate`.
 
 ## Reproducibility
 
-Synthetic generation is seedable, per instance. The same seed and the same
-arguments always produce an identical graph, and seeding does not disturb the
-global `random` module:
+A run is a function of the schema (or domain options), the seed and the shard size. The number of workers, the machine and the process hash seed do not change the bytes. The same seed gives the same graph in any process.
 
 ```python
 GraphFaker(seed=42).generate_graph(source="faker", total_nodes=100)
-# or per call:
-gf.generate_graph(source="faker", total_nodes=100, seed=42)
+fraud.generate(scale=0.001, seed=42)
 ```
+
+## Command line
+
+```
+graphfaker domains                                    list domains and their options
+graphfaker generate <domain> --key value --out DIR    generate any domain; options are validated
+graphfaker fraud --scale 0.01 --hardness high         the fraud pack, with hardness and realism reports
+graphfaker evaluate DIR --accounts flagged.txt        score a detector against a fraud run
+graphfaker gen --fetcher faker|osm|flights ...        the social graph, or a real-world network, exported to a file
+```
+
+Examples for the real-world sources:
 
 ```sh
-graphfaker gen --fetcher faker --total-nodes 100 --seed 42
+graphfaker gen --fetcher osm --place "Berlin, Germany" --network-type drive --export berlin.graphml
+graphfaker gen --fetcher flights --country "United States" --year 2024 --month 1 --export flights.graphml
 ```
 
----
+## Entity resolution
 
-## Getting the graph into a database
-
-Rather than shipping a driver per database — each needing credentials, a version
-matrix, and a live service to test against — GraphFaker writes files that every
-engine's own loader already understands.
+Knowledge graphs built by extraction often contain the same real-world entity as several nodes. `resolve()` scores candidate pairs on attribute similarity and on neighbourhood overlap, the signal a tabular record-linkage tool cannot see, then merges each cluster onto one node.
 
 ```python
-from graphfaker.export import export_csv, export_neo4j_csv, export_cypher
-
-export_csv(G, "nodes.csv", "edges.csv")      # pandas, Gephi, any bulk loader
-export_neo4j_csv(G, "import/")               # neo4j-admin bulk import headers
-export_cypher(G, "load.cypher")              # Neo4j, Memgraph, Kuzu
-export_cypher(G, "load.gql", dialect="gql")  # ISO GQL
+gf = GraphFaker(seed=42)
+gf.generate_graph(source="faker", total_nodes=500, total_edges=2000)
+result = gf.resolve(on=["name", "email"], threshold=0.85)
+print(result.report())
+clean = result.apply()          # a merged copy; the original is untouched
 ```
 
-Or from the CLI:
-
-```sh
-graphfaker gen --fetcher faker --total-nodes 500 --format cypher --export load.cypher
-graphfaker gen --fetcher faker --total-nodes 500 --format neo4j-csv --export import/
-```
-
-| Format | Loads into |
-| --- | --- |
-| `graphml` | Gephi, Cytoscape, NetworkX, igraph |
-| `csv` | pandas, TigerGraph `LOAD`, Amazon Neptune bulk loader, Spark/GraphFrames |
-| `neo4j-csv` | `neo4j-admin database import` — the fast path for large graphs |
-| `cypher` | Neo4j, Memgraph, Kuzu |
-| `opencypher` | Amazon Neptune |
-| `gql` | ISO GQL engines (`INSERT` in place of `CREATE`) |
-
-Node labels come from the `type` attribute and relationship types from
-`relationship`, both configurable. Nodes of different types carry different
-attributes, so CSV headers are the **union** of all keys seen — a node missing a
-column gets an empty cell rather than having its values shifted into the wrong
-one. Container values (coordinate tuples, merge provenance) are flattened, and
-labels containing punctuation are sanitised.
-
-Once loaded, Neo4j Graph Data Science works directly on the result:
-
-```cypher
-CALL gds.graph.project('g', '*', '*');
-CALL gds.pageRank.stream('g') YIELD nodeId, score
-RETURN gds.util.asNode(nodeId).name AS name, score ORDER BY score DESC LIMIT 10;
-```
-
----
+`structural_weight` sets how much shared-neighbour evidence may raise a pair's score (0 gives plain attribute matching). Shortened names such as `"Hill"` against `"Allison Hill"` are floored at `token_subset_floor` so that the decision is left to the graph. `evaluate_clusters(predicted, gold)` scores a clustering you already have labels for (pairwise and B-cubed F1).
 
 ## Measuring entity duplication
 
-`graphfaker.corpus` builds documents whose entities are known in advance, so you
-can count how many nodes a graph builder creates for entities that are singular.
+`graphfaker.corpus` writes documents whose entities are known in advance, so you can count how many nodes a graph builder creates per real entity. The text is clean English and every entity is unambiguous to a reader, so a correct pipeline scores zero.
 
 ```python
 from graphfaker.corpus import generate_corpus, duplication_report
 
 corpus = generate_corpus(seed=42, n_entities=60, n_documents=80)
-assert corpus.audit()["clean"]      # no surface form belongs to two entities
-corpus.write("corpus/")             # documents + gold.json
-
-# ...run any graph builder over corpus/, then:
+corpus.write("corpus/")                      # documents plus gold.json
 report = duplication_report(extracted_graph, corpus, framework="my-pipeline")
 print(report.summary())
 ```
 
-Nothing is corrupted. The text is clean, well-formed English and every entity is
-unambiguous to a human reader, so a correct pipeline scores zero. Entities are
-referred to by the surface forms a normal writer uses — full name, surname
-alone, an accepted abbreviation — which is ordinary prose, not injected noise.
+[docs/notebooks/duplication_experiment.ipynb](docs/notebooks/duplication_experiment.ipynb) runs this end to end with Cognee and repairs the result with `resolve()`.
 
-That restraint is deliberate. Synthetic *corruption* is far easier than
-real-world error (Lam et al., IJPDS 2024, measured roughly a hundredfold gap),
-so a benchmark built on guessed error rates mostly measures its own noise model.
-Counting splits of entities a human would never split is a weaker claim, and one
-a generator can actually support.
+## Performance and limits
 
-`examples/duplication_experiment.py` runs this across several frameworks and
-prints a comparison table. It refuses to run on an ambiguous corpus, includes a
-perfect-extractor control that must score zero, and names any framework it
-skipped rather than omitting it silently.
-
-**[`docs/notebooks/duplication_experiment.ipynb`](docs/notebooks/duplication_experiment.ipynb)**
-walks the whole thing end to end — build the corpus, audit it, run
-[Cognee](https://github.com/topoteretes/cognee), inspect what got split, repair
-it with `resolve()`, sweep the threshold to see the precision/recall tradeoff,
-and export the cleaned graph. Steps other than the Cognee run work without an
-LLM key, using a clearly-labelled simulated extraction so the notebook is
-runnable as a tutorial.
-
-On that simulated graph, `resolve()` takes duplication from **60% to 20%** and
-node inflation from 2.15× to 1.20× at precision 1.000 — but read the
-[caveats](docs/notebooks/duplication_experiment.ipynb) before quoting numbers
-like that. Structural matching only helps when duplicate nodes share
-neighbours; an extractor that *partitions* an entity's edges leaves almost no
-overlap to find, which is the hard case.
-
----
-
-## Scope
-
-Anything not documented above is not implemented. Please open an issue if you
-need something specific rather than assuming it is on the way.
-
----
+At `scale=0.01` (100K accounts, 900K transactions) the transaction process takes about two seconds; the run takes about 70 seconds single-process and about 45 seconds with `workers=12` on a six-core laptop, because Faker attribute generation costs about a millisecond per customer. The social topology model is sequential and suits graphs up to about a million edges. Full-scale fraud runs (`scale=1.0`) need a vectorised person sampler and chunked writes, both planned. Balances are not tracked as a running ledger. See the design document for the roadmap.
 
 ## Notes on network access
 
-The `flights` fetcher downloads from BTS and OpenFlights with TLS verification
-enabled. Some systems fail to validate the BTS certificate chain; if you hit
-that, you can opt out with `GRAPHFAKER_INSECURE_TLS=1`, which logs a warning and
-means the downloaded data is no longer authenticated. Verification is never
-disabled silently.
-
----
+The `flights` fetcher downloads from BTS and OpenFlights with TLS verification enabled. If your system fails to validate the BTS certificate chain, set `GRAPHFAKER_INSECURE_TLS=1` to opt out; this logs a warning and means the downloaded data is no longer authenticated.
 
 ## Documentation
 
 Full documentation: https://graphfaker.readthedocs.io
 
----
-⭐ Star the Repo
-
-If you find this project valuable, star ⭐ this repository to support the work and help others discover it!
-
----
+If you find this project useful, star the repository to support the work and help others discover it.
 
 ## License
-MIT License
+
+MIT. See [LICENSE](LICENSE).
 
 ## Credits
+
 Created with Cookiecutter and the `audreyr/cookiecutter-pypackage` project template.

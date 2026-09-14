@@ -1,7 +1,7 @@
 """Injected, labelled patterns.
 
 Each typology has a *signature*: the thing a rule-based detector was written
-to catch — round amounts, near-identical splits, a burst inside an hour, a
+to catch: round amounts, near-identical splits, a burst inside an hour, a
 fresh account that only ever forwards. Hardness decides how much of that
 signature survives. ``amount_blend`` swaps signature amounts for draws from
 the legitimate distribution of the same channel; ``timing_spread_days``
@@ -10,8 +10,8 @@ keeps normal activity on pattern accounts; ``ring_overlap`` lets rings share
 members; ``decoy_ratio`` adds legitimate structures with the same shape.
 
 The catalog is the AMLworld set (fan-in, fan-out, gather-scatter,
-scatter-gather, cycle, stack, bipartite) plus the behaviours a bank actually
-files SARs on: structuring under the reporting threshold, mule networks with
+scatter-gather, cycle, stack, bipartite) plus the behaviours banks
+file suspicious activity reports on: structuring under the reporting threshold, mule networks with
 pass-through and shared devices, bust-out on credit, and synthetic identities
 sharing phone, address and device.
 

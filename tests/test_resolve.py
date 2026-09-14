@@ -104,7 +104,7 @@ def test_token_subset_floor_never_reaches_certainty():
 def test_initials_are_dropped_so_a_shortened_name_still_matches():
     """"A. Hill" reduces to its meaningful token, "hill".
 
-    That token is contained in "allison hill", so the pair is lifted — which is
+    That token is contained in "allison hill", so the pair is lifted, which is
     the intent: an initialised form is one of the commonest ways a document
     refers back to a person it already named.
     """
@@ -473,7 +473,7 @@ def test_resolve_runs_on_a_generated_graph():
 def test_resolve_round_trip_recovers_injected_duplicates():
     """End-to-end: duplicate a node, then check resolve finds it back.
 
-    This is the only claim being made — that a node copied with a perturbed
+    This is the only claim being made: that a node copied with a perturbed
     name and a shared neighbourhood is recoverable. It is not a claim that real
     extraction errors look like this one.
     """

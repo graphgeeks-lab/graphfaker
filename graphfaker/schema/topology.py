@@ -3,7 +3,7 @@
 A topology model is the graph-specific half of a schema. Attribute samplers say
 what a node looks like; the topology model says who it connects to, and it is
 allowed to look at attributes and latent groups to decide. That coupling is
-the whole point — it is what makes "like attaches to like" possible.
+deliberate: it is what makes "like attaches to like" possible.
 
 Phase 0 ships the two models the social generator already had. Vectorised
 models for very large graphs (Chung-Lu, stochastic block, R-MAT, bipartite

@@ -3,13 +3,13 @@
 Three granularities, following gen-fraud-graph's evaluator so results are
 comparable, plus transactions:
 
-* **account** — did the detector flag the accounts that take part in fraud?
-* **transaction** — did it flag the injected transactions?
-* **pattern** — is a whole pattern considered found? A pattern counts as
+* **account**: did the detector flag the accounts that take part in fraud?
+* **transaction**: did it flag the injected transactions?
+* **pattern**: is a whole pattern considered found? A pattern counts as
   detected when at least ``ring_threshold`` of its accounts are flagged.
 
-Decoys are legitimate: flagging their accounts counts as a false positive,
-which is exactly what they are there to measure.
+Decoys are legitimate: flagging their accounts counts as a false positive.
+That is what they are there to measure.
 """
 
 from __future__ import annotations

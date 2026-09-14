@@ -274,7 +274,7 @@ class GraphFaker:
         """Find nodes that look like duplicates of the same entity.
 
         Scores candidate pairs on attribute similarity *and* neighbourhood
-        overlap — the signal a tabular record-linkage tool cannot see. Nothing
+        overlap, the signal a tabular record-linkage tool cannot see. Nothing
         is modified; call `.apply()` on the result to get a merged graph.
 
         Args:

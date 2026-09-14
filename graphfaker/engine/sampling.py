@@ -3,7 +3,7 @@
 Node generation is embarrassingly parallel once latent-group parameters are
 fixed: each shard of a node type draws its rows from its own seeded stream
 and never looks at another shard. The result is a function of the seed and
-the shard size only — both are recorded in the manifest — so how many
+the shard size only (both are recorded in the manifest), so how many
 workers execute the shards is a performance knob and not a semantic one.
 
 Values are drawn row by row. Faker providers dominate the cost, so a
@@ -276,7 +276,7 @@ def sample_nodes(
     """All rows of one node type, sharded, each shard on its own stream.
 
     ``workers > 1`` runs shards in a process pool (``executor`` reuses one
-    across node types — spawning a pool per type costs more than it saves).
+    across node types; spawning a pool per type costs more than it saves).
     The result does not depend on either: shard seeds come from the spawn
     tree, not from which process happened to draw them.
     """

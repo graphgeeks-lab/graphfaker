@@ -2,6 +2,7 @@
 narrative stays reviewable as text, then executed so the committed notebook
 carries its outputs:  python docs/notebooks/build_tour.py"""
 
+import re
 from pathlib import Path
 
 import nbformat
@@ -12,20 +13,40 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "notebooks" / "graphfaker_tour.ipynb"
 
 cells = []
-md = lambda s: cells.append(new_markdown_cell(s.strip()))
+
+
+def unwrap(text: str) -> str:
+    """One paragraph per line: join lines that are not list items, headings or table rows."""
+    out, buf = [], []
+    for line in text.strip().splitlines():
+        s = line.strip()
+        block = not s or re.match(r"^(#|\||[-*]\s|\d+\.\s|```)", s)
+        if block:
+            if buf:
+                out.append(" ".join(buf))
+                buf = []
+            out.append(line)
+        else:
+            buf.append(s)
+    if buf:
+        out.append(" ".join(buf))
+    return "\n".join(out)
+
+
+md = lambda s: cells.append(new_markdown_cell(unwrap(s)))
 code = lambda s: cells.append(new_code_cell(s.strip()))
 
 md("""
-# GraphFaker tour — schemas, a synthetic bank, and the ground truth that comes with it
+# GraphFaker tour: schemas, a synthetic bank, and the ground truth that comes with it
 
 This notebook is a walk through what GraphFaker does today:
 
-1. **Schemas** — a graph is declared (node types, samplers, latent factors, topology), generated, and measured.
-2. **The fraud pack** — a bank with customers, accounts, merchants and devices, a realistic transaction process, and eleven labelled laundering typologies.
-3. **Exploration** — what the data looks like: amounts, seasonality, merchant popularity, who transfers to whom.
-4. **Ground truth** — the patterns, drawn on the graph.
-5. **Hardness** — how hard the fraud is to find, measured against naive detectors.
-6. **Read, write, query** — Parquet on disk, Polars on the tables, Cypher on an embedded graph database, NetworkX when you want it.
+1. **Schemas**: a graph is declared (node types, samplers, latent factors, topology), generated, and measured.
+2. **The fraud pack**: a bank with customers, accounts, merchants and devices, a realistic transaction process, and eleven labelled laundering typologies.
+3. **Exploration**: what the data looks like: amounts, seasonality, merchant popularity, who transfers to whom.
+4. **Ground truth**: the patterns, drawn on the graph.
+5. **Hardness**: how hard the fraud is to find, measured against naive detectors.
+6. **Read, write, query**: Parquet on disk, Polars on the tables, Cypher on an embedded graph database, NetworkX when you want it.
 
 Everything here is reproducible: same seed, same bytes, on any machine.
 """)
@@ -78,7 +99,7 @@ stats = graph_stats(G)
 """)
 
 md("""
-Heavy-tailed degrees, clustering far above the random baseline, and communities you can recover — because attributes
+Heavy-tailed degrees, clustering far above the random baseline, and communities you can recover, because attributes
 and edges are both driven by the same latent factor. Colour by community:
 """)
 
@@ -122,7 +143,7 @@ run.tables.edges["TRANSFERS"].head(5)
 md("""
 ## 3. What does the data look like?
 
-Node tables per type, edge tables per relationship — plain Polars frames. Start with the shape of the transaction
+Node tables per type, edge tables per relationship, all plain Polars frames. Start with the shape of the transaction
 layer: three channels (card payments to merchants, P2P transfers, wires to external counterparties), and a recurring
 component (salary, rent, utilities, subscriptions) underneath the ad-hoc activity.
 """)
@@ -168,7 +189,7 @@ plt.tight_layout(); plt.show()
 
 md("""
 Structure: a few merchants take most of the card traffic, and people transfer to the same handful of contacts
-again and again — that is what gives the P2P layer hubs, repeat partners and community structure instead of an
+again and again. That is what gives the P2P layer hubs, repeat partners and community structure instead of an
 Erdős–Rényi soup.
 """)
 
@@ -215,7 +236,7 @@ md("""
 
 Every injected pattern is recorded with its typology, accounts and roles, and every transaction it created. The
 edge tables carry **no** labels; `tx_id`s are assigned in time order so the id does not leak what was injected.
-At `hardness="medium"`, decoys — legitimate payroll fan-outs, marketplace fan-ins, supplier cycles — are added and
+At `hardness="medium"`, decoys (legitimate payroll fan-outs, marketplace fan-ins, supplier cycles) are added and
 labelled *not* fraud.
 """)
 
@@ -260,7 +281,7 @@ def draw_pattern(pattern_id, ax):
     nx.draw_networkx_edges(S, pos, edgelist=guilty, ax=ax, edge_color=FRAUD, width=2, arrows=True, arrowsize=12)
     nx.draw_networkx_nodes(S, pos, nodelist=[n for n in S if n not in members], ax=ax, node_color=LEGIT, node_size=40, linewidths=0)
     nx.draw_networkx_nodes(S, pos, nodelist=list(members), ax=ax, node_color=FRAUD, node_size=140, linewidths=0)
-    ax.set_title(f"{pattern_id}: {row['typology']} — {len(members)} accounts, {row['n_transactions']} transactions"); ax.axis("off"); ax.grid(False)
+    ax.set_title(f"{pattern_id}: {row['typology']}: {len(members)} accounts, {row['n_transactions']} transactions"); ax.axis("off"); ax.grid(False)
 
 fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
 draw_pattern(patterns.filter((pl.col("typology") == "fan_in") & pl.col("is_fraud"))["pattern_id"][0], axes[0])
@@ -270,7 +291,7 @@ plt.show()
 
 md("""
 Some typologies live off the transaction layer. Mule networks share a device; synthetic identities share phone and
-address. The same collisions happen innocently — households share tablets — which is what makes them a signal rather
+address. The same collisions happen innocently (households share tablets), which is what makes them a signal rather
 than a giveaway.
 """)
 
@@ -287,11 +308,11 @@ shared.head()
 """)
 
 md("""
-## 5. Hardness is measured, not asserted
+## 5. How hard is the fraud to find?
 
-For every typology, every single feature a naive detector might threshold on — amount, round amounts, proximity
-to the reporting threshold, degree, pass-through ratio, burstiness, account age — is scored by the AUC it achieves
-against the truth. Then the same run at `low`, `medium` and `high` hardness, to see what blends away and what does not.
+Hardness is not a claim, it is a measurement. For every typology, each single feature a simple rule might threshold on (amount, round amounts, proximity
+to the reporting threshold, degree, pass-through ratio, burstiness, account age) is scored by the AUC it achieves
+against the truth. Then the same run at `low`, `medium` and `high` hardness, to see what fades and what does not.
 """)
 
 code("""
@@ -322,7 +343,7 @@ table = pl.DataFrame({"hardness": list(levels)} | {k: [levels[l][k] for l in lev
 fig, ax = plt.subplots(figsize=(8, 3.6))
 for k in table.columns[1:]:
     ax.plot(table["hardness"], table[k], marker="o", label=k)
-ax.axhline(0.5, color="black", lw=0.6); ax.set_ylim(0.45, 1.0); ax.set_ylabel("AUC"); ax.legend(loc="lower left"); ax.set_title("what hardness blends away — and what it cannot")
+ax.axhline(0.5, color="black", lw=0.6); ax.set_ylim(0.45, 1.0); ax.set_ylabel("AUC"); ax.legend(loc="lower left"); ax.set_title("what hardness blends away, and what it cannot")
 plt.show()
 table
 """)
@@ -330,7 +351,7 @@ table
 md("""
 Amount and round-number signals fade as hardness rises. Degree does not: under the scale convention an account makes
 about nine transactions a quarter, so even a small ring is a local outlier. That is a property of the convention,
-reported rather than hidden — and it is the quantified argument for looking at structure.
+reported rather than hidden, and it is the quantified argument for looking at structure.
 """)
 
 md("""
@@ -345,14 +366,14 @@ code("""
 threshold = run.manifest.extra["fraud"]["reporting_threshold"]
 near = transfers.filter((pl.col("amount") >= 0.85 * threshold) & (pl.col("amount") < threshold)).group_by("source").len().filter(pl.col("len") >= 3)["source"].to_list()
 hubs = transfers.group_by("target").agg(pl.col("source").n_unique().alias("k")).filter(pl.col("k") >= 6)["target"].to_list()
-print("rule A — ≥3 near-threshold transfers out\\n" + evaluate(run, near, ring_threshold=0.5).summary().split("\\n\\n")[0])
+print("rule A: three or more near-threshold transfers out\\n" + evaluate(run, near, ring_threshold=0.5).summary().split("\\n\\n")[0])
 print()
-print("rule B — ≥6 distinct senders\\n" + evaluate(run, hubs, ring_threshold=0.5).summary().split("\\n\\n")[0])
+print("rule B: six or more distinct senders\\n" + evaluate(run, hubs, ring_threshold=0.5).summary().split("\\n\\n")[0])
 """)
 
 md("""
 Rule A's false positives are almost all business accounts whose "near-threshold transfers" are monthly salaries to
-well-paid staff — the payroll false positive every AML analyst knows, produced by the process rather than scripted.
+well-paid staff: the payroll false positive every AML analyst knows, produced by the process rather than scripted.
 Rule B flags hubs: marketplaces, employers, popular people. Both find a couple of patterns and drown in noise, which is
 the case for looking at structure and context together, and what the ground truth lets you quantify.
 """)
@@ -360,7 +381,7 @@ the case for looking at structure and context together, and what the ground trut
 md("""
 ## 7. Write it, read it back, query it
 
-A run writes `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json`. Parquet is the interchange format — it
+A run writes `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json`. Parquet is the interchange format; it
 is what Neo4j's importer, LadybugDB/Kùzu `COPY`, Spark and PyTorch Geometric all read.
 """)
 
@@ -384,7 +405,7 @@ print(tables.node_count, "nodes,", tables.edge_count, "edges | schema digest mat
 md("""
 ### Cypher on an embedded graph database
 
-`write_ladybug` writes the DDL + `COPY` script and, when a driver is installed (`pip install ladybug`, or `kuzu` — same
+`write_ladybug` writes the DDL + `COPY` script and, when a driver is installed (`pip install ladybug`, or `kuzu`, same
 API), loads the database. One file, no server.
 """)
 
@@ -433,7 +454,7 @@ if driver:
 """)
 
 md("""
-Cycles are everywhere in a real transfer graph — that is why a bare cycle query has low precision, and why decoys are
+Cycles are everywhere in a real transfer graph. That is why a bare cycle query has low precision, and why decoys are
 labelled. Device sharing, which only exists off the transaction layer, is one Cypher hop away:
 """)
 

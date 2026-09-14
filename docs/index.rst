@@ -9,6 +9,11 @@ Welcome to graphfaker's documentation!
    installation
    quickstart
    usage
+   how-it-works
+   fraud-generation
+   methods
+   adding-a-domain
+   notebooks/graphfaker_tour
    modules
    contributing
    authors

@@ -8,7 +8,7 @@ History
 Schema-driven generation. This is Phase 0 of the plan in
 ``docs/design/synthetic-at-scale.md``.
 
-* ``graphfaker.schema``: declarative ``GraphSchema`` — node types with
+* ``graphfaker.schema``: declarative ``GraphSchema``: node types with
   attribute samplers, latent factors with per-group parameters, edge families,
   topology models. Validated with pydantic; round-trips through YAML/JSON;
   content-hashed.
@@ -21,7 +21,7 @@ Schema-driven generation. This is Phase 0 of the plan in
   schema. Same realism metrics as 0.5; every former magic number is now a
   schema field.
 * ``GraphFaker.generate(schema)`` alongside the unchanged ``generate_graph``.
-* ``graphfaker.domains.fraud``: the fraud / AML domain pack — customers,
+* ``graphfaker.domains.fraud``: the fraud / AML domain pack: customers,
   accounts, merchants, devices, counterparties; a vectorised transaction
   process with recurring flows, repeat partners, merchant popularity,
   seasonality and income scaling; eleven labelled typologies with decoys;
@@ -85,7 +85,7 @@ age homophily                0.81         0.01
 isolated nodes               0            4
 ===========================  ===========  =================
 
-* ``graphfaker.metrics`` — ``graph_stats()`` and ``compare_topology()``, so the
+* ``graphfaker.metrics``: ``graph_stats()`` and ``compare_topology()``, so the
   claim is checkable rather than asserted. The tests are differential: each
   property is compared against ``topology="uniform"``, which reproduces the old
   behaviour and is retained solely as a baseline.
@@ -122,35 +122,35 @@ Graph-native entity resolution, reproducible generation, and several fixes.
 
 New:
 
-* ``graphfaker.export`` — export connectors that write files rather than
+* ``graphfaker.export``: export connectors that write files rather than
   requiring a database driver: ``export_csv`` (key-union headers, so
   heterogeneous node types keep their values in the right columns),
   ``export_neo4j_csv`` (``neo4j-admin`` typed headers), and ``export_cypher``
   for Neo4j, openCypher, and ISO GQL. Also exposed as ``--format`` on the CLI.
-* ``graphfaker.corpus`` — paired text/entity corpora for measuring how many
+* ``graphfaker.corpus``: paired text/entity corpora for measuring how many
   nodes a graph builder creates per real entity. Documents are clean prose, not
   corrupted text; ``Corpus.audit()`` verifies that no surface form could be
   claimed by two entities, and ``duplication_report()`` produces the counts.
-* ``examples/duplication_experiment.py`` — runs that measurement across several
+* ``examples/duplication_experiment.py``: runs that measurement across several
   graph-building frameworks and prints a comparison table. The Cognee adapter is
   written against the API verified in cognee 1.4.1 (``add``/``cognify``/``export``
   are coroutines; ``export`` accepts ``format="graphml"``; there is no
   ``get_graph_data``). It writes to a run-specific dataset instead of calling
   ``cognee.prune``, so an existing local store is not destroyed.
-* ``docs/notebooks/duplication_experiment.ipynb`` — the same experiment end to
+* ``docs/notebooks/duplication_experiment.ipynb``: the same experiment end to
   end, including repairing the graph with ``resolve()``, a threshold sweep
   showing the precision/recall tradeoff, and export of the cleaned graph. Runs
   without an LLM key using a labelled simulated extraction.
-* ``resolve_entities(token_subset_floor=...)`` — floors the attribute score when
+* ``resolve_entities(token_subset_floor=...)``: floors the attribute score when
   one name's tokens are contained in the other's ("Hill" inside "Allison Hill").
   Character ratios score that pair near 0.5, so it was previously discarded
   before neighbourhood overlap was consulted. The floor sits below the default
   threshold deliberately, so containment alone never merges anything.
-* ``graphfaker.resolve`` — find duplicate entities using attribute similarity
+* ``graphfaker.resolve``: find duplicate entities using attribute similarity
   **and** neighbourhood overlap, then merge each cluster onto one canonical node
   with its edges rewired. Available as ``GraphFaker.resolve()`` or the
   standalone ``resolve_entities()`` / ``merge_clusters()``.
-* ``evaluate_clusters()`` — pairwise and B-cubed precision/recall/F1 for scoring
+* ``evaluate_clusters()``: pairwise and B-cubed precision/recall/F1 for scoring
   a predicted clustering against gold labels you supply.
 * Seeding: ``GraphFaker(seed=...)``, ``generate_graph(..., seed=...)``,
   ``reseed()``, and ``--seed`` on the CLI. Identical seed and arguments now

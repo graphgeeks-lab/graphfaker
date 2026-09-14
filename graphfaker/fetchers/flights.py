@@ -34,7 +34,7 @@ import requests
 
 # TLS certificate verification is ON by default. The BTS host has historically
 # served a chain that some systems fail to validate, which is why this was once
-# disabled outright — but silently turning off verification for every user is a
+# disabled outright, but silently turning off verification for every user is a
 # man-in-the-middle risk, so it is now opt-in and noisy.
 #
 # Set GRAPHFAKER_INSECURE_TLS=1 to skip verification, and understand that doing
@@ -346,7 +346,7 @@ class FlightGraphFetcher:
 
         elapsed = time.time() - t0
         logger.info(
-            f"✅ Graph built in {elapsed:.2f}s — "
+            f"Graph built in {elapsed:.2f}s; "
             f"{G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
         )
 

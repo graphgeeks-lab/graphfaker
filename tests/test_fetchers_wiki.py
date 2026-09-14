@@ -15,8 +15,8 @@ class _FakePage:
 
     The previous version of this test called the live Wikipedia API, so the suite
     failed intermittently on any network hiccup and could not run offline or in a
-    sandboxed CI job. Mocking keeps the field-mapping assertions — which is what
-    `fetch_page` is actually responsible for — without the flakiness.
+    sandboxed CI job. Mocking keeps the field-mapping assertions (which is what
+    `fetch_page` is actually responsible for) without the flakiness.
     """
 
     title = "Graph theory"

@@ -180,7 +180,7 @@ class ForeignKeySampler(_Sampler):
 
     ``same_group`` prefers nodes sharing the row's latent group (a person's home
     is in their community's places); when the group has none, any node of the
-    type is used, and when there are none at all the value is ``""`` — never
+    type is used, and when there are none at all the value is ``""``, never
     ``None``, which GraphML cannot serialise.
     """
 

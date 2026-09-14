@@ -52,7 +52,7 @@ def draw_pattern(run, pattern_id: str, path: Path) -> None:
     nx.draw_networkx_edges(S, pos, edgelist=[e for e in S.edges() if e in own_edges], ax=ax, edge_color=FRAUD, width=2, arrowsize=12)
     nx.draw_networkx_nodes(S, pos, nodelist=[n for n in S if n not in members], ax=ax, node_color=LEGIT, node_size=40, linewidths=0)
     nx.draw_networkx_nodes(S, pos, nodelist=list(members), ax=ax, node_color=FRAUD, node_size=140, linewidths=0)
-    ax.set_title(f"{pattern_id}: {row['typology']} — {len(members)} accounts, {row['n_transactions']} transactions")
+    ax.set_title(f"{pattern_id}: {row['typology']}: {len(members)} accounts, {row['n_transactions']} transactions")
     ax.axis("off")
     fig.savefig(path, dpi=120, bbox_inches="tight")
     plt.close(fig)
@@ -115,7 +115,7 @@ def main() -> None:
     write_neo4j_admin(tables, out / "neo4j")
     try:
         write_ladybug(tables, out / "data", db_path=out / "graph.db")
-        print(f"loaded {out / 'graph.db'} — query it with Cypher (see the notebook)")
+        print(f"loaded {out / 'graph.db'}; query it with Cypher (see the notebook)")
     except ImportError as exc:
         print(f"wrote {out / 'data' / 'load.cypher'}; {exc}")
 

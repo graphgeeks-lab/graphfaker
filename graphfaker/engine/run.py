@@ -3,7 +3,7 @@
 ``generate`` is the one entry point: schema in, :class:`GraphRun` out. A run
 carries the tables, the ground truth the generator knows (latent group
 membership, per-group parameters) and a manifest that pins down everything
-needed to reproduce it byte for byte — schema digest, seed, shard size,
+needed to reproduce it byte for byte: schema digest, seed, shard size,
 engine version.
 """
 
@@ -118,8 +118,8 @@ def generate(
     ``workers`` parallelises node sampling across processes without
     changing the result; ``shard_size`` does change it and is recorded.
 
-    Streams are spawned in a fixed order — latent factors, then one child per
-    node type in schema order, then one for edges — so adding a node type at
+    Streams are spawned in a fixed order (latent factors, then one child per
+    node type in schema order, then one for edges) so adding a node type at
     the end of a schema does not change the ones before it.
     """
     from graphfaker import __version__

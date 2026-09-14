@@ -1,7 +1,7 @@
 """Export graphs to formats other graph engines can load.
 
-Rather than maintaining a live driver per database — which means a service to
-authenticate against, a version matrix, and a test environment for each — this
+Rather than maintaining a live driver per database (which means a service to
+authenticate against, a version matrix, and a test environment for each), this
 module writes files that every engine's own loader already understands:
 
   - ``export_csv``          generic node/edge CSV, for pandas, Gephi, or any
@@ -64,7 +64,7 @@ _DEFAULT_REL_TYPE = "RELATED_TO"
 def flatten_value(value: Any) -> Any:
     """Reduce a value to something a tabular or query format can carry.
 
-    Containers become strings — GraphML, CSV, and Cypher property values are all
+    Containers become strings: GraphML, CSV, and Cypher property values are all
     scalar-only. Coordinate tuples and the provenance that `resolve()` attaches
     to merged nodes both land here.
     """
@@ -86,7 +86,7 @@ def flatten_value(value: Any) -> Any:
 def _collect_fields(records: Iterable[dict[str, Any]], skip: Sequence[str] = ()) -> list[str]:
     """Union of keys across all records, in first-seen order.
 
-    Taking the first record's keys — the obvious shortcut — silently corrupts
+    Taking the first record's keys, the obvious shortcut, silently corrupts
     heterogeneous graphs: a Person's header would be written and then a Place's
     values would be filed under it. Graph nodes of different types rarely share
     an attribute set, so the union is the only safe option.
@@ -203,7 +203,7 @@ def export_neo4j_csv(
     large graphs; `export_cypher` is friendlier for small ones.
 
     Returns:
-        A dict with ``nodes``, ``edges``, and ``command`` keys — the last being
+        A dict with ``nodes``, ``edges``, and ``command`` keys, the last being
         the import command to run, which is also logged.
     """
     target = os.path.abspath(directory)

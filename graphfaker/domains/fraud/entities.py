@@ -1,5 +1,5 @@
 """Entities of the fraud pack: customers, accounts, merchants, devices,
-counterparties — and the structural edges between them (OWNS, USES).
+counterparties, and the structural edges between them (OWNS, USES).
 
 Attributes are declared as schema node types and drawn by the generic
 engine, so the same samplers, latent factors and sharding apply. The
@@ -58,7 +58,7 @@ ACCOUNT_TYPE_WEIGHTS = [55, 25, 8, 12]
 ACCOUNT_ACTIVITY = {"checking": 1.0, "savings": 0.15, "business": 2.5, "credit": 0.8}
 STATUS_ACTIVITY = {"active": 1.0, "dormant": 0.05, "closed": 0.0}
 
-#: Share of devices used by a second customer in the same region — households,
+#: Share of devices used by a second customer in the same region: households,
 #: shared family tablets. This is the innocent collision rate guilty sharing
 #: must be distinguishable from.
 HOUSEHOLD_SHARE_RATE = 0.06

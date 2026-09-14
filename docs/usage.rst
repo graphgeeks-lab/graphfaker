@@ -13,7 +13,7 @@ GraphFaker supports generating airline flight network graphs using real-world ai
 
 To generate a flight network graph for the United States in January 2024 from the command line::
 
-    python -m graphfaker.cli gen --mode flights --country "United States" --year 2024 --month 1 --export flights.graphml
+    graphfaker gen --fetcher flights --country "United States" --year 2024 --month 1 --export flights.graphml
 
 To use the Python API::
 

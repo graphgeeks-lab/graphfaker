@@ -19,8 +19,8 @@ The discriminating statistics:
 
 ``average_clustering``
     How often two neighbours of a node are themselves connected. Uniform
-    attachment leaves this near ``mean_degree / n`` — effectively zero on a
-    sparse graph — while real graphs cluster strongly, because people who share a
+    attachment leaves this near ``mean_degree / n``, effectively zero on a
+    sparse graph, while real graphs cluster strongly, because people who share a
     friend tend to meet.
 
 ``degree_assortativity``
@@ -173,7 +173,7 @@ def graph_stats(G: nx.Graph, community_attr: str = "community") -> dict[str, Any
 def numeric_assortativity(G: nx.Graph, attribute: str) -> float:
     """Correlation of a numeric attribute across edges.
 
-    Positive means like attaches to like — age homophily, for instance. Returns
+    Positive means like attaches to like, age homophily for instance. Returns
     NaN when the attribute is missing or constant.
     """
     H = as_simple_undirected(G)

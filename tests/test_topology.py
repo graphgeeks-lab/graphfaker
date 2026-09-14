@@ -2,7 +2,7 @@
 """Structural realism of the synthetic generator.
 
 These are differential tests. Rather than asserting an absolute threshold for
-"realistic" — which would be arbitrary — each one compares the default generator
+"realistic" (which would be arbitrary), each one compares the default generator
 against ``topology="uniform"``, the pre-0.5 behaviour of drawing both endpoints
 uniformly at random. Uniform attachment is a known quantity (an Erdos-Renyi
 graph), so it makes a principled baseline for every property that was supposed to
@@ -39,7 +39,7 @@ def uniform():
 def _friendship_subgraph(G):
     """Person-Person edges only.
 
-    The whole graph is multipartite — people attach to hub cities and employers —
+    The whole graph is multipartite (people attach to hub cities and employers),
     so it is legitimately disassortative. The social layer is where positive
     assortativity is expected, so mixing them hides both effects.
     """
@@ -128,7 +128,7 @@ def test_community_structure_is_recoverable(realistic, uniform):
     """Modularity against the latent `community` label.
 
     Uniform attachment ignores the label entirely, so its modularity sits near
-    zero — there is no group structure to find.
+    zero: there is no group structure to find.
     """
     assert graph_stats(uniform)["community_modularity"] < 0.05
     assert graph_stats(realistic)["community_modularity"] > 0.35

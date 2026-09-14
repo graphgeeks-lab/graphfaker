@@ -4,7 +4,7 @@ Duplicate entities are the most commonly reported defect in LLM-extracted
 knowledge graphs: the same real-world entity is emitted as several nodes, and
 every edge attached to a false node is a false edge. Tabular record-linkage
 tools compare *rows*, so they cannot use the strongest signal available in a
-graph — two candidate nodes that share most of their neighbours are very likely
+graph: two candidate nodes that share most of their neighbours are very likely
 the same entity, however differently their names are spelled.
 
 This module scores candidate pairs on attribute similarity *and* neighbourhood
@@ -108,14 +108,14 @@ def _string_similarity(a: str, b: str, token_subset_floor: float = 0.0) -> float
 
     `token_subset_floor` addresses a structural weakness of character ratios on
     names. "Hill" against "Allison Hill" scores only 0.5, because most of the
-    longer string is unmatched — so with a 0.85 threshold the pair is discarded
+    longer string is unmatched, so with a 0.85 threshold the pair is discarded
     before neighbourhood overlap is ever consulted, no matter how much context
     the two nodes share. Shortening a name is one of the most common ways a
     document refers to an entity it already introduced, so this case matters.
 
     When one token set is contained in the other, the score is floored rather
-    than set to 1.0. Containment is suggestive, not conclusive — "Smith" may
-    well be a different person from "John Smith" — so the floor sits below the
+    than set to 1.0. Containment is suggestive, not conclusive ("Smith" may
+    well be a different person from "John Smith"), so the floor sits below the
     default threshold and leaves the decision to the structural signal.
     """
     if not a or not b:
@@ -311,7 +311,7 @@ def _candidate_pairs(
 class ResolutionResult:
     """Outcome of a resolution pass.
 
-    Nothing has been changed on the graph yet — call `apply()` to get a merged
+    Nothing has been changed on the graph yet; call `apply()` to get a merged
     copy, or read `clusters` and decide for yourself.
     """
 
@@ -392,7 +392,7 @@ def resolve_entities(
             score, in [0, 1]. 0 disables the graph signal entirely, reducing
             this to ordinary attribute matching. The combination is
             ``attr + w * structural * (1 - attr)``, so structure corroborates
-            attribute evidence but never contradicts it — a pair with no shared
+            attribute evidence but never contradicts it: a pair with no shared
             neighbours simply scores its attribute similarity.
         node_types: Restrict to nodes whose `type` attribute is in this set.
         block_on: Fields used to propose candidates. Defaults to the first
@@ -408,7 +408,7 @@ def resolve_entities(
             Character ratios score that pair around 0.5, so without this it is
             discarded before the structural signal is ever consulted. The floor
             sits below the default threshold on purpose, so containment alone
-            never merges anything — shared neighbours still have to agree. Pass
+            never merges anything; shared neighbours still have to agree. Pass
             0.0 to disable.
 
     Returns:
@@ -568,7 +568,7 @@ def merge_clusters(
             the surviving node.
 
     Returns:
-        The merged graph — `G` itself when `inplace` is true, otherwise a copy.
+        The merged graph: `G` itself when `inplace` is true, otherwise a copy.
     """
     H = G if inplace else G.copy()
     chooser = canonical or pick_canonical
@@ -662,7 +662,7 @@ def evaluate_clusters(predicted: Any, gold: Any) -> dict[str, float]:
     being split and is the usual choice for entity resolution.
 
     This function makes no assumptions about where the gold labels came from and
-    does not manufacture them — supply your own.
+    does not manufacture them; supply your own.
     """
     predicted_map = _as_cluster_map(predicted)
     gold_map = _as_cluster_map(gold)

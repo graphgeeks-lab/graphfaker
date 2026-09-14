@@ -1,8 +1,8 @@
 """Measure, rather than assert, how hard the injected fraud is to find.
 
 For every typology, each single feature a naive detector might threshold on
-— amount, round amounts, proximity to the reporting threshold, degree,
-pass-through ratio, burstiness, account age — is scored by the AUC it
+(amount, round amounts, proximity to the reporting threshold, degree,
+pass-through ratio, burstiness, account age) is scored by the AUC it
 achieves separating that typology's accounts (or transactions) from
 legitimate ones. ``max_auc`` is the number to quote: at ``hardness="high"``
 no single feature should exceed ~0.7, which means the pattern is only
@@ -152,7 +152,7 @@ class HardnessReport:
         return both.drop_nans("auc").sort("auc", descending=True).head(n)
 
     def summary(self) -> str:
-        lines = [f"hardness report — max single-feature AUC {self.max_auc:.3f}", ""]
+        lines = [f"hardness report: max single-feature AUC {self.max_auc:.3f}", ""]
         lines.append(f"{'level':<12}{'typology':<20}{'feature':<22}{'auc':>7}")
         for row in self.worst().iter_rows(named=True):
             lines.append(f"{row['level']:<12}{row['typology']:<20}{row['feature']:<22}{row['auc']:>7.3f}")

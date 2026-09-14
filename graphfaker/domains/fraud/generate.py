@@ -170,7 +170,7 @@ def _apply_shared_devices(uses: pl.DataFrame, tables, pop, injection: typologies
 
 def _merge_transactions(legit: dict[str, pl.DataFrame], injection: typologies.Injection) -> tuple[dict[str, pl.DataFrame], pl.DataFrame]:
     """Union legitimate and injected transactions, order them in time, and
-    assign ``tx_id`` sequentially — ids increase with time like a real ledger,
+    assign ``tx_id`` sequentially. Ids increase with time like a real ledger,
     so the id itself does not leak which rows were injected."""
     parts = []
     for channel in process.CHANNELS:

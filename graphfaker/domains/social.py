@@ -1,13 +1,17 @@
 """The social / knowledge graph domain.
 
-This is the generator GraphFaker shipped with from the start — people, places,
-organizations, events and products — re-expressed as a schema. Nothing about
+This is the generator GraphFaker shipped with from the start (people, places,
+organizations, events and products) re-expressed as a schema. Nothing about
 the graph it produces is meant to change; what changes is that every choice
 that used to be a constant in ``core.py`` is now declared here where a user
 can read it, tune it, and serialise it.
 """
 
 from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from graphfaker.schema import (
     CategorySampler,
@@ -305,3 +309,22 @@ def schema(
         topology=model,
         targets=TARGETS if topology == "realistic" else None,
     )
+
+
+class SocialOptions(BaseModel):
+    """Knobs of the social domain, as the CLI and the registry see them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_nodes: int = Field(default=100, ge=1)
+    total_edges: int = Field(default=1000, ge=0)
+    topology: Literal["realistic", "uniform"] = "realistic"
+    communities: int | None = Field(default=None, ge=1)
+
+
+def generate(seed: int | None = None, workers: int = 1, **options):
+    """Generate the social graph. Options are those of :class:`SocialOptions`."""
+    from graphfaker.engine.run import generate as _generate
+
+    opts = SocialOptions(**options)
+    return _generate(schema(**opts.model_dump()), seed=seed, workers=workers)

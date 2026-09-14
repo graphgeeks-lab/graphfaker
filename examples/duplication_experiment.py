@@ -186,7 +186,7 @@ def build_with_cognee(
     coroutines, and `export` accepts ``format="graphml"``. There is no
     ``get_graph_data`` function.
 
-    Requires an LLM API key — `add` itself runs a pipeline that tests the LLM
+    Requires an LLM API key; `add` itself runs a pipeline that tests the LLM
     connection before ingesting, so nothing works without one. Set
     ``LLM_API_KEY`` (or the provider variable cognee is configured for).
 

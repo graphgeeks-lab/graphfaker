@@ -1,7 +1,7 @@
 """Edge formation.
 
-The social model here is sequential by nature — each edge looks at the
-degrees, neighbourhoods and attributes that earlier edges produced — so it
+The social model here is sequential by nature (each edge looks at the
+degrees, neighbourhoods and attributes that earlier edges produced), so it
 runs on a NetworkX graph and is the right tool up to about a million edges.
 Vectorised models for larger graphs will live beside it and produce the same
 edge tables.

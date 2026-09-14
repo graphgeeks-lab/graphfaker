@@ -58,27 +58,27 @@ TYPOLOGY_MIX = {
 class HardnessProfile(BaseModel):
     """What a hardness level does to injected patterns.
 
-    ``amount_blend`` — 0 keeps a typology's signature amounts (round, near a
+    ``amount_blend``: 0 keeps a typology's signature amounts (round, near a
     threshold, sentinel-like); 1 draws them from the legitimate amount
     distribution of the same channel, so amount alone carries no signal.
 
-    ``timing_spread_days`` — the window a pattern's steps are spread over. Tight
+    ``timing_spread_days``: the window a pattern's steps are spread over. Tight
     windows (hours) are the classic tell; long windows bury the pattern under
     normal activity.
 
-    ``ring_overlap`` — probability a new pattern reuses an account already in
+    ``ring_overlap``: probability a new pattern reuses an account already in
     one, producing overlapping rings.
 
-    ``decoy_ratio`` — legitimate structures that look like typologies
+    ``decoy_ratio``: legitimate structures that look like typologies
     (payroll fan-out, marketplace fan-in, supplier cycles), as a fraction of
     the fraud pattern count. Decoys are labelled in the truth as not fraud.
 
-    ``activity_camouflage`` — fraction of pattern accounts that also carry
+    ``activity_camouflage``: fraction of pattern accounts that also carry
     normal transaction activity at the population rate, so degree and volume
     do not single them out; pattern members are also recruited among active
     accounts in proportion to this.
 
-    ``size_scale`` — multiplier on pattern sizes (sources in a fan-in, hops in
+    ``size_scale``: multiplier on pattern sizes (sources in a fan-in, hops in
     a chain). Degree is the one signal hardness cannot blend away: a collector
     with fifteen sources is an outlier in a population where a typical account
     has three partners a quarter. Smaller rings are how real launderers stay
@@ -162,12 +162,12 @@ class FraudConfig(BaseModel):
 
     @property
     def num_accounts(self) -> int:
-        return max(200, int(BASE_ACCOUNTS * self.scale))
+        return max(200, round(BASE_ACCOUNTS * self.scale))
 
     @property
     def num_customers(self) -> int:
         # ~1.4 accounts per customer.
-        return max(150, int(self.num_accounts / 1.4))
+        return max(150, round(self.num_accounts / 1.4))
 
     @property
     def num_merchants(self) -> int:
@@ -187,7 +187,7 @@ class FraudConfig(BaseModel):
 
     @property
     def num_transactions(self) -> int:
-        return max(2_000, int(BASE_TRANSACTIONS * self.scale))
+        return max(2_000, round(BASE_TRANSACTIONS * self.scale))
 
     @property
     def num_patterns(self) -> int:

@@ -5,6 +5,7 @@ Command-line interface for GraphFaker.
 import os
 
 import typer
+from pydantic import ValidationError
 
 from graphfaker.core import GraphFaker
 from graphfaker.enums import ExportFormat, FetcherType
@@ -151,27 +152,12 @@ def gen(
     )
 
 
-@app.command(short_help="Generate a fraud / AML transaction graph with labelled typologies.")
-def fraud(
-    scale: float = typer.Option(0.001, help="1.0 = ~10M accounts / ~90M transactions (gen-fraud-graph convention)."),
-    hardness: str = typer.Option("medium", help="low | medium | high — how hard the fraud is to find."),
-    seed: int = typer.Option(None, help="Seed for a reproducible dataset."),
-    out: str = typer.Option("fraud_data", help="Output directory."),
-    sink: str = typer.Option(
-        "parquet",
-        help="parquet | neo4j-admin | ladybug | gen-fraud-graph. Parquet (nodes/, edges/, truth/, manifest) is always written.",
-    ),
-    period_days: int = typer.Option(90, help="Length of the transaction period in days."),
-    workers: int = typer.Option(1, help="Processes for entity sampling. Does not change the result."),
-    report: bool = typer.Option(True, help="Print the hardness and realism reports."),
-):
-    from graphfaker.domains import fraud as fraud_pack
-    from graphfaker.domains.fraud.hardness import hardness_report, realism_report
-
-    run = fraud_pack.generate(scale=scale, hardness=hardness, seed=seed, period_days=period_days, workers=workers)
+def _write_sink(run, out: str, sink: str) -> None:
+    """Write the run as Parquet, then whatever extra layout ``sink`` asks for."""
     root = run.write(out)
     logger.info("wrote %s (%s)", root, ", ".join(f"{k}={v}" for k, v in run.manifest.node_counts.items()))
-
+    if sink == "parquet":
+        return
     if sink == "neo4j-admin":
         from graphfaker.sinks import write_neo4j_admin
 
@@ -187,9 +173,91 @@ def fraud(
         from graphfaker.sinks import write_gen_fraud_graph
 
         write_gen_fraud_graph(run, os.path.join(out, "gen_fraud_graph"))
-    elif sink != "parquet":
+    else:
         raise typer.BadParameter(f"unknown sink {sink!r}")
 
+
+def _parse_options(args: list[str]) -> dict[str, str]:
+    """``--total-nodes 500 --topology uniform`` -> ``{"total_nodes": "500", ...}``.
+
+    Values are strings; the domain's options model converts them.
+    """
+    options: dict[str, str] = {}
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if not token.startswith("--"):
+            raise typer.BadParameter(f"unexpected argument {token!r}; domain options look like --name value")
+        key = token[2:].replace("-", "_")
+        if "=" in key:
+            key, value = key.split("=", 1)
+        elif i + 1 < len(args) and not args[i + 1].startswith("--"):
+            value = args[i + 1]
+            i += 1
+        else:
+            value = "true"
+        options[key] = value
+        i += 1
+    return options
+
+
+@app.command(short_help="List the domains that can be generated.")
+def domains():
+    from graphfaker.domains import available
+
+    for name, domain in sorted(available().items()):
+        typer.echo(f"{name}: {domain.summary}")
+        for option, kind, default in domain.describe_options():
+            typer.echo(f"    --{option.replace('_', '-')} <{kind}>  default {default!r}")
+
+
+@app.command(
+    short_help="Generate any domain by name; domain options are passed as --name value.",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def generate(
+    ctx: typer.Context,
+    domain: str = typer.Argument(..., help="A domain name from `graphfaker domains`."),
+    out: str = typer.Option("graphfaker_out", help="Output directory."),
+    seed: int = typer.Option(None, help="Seed for a reproducible dataset."),
+    workers: int = typer.Option(1, help="Processes for node sampling. Does not change the result."),
+    sink: str = typer.Option("parquet", help="parquet | neo4j-admin | ladybug | gen-fraud-graph."),
+):
+    """Example: graphfaker generate fraud --scale 0.01 --hardness high --seed 1 --out ./bank"""
+    from graphfaker.domains import get
+
+    try:
+        pack = get(domain)
+    except KeyError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    try:
+        run = pack.run(seed=seed, workers=workers, **_parse_options(list(ctx.args)))
+    except ValidationError as exc:
+        problems = "; ".join(f"--{'.'.join(str(p) for p in e['loc']).replace('_', '-')}: {e['msg']}" for e in exc.errors())
+        raise typer.BadParameter(f"{problems}. Run `graphfaker domains` to see the options.") from exc
+    _write_sink(run, out, sink)
+
+
+@app.command(short_help="Generate a fraud / AML transaction graph with labelled typologies.")
+def fraud(
+    scale: float = typer.Option(0.001, help="1.0 = ~10M accounts / ~90M transactions (gen-fraud-graph convention)."),
+    hardness: str = typer.Option("medium", help="low | medium | high: how hard the fraud is to find."),
+    seed: int = typer.Option(None, help="Seed for a reproducible dataset."),
+    out: str = typer.Option("fraud_data", help="Output directory."),
+    sink: str = typer.Option(
+        "parquet",
+        help="parquet | neo4j-admin | ladybug | gen-fraud-graph. Parquet (nodes/, edges/, truth/, manifest) is always written.",
+    ),
+    period_days: int = typer.Option(90, help="Length of the transaction period in days."),
+    workers: int = typer.Option(1, help="Processes for entity sampling. Does not change the result."),
+    report: bool = typer.Option(True, help="Print the hardness and realism reports."),
+):
+    """Shortcut for `graphfaker generate fraud ...` that also prints the reports."""
+    from graphfaker.domains import get
+    from graphfaker.domains.fraud.hardness import hardness_report, realism_report
+
+    run = get("fraud").run(seed=seed, workers=workers, scale=scale, hardness=hardness, period_days=period_days)
+    _write_sink(run, out, sink)
     if report:
         typer.echo(hardness_report(run).summary())
         typer.echo("")

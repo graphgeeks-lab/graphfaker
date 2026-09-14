@@ -12,7 +12,7 @@ What this deliberately does *not* do
 It does not corrupt anything. No typos, no injected errors, no simulated OCR
 noise. The documents are clean, well-formed English in which every entity is
 unambiguous to a human reader. Entities are referred to by the surface forms a
-normal writer would use — full name, surname alone, an accepted abbreviation —
+normal writer would use (full name, surname alone, an accepted abbreviation),
 because a document that says "Lovelace" once and "Ada Lovelace" twice is
 ordinary prose, not a degraded signal.
 
@@ -20,7 +20,7 @@ This matters for the validity of any result. Synthetic *corruption* is known to
 be far easier than real-world error (Lam et al., IJPDS 2024, measured roughly a
 hundredfold gap), so a benchmark built on guessed error rates measures its own
 noise model. Counting how many nodes a pipeline creates for an entity that a
-human would never split is a different and much weaker claim — and one the
+human would never split is a different and much weaker claim, and one the
 generator can actually support.
 
 Names are checked for mutual distinctness, so a pipeline is never penalised for
@@ -268,7 +268,7 @@ def _distinct_enough(candidate: str, chosen: Iterable[str]) -> bool:
 
     Without this the corpus can defeat itself. Naming four people
     "Person 0" through "Person 3" produces strings that are genuinely ~93%
-    similar, so any name-based matcher will merge them — and the resulting
+    similar, so any name-based matcher will merge them, and the resulting
     "duplication" would be the corpus's fault, not the pipeline's.
     """
     normalized = normalize(candidate)
@@ -306,7 +306,7 @@ def _alias_is_safe(alias: str, others: Sequence[str]) -> bool:
 
     Similarity alone is not enough here. Faker derives place names from
     surnames, so a corpus can end up with a person aliased "Henderson" beside an
-    organization named "Henderson, Ramirez and Lewis" — two entities with a
+    organization named "Henderson, Ramirez and Lewis": two entities with a
     genuine claim on the same string. A document using it would be ambiguous to
     a human too, which means it cannot be used to judge a pipeline.
 
@@ -371,7 +371,7 @@ def generate_corpus(
     """Build a corpus of documents whose entities are known in advance.
 
     Args:
-        seed: Makes the corpus reproducible. Strongly recommended — a
+        seed: Makes the corpus reproducible. Strongly recommended: a
             measurement made against an unreproducible corpus cannot be checked
             by anyone else.
         n_entities: Approximate number of distinct entities. Fewer may be
@@ -603,7 +603,7 @@ def attribute_nodes(
     """Assign each node in an extracted graph to a known entity, if it matches.
 
     Matching is exact on a normalised surface form first, then falls back to
-    checking whether a canonical name appears inside a longer node label — LLM
+    checking whether a canonical name appears inside a longer node label; LLM
     extractors often emit "Ada Lovelace (engineer)".
 
     Nodes that match nothing are reported in `unmatched` rather than being
