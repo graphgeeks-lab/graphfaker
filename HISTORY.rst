@@ -2,6 +2,22 @@
 History
 =======
 
+Unreleased
+----------
+
+Getting a generated dataset into a running Neo4j, and proving it arrived intact.
+
+* ``graphfaker load neo4j <dir>``: loads a dataset into a **running** Neo4j over Bolt with batched ``UNWIND`` writes: no stopped database, no staging files in the server's import directory, no ``neo4j-admin`` on the PATH, and it works against Aura. Roughly 16k rows/s, so about 80 seconds for the 1.34M rows of ``--scale 0.01``. The offline ``--sink neo4j-admin`` path is still there and is still the right answer above a few tens of millions of rows; ``docs/neo4j.md`` has the comparison.
+* Ground truth is loaded as a subgraph rather than flattened onto nodes: ``(:Pattern)`` nodes, ``(:Account)-[:IN_PATTERN {role}]->(:Pattern)`` memberships, ``is_fraud``/``pattern_id``/``typology`` on the money relationship itself, and ``(:Region)`` nodes carrying each latent factor's generation parameters. Membership has to be a relationship because an account can belong to several patterns: 205 memberships across 181 accounts at ``--scale 0.01``.
+* ``--blind`` loads the graph with none of that, so the same dataset can still be used as an unbiased benchmark. The usual arrangement is a blind database for whoever builds the detector and a truth-loaded one for whoever scores it.
+* ``graphfaker verify neo4j <dir>``: treats the Parquet as the oracle and Neo4j as the thing under test, and exits non-zero when they disagree. Five families of check: per-label and per-type counts, constraints and endpoint labels and key uniqueness, a per-property aggregate scan (presence, sum, min, max) that catches coercion and truncation where counts cannot, sampled row-by-row round trips, and truth coverage. 154 checks on the ``--scale 0.01`` bank. ``load`` runs it automatically; ``--no-verify`` opts out.
+* The verifier is tested against real breakage: the suite loads a dataset, injects one silent corruption at a time (a deleted relationship, a removed property, an altered amount, a relabelled node, unflagged truth) and asserts the specific check that must catch it. Integration tests are marked ``neo4j``, run in their own ``graphfaker-pytest`` database, and skip when no server is reachable.
+* ``--sink neo4j`` on ``graphfaker fraud`` and ``graphfaker generate`` generates and loads in one step, configured from ``NEO4J_URI`` / ``NEO4J_USER`` / ``NEO4J_PASSWORD`` / ``NEO4J_DATABASE``.
+* Database names are validated before the round trip: Neo4j allows no underscores, which is the first thing anyone types after naming an output directory ``fraud_data``.
+* ``docs/neo4j.md``: the walkthrough, what the checks catch, and a Cypher cookbook for the laundering typologies in which every rule is **scored against the ground truth**. The measured result is that single-signal structural rules do badly. A fan-in rule with no time window runs at 0.3% precision, and a cycle detector catches every decoy ring and fewer than half the fraud rings. Adding one behavioural signal takes precision to 66.7%. ``examples/neo4j_detectors.py`` regenerates that table.
+* New optional dependency group: ``pip install 'graphfaker[neo4j]'``.
+* Fixed: relationship types with no attributes (most of the social graph) could not be loaded, because an empty polars struct is not constructible.
+
 0.5.0 (2026-09-15)
 ------------------
 

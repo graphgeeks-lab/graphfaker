@@ -69,13 +69,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+neo4j = [
+    "neo4j>=5.26",  # driver for `graphfaker load neo4j` / `graphfaker verify neo4j`
+]
 examples = [
     "matplotlib>=3.8",
     "kuzu>=0.11",  # LadybugDB-compatible embedded graph database for the notebook queries
+    "scikit-learn>=1.4",  # the model in docs/notebooks/neo4j_fraud_analysis.ipynb
     "nbformat",
     "nbclient",
     "ipykernel",
     "notebook",
+    "neo4j>=5.26",
 ]
 docs = [
     "sphinx>=8.0",
@@ -127,4 +132,5 @@ warn_no_return = true
 [tool.pytest.ini_options]
 markers = [
   "network: test reaches the internet; deselect with -m 'not network'",
+  "neo4j: test needs a running Neo4j; skipped when none is reachable. Select with -m neo4j",
 ]

@@ -188,22 +188,28 @@ Sinks put the same tables into a database's own loader format:
 
 | sink | what it writes | use |
 |---|---|---|
+| `load_tables`, `load_directory` | batched `UNWIND` writes into a **running** Neo4j over Bolt, including the truth as a subgraph | a Neo4j you already have up, or Aura; no restart, no file staging |
+| `verify_tables`, `verify_directory` | every check in [docs/neo4j.md](docs/neo4j.md): counts, constraints, endpoint labels, per-property aggregates, sampled round trips, truth coverage | proving the load is the dataset, in CI |
 | `write_ladybug` | DDL and `COPY FROM` Parquet; loads the database when `kuzu` or `ladybug` is installed | an embedded graph database, one file, Cypher, no server |
-| `write_neo4j_admin` | typed CSVs and the `neo4j-admin database import` command | the fast path into Neo4j |
+| `write_neo4j_admin` | typed CSVs and the `neo4j-admin database import` command | the fastest path into Neo4j, offline, at any scale |
 | `write_gen_fraud_graph` | gen-fraud-graph's `accounts/`, `transactions/`, `fraud/` layout | pipelines built on that generator |
 | `export_csv`, `export_neo4j_csv`, `export_cypher` | from a NetworkX graph: CSV, neo4j-admin CSV, Cypher, openCypher, ISO GQL | Memgraph, Neptune, TigerGraph, any bulk loader |
 | `export_graph` | GraphML | Gephi, Cytoscape, igraph |
 
 ```python
 from graphfaker import GraphTables, Manifest
-from graphfaker.sinks import write_ladybug, write_neo4j_admin
+from graphfaker.sinks import Target, load_directory, verify_directory, write_ladybug, write_neo4j_admin
 
 tables = GraphTables.read_parquet("bank")
 write_neo4j_admin(tables, "bank/neo4j")
 write_ladybug(tables, "bank", db_path="bank/graph.lbdb")
+
+target = Target(database="fraud", password="...")
+print(load_directory("bank", target, wipe_first=True).summary())
+assert verify_directory("bank", target).ok
 ```
 
-On the command line, `--sink parquet|neo4j-admin|ladybug|gen-fraud-graph` on `graphfaker fraud` and `graphfaker generate`.
+On the command line, `--sink parquet|neo4j|neo4j-admin|ladybug|gen-fraud-graph` on `graphfaker fraud` and `graphfaker generate`, and `graphfaker load neo4j` / `graphfaker verify neo4j` for a dataset already on disk.
 
 ## Reproducibility
 
@@ -254,7 +260,7 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 | `--out DIR` | where to write (default `graphfaker_out`) |
 | `--seed N` | reproducible output; the same seed gives the same bytes on any machine |
 | `--workers N` | processes for node sampling; faster, does not change the result |
-| `--sink parquet\|neo4j-admin\|ladybug\|gen-fraud-graph` | also write a database loader layout (Parquet is always written) |
+| `--sink parquet\|neo4j\|neo4j-admin\|ladybug\|gen-fraud-graph` | also load a live database, or write a loader layout (Parquet is always written) |
 
 ### What the options mean
 
@@ -263,7 +269,7 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 - `--seed N`: any whole number. Generation is random, but the randomness is derived from the seed, so the same seed with the same options produces the same bytes on any machine. Use a seed when you want a dataset others can regenerate (a benchmark, a tutorial, a bug report). Leave it out and every run produces a different dataset.
 - `--out DIR`: the folder to write. It will contain `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json`. The manifest records the seed and every option, so a run can always be reproduced from its folder.
 - `--workers N`: how many processes generate node attributes. Use it on large runs; it changes the speed and nothing else.
-- `--sink`: what else to write besides Parquet. `ladybug` builds an embedded graph database you can query in Cypher; `neo4j-admin` writes CSVs and the `neo4j-admin database import` command; `gen-fraud-graph` writes the layout of Santander's generator for pipelines built on it.
+- `--sink`: what else to do besides writing Parquet. `neo4j` loads a running Neo4j over Bolt (configured with `NEO4J_URI`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`); `ladybug` builds an embedded graph database you can query in Cypher; `neo4j-admin` writes CSVs and the `neo4j-admin database import` command; `gen-fraud-graph` writes the layout of Santander's generator for pipelines built on it.
 
 **`fraud` options** (see [docs/fraud-generation.md](docs/fraud-generation.md) for the mechanics)
 
@@ -298,7 +304,26 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 - `--communities`: how many latent communities. Ages, education and regions cluster by community, and people mostly connect within their community. Defaults to about one per 25 nodes.
 - `--topology`: `realistic` forms edges by preferential attachment, triadic closure and homophily; `uniform` connects nodes at random and exists only to show the difference.
 
-Load the bank straight into an embedded graph database, or produce Neo4j import files:
+Load the bank into a graph database you can query. Into a running Neo4j, which then verifies itself against the Parquet it came from:
+
+```sh
+pip install 'graphfaker[neo4j]'
+export NEO4J_PASSWORD=...
+graphfaker load neo4j ./bank --database fraud --create
+```
+
+```
+loaded into database 'fraud' in 81.4s (16,511 rows/s)
+  nodes    255,772  Account=100000, Counterparty=200, Customer=71429, Device=82143, Merchant=2000
+  edges  1,088,552  OWNS=100000, PAYS=619689, TRANSFERS=247336, USES=87093, WIRES=34434
+  truth        622  Pattern=33, IN_PATTERN=205, PAYS.is_fraud=31, TRANSFERS.is_fraud=345, Region=8
+
+PASS: 154/154 checks on database 'fraud'
+```
+
+`--blind` loads the graph without the ground truth, so the same dataset can still be used as an unbiased benchmark. [docs/neo4j.md](docs/neo4j.md) covers the checks, a scored Cypher cookbook for the laundering typologies, and when to prefer the offline importer instead.
+
+Or into an embedded database, or as Neo4j import files:
 
 ```sh
 graphfaker generate fraud --scale 0.01 --seed 42 --out ./bank --sink ladybug        # ./bank/graph.lbdb, query it in Cypher

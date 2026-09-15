@@ -13,9 +13,11 @@ Synthetic graph data that behaves like the real thing. Generate realistic graph 
    usage
    how-it-works
    fraud-generation
+   neo4j
    methods
    adding-a-domain
    notebooks/graphfaker_tour
+   notebooks/neo4j_fraud_analysis
    notebooks/duplication_experiment
    design/synthetic-at-scale
    contributing
