@@ -39,6 +39,7 @@ import polars as pl
 from graphfaker.backends.tables import ID, SOURCE, TARGET, GraphTables
 from graphfaker.logger import logger
 from graphfaker.sinks.neo4j import infer_endpoints
+from graphfaker.sinks.verify import MEMBER_REL, PATTERN_LABEL
 
 if TYPE_CHECKING:  # pragma: no cover - import cost, driver is optional
     from neo4j import Driver
@@ -47,9 +48,6 @@ if TYPE_CHECKING:  # pragma: no cover - import cost, driver is optional
 #: small enough to fit a default 1G heap.
 DEFAULT_BATCH = 10_000
 
-#: Label given to a pattern from ``truth/patterns.parquet``.
-PATTERN_LABEL = "Pattern"
-MEMBER_REL = "IN_PATTERN"
 
 
 @dataclass(frozen=True)

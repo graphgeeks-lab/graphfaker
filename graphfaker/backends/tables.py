@@ -6,6 +6,12 @@ it is what every loader (Neo4j admin import, LadybugDB ``COPY``, Neptune
 bulk, PyG tensors) wants. ``GraphTables`` is that representation. NetworkX
 remains available as a view for graphs that fit, and is still where the
 sequential realism models run.
+
+The frames are Polars because generation and verification need expressions
+and joins, but the interchange format is Arrow: a Polars frame is Arrow
+memory, :meth:`GraphTables.to_arrow` hands it over without a copy, and
+sinks that accept Arrow (LadybugDB's ``COPY ... FROM $df``) get it that way
+rather than through a file.
 """
 
 from __future__ import annotations
@@ -17,6 +23,7 @@ from typing import Any
 
 import networkx as nx
 import polars as pl
+import pyarrow as pa
 
 ID = "id"
 TYPE = "type"
@@ -89,6 +96,22 @@ class GraphTables:
         return cls(
             nodes={t: _frame(rows) for t, rows in by_type.items()},
             edges={r: _frame(rows) for r, rows in by_rel.items()},
+        )
+
+    # ----------------------------------------------------------------- arrow
+
+    def to_arrow(self) -> tuple[dict[str, pa.Table], dict[str, pa.Table]]:
+        """Node and edge tables as ``pyarrow.Table``, zero copy."""
+        return (
+            {name: frame.to_arrow() for name, frame in self.nodes.items()},
+            {name: frame.to_arrow() for name, frame in self.edges.items()},
+        )
+
+    @classmethod
+    def from_arrow(cls, nodes: dict[str, pa.Table], edges: dict[str, pa.Table]) -> GraphTables:
+        return cls(
+            nodes={name: pl.from_arrow(table) for name, table in nodes.items()},
+            edges={name: pl.from_arrow(table) for name, table in edges.items()},
         )
 
     # --------------------------------------------------------------- parquet

@@ -153,8 +153,12 @@ def gen(
     )
 
 
-def _write_sink(run, out: str, sink: str) -> None:
-    """Write the run as Parquet, then whatever extra layout ``sink`` asks for."""
+def _write_sink(run, out: str, sink: str, blind: bool = False) -> None:
+    """Write the run as Parquet, then whatever extra layout ``sink`` asks for.
+
+    ``blind`` keeps the ground truth out of a database sink (it is still
+    written to ``truth/`` on disk), so the database can be handed to a
+    detector as an unbiased benchmark."""
     root = run.write(out)
     logger.info("wrote %s (%s)", root, ", ".join(f"{k}={v}" for k, v in run.manifest.node_counts.items()))
     if sink == "parquet":
@@ -167,7 +171,7 @@ def _write_sink(run, out: str, sink: str) -> None:
         from graphfaker.sinks import write_ladybug
 
         try:
-            write_ladybug(run.tables, out, db_path=os.path.join(out, "graph.lbdb"))
+            write_ladybug(run.tables, out, db_path=os.path.join(out, "graph.lbdb"), truth=None if blind else run.truth)
         except ImportError as exc:
             typer.echo(f"wrote {out}/load.cypher; database not created: {exc}", err=True)
     elif sink == "gen-fraud-graph":
@@ -179,7 +183,7 @@ def _write_sink(run, out: str, sink: str) -> None:
 
         target = Target()
         typer.echo(f"loading into {target.uri} database {target.database!r} ...")
-        typer.echo(load_tables(run.tables, target, run.truth, wipe_first=True).summary())
+        typer.echo(load_tables(run.tables, target, None if blind else run.truth, wipe_first=True).summary())
     else:
         raise typer.BadParameter(f"unknown sink {sink!r}")
 
@@ -235,6 +239,7 @@ def generate(
     seed: int = typer.Option(None, help="Seed for a reproducible dataset."),
     workers: int = typer.Option(1, help="Processes for node sampling. Does not change the result."),
     sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | gen-fraud-graph."),
+    blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
 ):
     """Example: graphfaker generate fraud --scale 0.01 --hardness high --seed 1 --out ./bank"""
     from graphfaker.domains import get
@@ -248,7 +253,7 @@ def generate(
     except ValidationError as exc:
         problems = "; ".join(f"--{'.'.join(str(p) for p in e['loc']).replace('_', '-')}: {e['msg']}" for e in exc.errors())
         raise typer.BadParameter(f"{problems}. Run `graphfaker domains` to see the options.") from exc
-    _write_sink(run, out, sink)
+    _write_sink(run, out, sink, blind)
 
 
 @app.command(short_help="Generate a fraud / AML transaction graph with labelled typologies.")
@@ -264,13 +269,14 @@ def fraud(
     period_days: int = typer.Option(90, help="Length of the transaction period in days."),
     workers: int = typer.Option(1, help="Processes for entity sampling. Does not change the result."),
     report: bool = typer.Option(True, help="Print the hardness and realism reports."),
+    blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
 ):
     """Shortcut for `graphfaker generate fraud ...` that also prints the reports."""
     from graphfaker.domains import get
     from graphfaker.domains.fraud.hardness import hardness_report, realism_report
 
     run = get("fraud").run(seed=seed, workers=workers, scale=scale, hardness=hardness, period_days=period_days)
-    _write_sink(run, out, sink)
+    _write_sink(run, out, sink, blind)
     if report:
         typer.echo(hardness_report(run).summary())
         typer.echo("")
@@ -366,6 +372,54 @@ def verify_neo4j(
     from graphfaker.sinks.neo4j_verify import verify_directory
 
     result = verify_directory(data, _target(uri, user, password, database), truth=truth, sample=sample)
+    typer.echo(result.summary(verbose=verbose))
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@load_app.command("ladybug", short_help="Load a dataset directory into a new embedded LadybugDB / Kùzu database.")
+def load_ladybug(
+    data: str = typer.Argument(..., help="Directory written by `graphfaker generate` or `graphfaker fraud`."),
+    db: str = typer.Option(None, help="Database path to create. Default <data>/graph.lbdb."),
+    truth: bool = typer.Option(
+        True,
+        "--truth/--blind",
+        help="--blind loads the graph only: no Pattern nodes and no is_fraud, so the dataset stays usable as an unbiased benchmark.",
+    ),
+    wipe: bool = typer.Option(False, help="Replace the database if it already exists."),
+    verify: bool = typer.Option(True, help="Run the checks in `graphfaker verify ladybug` after loading."),
+):
+    """Example: graphfaker load ladybug ./bank --db ./bank/graph.lbdb"""
+    from graphfaker.sinks.ladybug import load_directory, verify_directory
+
+    db_path = db or os.path.join(data, "graph.lbdb")
+    typer.echo(f"loading {data} into {db_path}" + ("" if truth else " (blind)"))
+    try:
+        report = load_directory(data, db_path, truth=truth, wipe_first=wipe)
+    except (RuntimeError, ImportError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(report.summary())
+    if verify:
+        typer.echo("")
+        result = verify_directory(data, db_path, truth=truth)
+        typer.echo(result.summary())
+        if not result.ok:
+            raise typer.Exit(code=1)
+
+
+@verify_app.command("ladybug", short_help="Compare a LadybugDB / Kùzu database against the dataset it was loaded from.")
+def verify_ladybug(
+    data: str = typer.Argument(..., help="The dataset directory that was loaded. It is the oracle."),
+    db: str = typer.Option(None, help="Database path. Default <data>/graph.lbdb."),
+    truth: bool = typer.Option(True, "--truth/--blind", help="--blind for a database loaded without the truth subgraph."),
+    sample: int = typer.Option(25, help="Rows per label fetched back and compared property by property. 0 skips it."),
+    verbose: bool = typer.Option(False, help="Print every check, not only the failures."),
+):
+    """Exits non-zero if the database does not match the dataset."""
+    from graphfaker.sinks.ladybug import verify_directory
+
+    result = verify_directory(data, db or os.path.join(data, "graph.lbdb"), truth=truth, sample=sample)
     typer.echo(result.summary(verbose=verbose))
     if not result.ok:
         raise typer.Exit(code=1)

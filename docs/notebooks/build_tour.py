@@ -407,12 +407,15 @@ print(tables.node_count, "nodes,", tables.edge_count, "edges | schema digest mat
 md("""
 ### Cypher on an embedded graph database
 
-`write_ladybug` writes the DDL + `COPY` script and, when a driver is installed (`pip install ladybug`, or `kuzu`, same
-API), loads the database. One file, no server.
+`load_directory` builds an embedded database from the files on disk, with the ground truth as a subgraph (`Pattern`
+nodes, `IN_PATTERN` memberships with roles, `is_fraud` on the money relationships), and verifies the load against the
+Parquet it came from. One file, no server. Needs a driver: `pip install kuzu` (or `ladybug`, same API). From the command
+line this is `graphfaker load ladybug bank`.
 """)
 
 code("""
-from graphfaker.sinks import write_ladybug, write_neo4j_admin
+from graphfaker.sinks import write_neo4j_admin
+from graphfaker.sinks.ladybug import load_directory, verify_directory
 try:
     import kuzu as driver
 except ImportError:
@@ -423,9 +426,10 @@ except ImportError:
 if driver is None:
     print("no driver installed: pip install kuzu (or ladybug) to run the queries below")
 else:
-    write_ladybug(tables, WORK / "bank", db_path=WORK / "bank.db")
+    report = load_directory(WORK / "bank", WORK / "bank.db")
+    print(report.summary())
+    print(verify_directory(WORK / "bank", WORK / "bank.db").summary())
     conn = driver.Connection(driver.Database(str(WORK / "bank.db")))
-    print(open(WORK / "bank" / "load.cypher").read()[:700], "...")
 """)
 
 code("""
@@ -438,7 +442,9 @@ if driver:
     display(cypher('''
       MATCH (a:Account)-[t:TRANSFERS]->(b:Account)
       WHERE t.amount >= 8500 AND t.amount < 10000
-      RETURN a.id AS account, count(t) AS near_threshold_transfers, round(sum(t.amount), 0) AS total
+      WITH a, count(t) AS near_threshold_transfers
+      RETURN a.id AS account, near_threshold_transfers,
+             EXISTS { MATCH (a)-[:IN_PATTERN]->(:Pattern {typology: 'structuring'}) } AS planted
       ORDER BY near_threshold_transfers DESC LIMIT 5'''))
 """)
 
@@ -453,6 +459,20 @@ if driver:
     ev = evaluate(run, flagged, ring_threshold=0.5)
     print(ev.summary().split("\\n\\n")[0])
     print("pattern recall, cycle typology:", round(ev.per_typology.get("cycle").recall, 2) if "cycle" in ev.per_typology else "n/a")
+""")
+
+md("""
+With the truth in the graph, the answer sits one hop from the guess. The near-threshold senders above are mostly
+employers paying salaries; the planted structurers are further down the list. Who is in a ring, and in what role:
+""")
+
+code("""
+if driver:
+    display(cypher('''
+      MATCH (a:Account)-[m:IN_PATTERN]->(p:Pattern)
+      WHERE p.is_fraud
+      RETURN p.typology AS typology, m.role AS role, count(*) AS accounts
+      ORDER BY typology, role''').head(12))
 """)
 
 md("""

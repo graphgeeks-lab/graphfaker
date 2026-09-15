@@ -54,10 +54,10 @@ def test_neo4j_admin_works_for_the_social_graph(tmp_path):
 
 def test_ladybug_script_declares_every_table(run):
     script = ladybug_script(run.tables, "data")
-    assert "CREATE NODE TABLE Account(`id` STRING PRIMARY KEY" in script
-    assert "CREATE REL TABLE TRANSFERS(FROM Account TO Account" in script
+    assert "CREATE NODE TABLE `Account`(`id` STRING PRIMARY KEY" in script
+    assert "CREATE REL TABLE `TRANSFERS`(FROM `Account` TO `Account`" in script
     assert "`timestamp` TIMESTAMP" in script and "`opened_at` DATE" in script
-    assert 'COPY TRANSFERS FROM "' in script
+    assert "COPY `TRANSFERS` FROM \"" in script
 
 
 def test_ladybug_write_without_driver(tmp_path, run):

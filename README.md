@@ -79,6 +79,7 @@ run = fraud.generate(scale=0.01, hardness="medium", seed=42)                    
 | see everything in one place, with charts | [docs/notebooks/graphfaker_tour.ipynb](docs/notebooks/graphfaker_tour.ipynb), or run [examples/fraud_tour.py](examples/fraud_tour.py) |
 | understand how a schema becomes a graph | [docs/how-it-works.md](docs/how-it-works.md) |
 | understand how the bank and its fraud are generated | [docs/fraud-generation.md](docs/fraud-generation.md) |
+| load a dataset into Neo4j, or an embedded LadybugDB, and check the load | [docs/neo4j.md](docs/neo4j.md), [docs/ladybug.md](docs/ladybug.md) |
 | know which generation methods exist and which GraphFaker uses | [docs/methods.md](docs/methods.md) |
 | add your own domain (supply chain, claims, telecom, ...) | [docs/adding-a-domain.md](docs/adding-a-domain.md) |
 | see the plan and the reasoning behind it | [docs/design/synthetic-at-scale.md](docs/design/synthetic-at-scale.md) |
@@ -190,7 +191,7 @@ Sinks put the same tables into a database's own loader format:
 |---|---|---|
 | `load_tables`, `load_directory` | batched `UNWIND` writes into a **running** Neo4j over Bolt, including the truth as a subgraph | a Neo4j you already have up, or Aura; no restart, no file staging |
 | `verify_tables`, `verify_directory` | every check in [docs/neo4j.md](docs/neo4j.md): counts, constraints, endpoint labels, per-property aggregates, sampled round trips, truth coverage | proving the load is the dataset, in CI |
-| `write_ladybug` | DDL and `COPY FROM` Parquet; loads the database when `kuzu` or `ladybug` is installed | an embedded graph database, one file, Cypher, no server |
+| `write_ladybug`, `graphfaker load ladybug` | DDL, `COPY FROM` Parquet and the truth subgraph; loads and verifies when `kuzu` or `ladybug` is installed | an embedded graph database, one file, Cypher, no server; see [docs/ladybug.md](docs/ladybug.md) |
 | `write_neo4j_admin` | typed CSVs and the `neo4j-admin database import` command | the fastest path into Neo4j, offline, at any scale |
 | `write_gen_fraud_graph` | gen-fraud-graph's `accounts/`, `transactions/`, `fraud/` layout | pipelines built on that generator |
 | `export_csv`, `export_neo4j_csv`, `export_cypher` | from a NetworkX graph: CSV, neo4j-admin CSV, Cypher, openCypher, ISO GQL | Memgraph, Neptune, TigerGraph, any bulk loader |
@@ -209,7 +210,7 @@ print(load_directory("bank", target, wipe_first=True).summary())
 assert verify_directory("bank", target).ok
 ```
 
-On the command line, `--sink parquet|neo4j|neo4j-admin|ladybug|gen-fraud-graph` on `graphfaker fraud` and `graphfaker generate`, and `graphfaker load neo4j` / `graphfaker verify neo4j` for a dataset already on disk.
+On the command line, `--sink parquet|neo4j|neo4j-admin|ladybug|gen-fraud-graph` on `graphfaker fraud` and `graphfaker generate` (add `--blind` to keep the ground truth out of the database), and `graphfaker load neo4j|ladybug` / `graphfaker verify neo4j|ladybug` for a dataset already on disk. Both loaders put the truth in the graph the same way (`Pattern` nodes, `IN_PATTERN` memberships with roles, `is_fraud` on the money relationships) and verify the load with the same checks.
 
 ## Reproducibility
 
