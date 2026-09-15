@@ -280,7 +280,7 @@ def test_all_exporters_run_on_a_generated_graph(tmp_path):
     gf = GraphFaker(seed=42)
     G = gf.generate_graph(source="faker", total_nodes=60, total_edges=180)
 
-    nodes_path, edges_path = export_csv(
+    nodes_path, _edges_path = export_csv(
         G, str(tmp_path / "n.csv"), str(tmp_path / "e.csv")
     )
     with open(nodes_path, encoding="utf-8") as handle:

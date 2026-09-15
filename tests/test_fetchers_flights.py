@@ -1,8 +1,9 @@
 # tests/test_fetchers_flights.py
-import pytest
 import pandas as pd
-import networkx as nx
+import pytest
+
 from graphfaker.fetchers.flights import FlightGraphFetcher
+
 
 @pytest.fixture
 def sample_airlines_df():

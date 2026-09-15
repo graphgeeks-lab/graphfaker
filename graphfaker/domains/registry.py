@@ -81,7 +81,7 @@ def _plugins() -> dict[str, Domain]:
     for entry in entry_points(group=ENTRY_POINT_GROUP):
         try:
             domain = entry.load()
-        except Exception as exc:  # noqa: BLE001 - a broken plugin must not take the CLI down
+        except Exception as exc:
             logger.warning("domain plugin %s failed to load: %s", entry.name, exc)
             continue
         if not isinstance(domain, Domain):

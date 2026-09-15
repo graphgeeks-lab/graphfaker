@@ -18,7 +18,5 @@ def parse_date_range(date_range: str) -> tuple:
         return start_date, end_date
     except ValueError as e:
         raise ValueError(f"Invalid date range format: {e}") from e
-    except AttributeError:
-        raise ValueError(
-            "Date range must contain exactly two dates separated by a comma."
-        )
+    except AttributeError as exc:
+        raise ValueError("Date range must contain exactly two dates separated by a comma.") from exc

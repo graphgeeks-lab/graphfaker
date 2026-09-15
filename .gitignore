@@ -112,3 +112,5 @@ ENV/
 .idea/
 
 cache/
+
+/docs/design/

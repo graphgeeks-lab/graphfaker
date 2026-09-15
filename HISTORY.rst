@@ -2,7 +2,7 @@
 History
 =======
 
-0.5.0 (unreleased)
+0.5.0 (2026-09-15)
 ------------------
 
 GraphFaker becomes a generator of synthetic graph data that behaves like the

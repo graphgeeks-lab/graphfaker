@@ -1,0 +1,23 @@
+# Lint rules shared by CI and local runs. Examples and notebooks are not linted in CI yet.
+line-length = 120
+target-version = "py310"
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "DTZ", "RUF"]
+ignore = [
+    "B008",   # typer.Option in argument defaults is the typer idiom
+    "B905",   # zip(strict=) everywhere adds noise, not safety, in this codebase
+    "RUF005", # list concatenation is fine
+    "DTZ001", # naive datetimes are intentional for calendar arithmetic
+    "RUF001", # ambiguous unicode characters in strings (e.g. multiplication sign in prose)
+    "RUF002", # ... in docstrings
+    "RUF003", # ... in comments
+    "RUF012", # mutable class attributes on pydantic/dataclass models
+    "UP045",  # keep Optional[...] in older modules until touched
+    "UP007",
+    "UP037",
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["B011", "B018", "DTZ"]
+"examples/*" = ["F401", "F811", "F841", "B018", "E402"]

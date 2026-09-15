@@ -4,8 +4,10 @@ include HISTORY.rst
 include LICENSE
 include README.md
 
-recursive-include tests *
+recursive-include tests *.py
+recursive-include docs *.rst *.md conf.py Makefile make.bat
+recursive-exclude docs/_build *
+recursive-exclude docs/notebooks *
+recursive-exclude tests/cache *
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
-
-recursive-include docs *.rst conf.py Makefile make.bat *.jpg *.png *.gif
