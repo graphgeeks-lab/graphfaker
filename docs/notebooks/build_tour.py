@@ -39,7 +39,9 @@ code = lambda s: cells.append(new_code_cell(s.strip()))
 md("""
 # GraphFaker tour: schemas, a synthetic bank, and the ground truth that comes with it
 
-This notebook is a walk through what GraphFaker does today:
+GraphFaker generates synthetic graph data that behaves like the real thing. You describe the graph you need, or pick a ready-made domain such as a bank with laundering patterns, and get entities, relationships and events whose structure, attributes and timing agree, with the ground truth of everything that was planted. Tabular generators such as Data Designer produce rows; GraphFaker generates the connections.
+
+This notebook walks through what that means in practice:
 
 1. **Schemas**: a graph is declared (node types, samplers, latent factors, topology), generated, and measured.
 2. **The fraud pack**: a bank with customers, accounts, merchants and devices, a realistic transaction process, and eleven labelled laundering typologies.
@@ -485,11 +487,12 @@ md("""
 ## Where this is going
 
 - Vectorised person sampling so `scale=1.0` (10M accounts, 90M transactions) runs in minutes rather than an hour.
-- RDF, PyTorch Geometric and a live Neo4j driver as sinks; domain packs as plug-ins.
+- RDF, PyTorch Geometric and a live Neo4j driver as sinks.
 - Lifting the transaction process and the typology catalog into the schema so other domains (supply chain, claims,
-  telco) declare them the same way.
+telco) declare them the same way. Domains are already modular: `graphfaker domains` lists them and
+`docs/adding-a-domain.md` explains how to add one.
 
-The design document is `docs/design/synthetic-at-scale.md`.
+How generation works is in `docs/how-it-works.md` and `docs/fraud-generation.md`; the plan is in `docs/design/synthetic-at-scale.md`.
 """)
 
 nb = new_notebook(cells=cells, metadata={

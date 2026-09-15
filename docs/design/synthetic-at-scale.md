@@ -6,6 +6,18 @@ This document replaces the earlier proposals. It sets the direction for taking G
 
 The first deliverable is a **fraud / AML domain pack**, a redesign of what [SantanderAI/gen-fraud-graph](https://github.com/SantanderAI/gen-fraud-graph) does, built on the new engine.
 
+## 0. What GraphFaker is
+
+**Synthetic graph data that behaves like the real thing.** GraphFaker generates realistic graph datasets from a schema: entities, relationships and events whose structure, attributes and timing agree with each other, with the ground truth of everything it planted included. You describe the graph you need, or pick a ready-made domain such as a bank with laundering patterns, and load the result into Neo4j, LadybugDB, Parquet or NetworkX.
+
+The positioning in one line: tabular generators such as NVIDIA Data Designer, SDV and Mostly AI produce rows; a graph needs a degree distribution with hubs, clustering and communities, events in a plausible order over time, and labels for what was injected. **Data Designer generates the tables; GraphFaker generates the connections.**
+
+It is for three jobs: building and demonstrating graph applications without real data, benchmarking graph databases and algorithms at any size, and training and evaluating detectors (fraud models, entity resolution, knowledge-graph and GraphRAG pipelines) against a known answer.
+
+Every section below serves that statement. The README, the package description and the docs index carry the same wording, so the project says one thing everywhere.
+
+A note for later: the name "GraphFaker" reads as "fake names", which undersells the structure and the ground truth. If this were designed from scratch, a name in the spirit of "graph designer" would describe it better. That is a separate decision; nothing here depends on it.
+
 ---
 
 ## 1. Why this matters now
@@ -18,7 +30,7 @@ Three things are converging, and none of them has a good answer for graph data.
 
 **Fraud is the graph killer app, and everyone demos it on toy data.** Neo4j, TigerGraph, Neptune, Kùzu/LadybugDB, FalkorDB, Memgraph all lead with fraud-ring demos. Santander open-sourced gen-fraud-graph because banks cannot share the real thing. IBM built AMLSim and AMLworld for the same reason. The existing generators either have scale without realism (gen-fraud-graph: uniform-random edges, one sentinel amount, constant timestamps) or realism without scale or labels.
 
-The unique asset of synthetic data is **ground truth**. You know which accounts are mules, which two nodes are the same person, which community a node belongs to. A generator that keeps that truth attached to every output, and emits it in the format the target system wants, is a benchmark substrate for the entire graph+AI stack. That is what GraphFaker should be.
+The unique asset of synthetic data is **ground truth**. You know which accounts are mules, which two nodes are the same person, which community a node belongs to. A generator that keeps that truth attached to every output, and emits it in the format the target system wants, is a benchmark substrate for the entire graph+AI stack. That is what GraphFaker is for, and why the sentence in §0 ends with "the ground truth included".
 
 ---
 
@@ -65,7 +77,7 @@ Data Designer generates node tables extremely well. It cannot generate edges. Th
 
 ## 3. The reframe
 
-> **GraphFaker is to graphs what Data Designer is to tables.** You declare a graph schema (node types with attribute distributions, edge types with topology models, temporal processes, labelled patterns to inject, noise to apply) and the engine generates it at any scale, on any backend, into any sink, with ground truth attached.
+> **Data Designer generates the tables; GraphFaker generates the connections.** You declare a graph schema (node types with attribute distributions, edge types with topology models, temporal processes, labelled patterns to inject, noise to apply) and the engine generates it at any scale, on any backend, into any sink, with ground truth attached.
 
 Everything in v0.5 becomes an instance of this: the social graph is a `GraphSchema` preset; `resolve`/`corpus` become the *entity-duplication* noise model plus its evaluation harness; OSM/flights become *seed substrates*.
 

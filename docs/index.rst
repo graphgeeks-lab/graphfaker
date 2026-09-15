@@ -16,7 +16,8 @@ Synthetic graph data that behaves like the real thing. Generate realistic graph 
    methods
    adding-a-domain
    notebooks/graphfaker_tour
-   modules
+   notebooks/duplication_experiment
+   design/synthetic-at-scale
    contributing
    authors
    history

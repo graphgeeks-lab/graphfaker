@@ -77,11 +77,17 @@ examples = [
     "ipykernel",
     "notebook",
 ]
+docs = [
+    "sphinx>=8.0",
+    "myst-nb>=1.2",
+    "myst-parser>=4.0",
+]
 dev = [
     "coverage",  # testing
     "mypy",  # linting
     "pytest",  # testing
-    "ruff"  # linting
+    "ruff",  # linting
+    "pip-audit",  # dependency vulnerability check
 ]
 
 [project.scripts]

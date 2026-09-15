@@ -5,8 +5,27 @@ History
 0.5.0 (unreleased)
 ------------------
 
-Schema-driven generation, the fraud domain pack, sinks, and realistic
-graph topology. The plan is in ``docs/design/synthetic-at-scale.md``.
+GraphFaker becomes a generator of synthetic graph data that behaves like the
+real thing: you describe the graph you need, or pick a ready-made domain, and
+get entities, relationships and events whose structure, attributes and timing
+agree, with the ground truth included. Tabular generators produce rows;
+GraphFaker generates the connections. This release adds schema-driven
+generation, the fraud domain pack, database sinks, a modular domain registry,
+and realistic graph topology. The plan is in ``docs/design/synthetic-at-scale.md``.
+
+Positioning and documentation:
+
+* README, package description, package docstring and the docs index all carry
+  the same statement of what GraphFaker is and who it is for.
+* New guides: ``docs/how-it-works.md`` (schema to tables), ``docs/fraud-generation.md``
+  (every step of the bank and its typologies), ``docs/methods.md`` (families of
+  synthetic graph generation and which GraphFaker uses), ``docs/adding-a-domain.md``.
+* ``graphfaker.domains.registry``: every domain is a ``Domain`` with a name, an
+  options model and a ``generate`` function; third-party domains register through
+  the ``graphfaker.domains`` entry-point group. ``graphfaker domains`` lists them,
+  ``graphfaker generate <domain> --option value`` runs any of them.
+* The README explains what each option means (``--seed``, ``--scale``,
+  ``--hardness`` and the rest) and when to change it.
 
 * ``graphfaker.schema``: declarative ``GraphSchema``: node types with
   attribute samplers, latent factors with per-group parameters, edge families,
