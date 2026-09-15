@@ -14,6 +14,7 @@ Synthetic graph data that behaves like the real thing. Generate realistic graph 
    how-it-works
    fraud-generation
    neo4j
+   ladybug
    methods
    adding-a-domain
    notebooks/graphfaker_tour
