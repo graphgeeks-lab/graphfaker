@@ -174,6 +174,12 @@ def _write_sink(run, out: str, sink: str) -> None:
         from graphfaker.sinks import write_gen_fraud_graph
 
         write_gen_fraud_graph(run, os.path.join(out, "gen_fraud_graph"))
+    elif sink == "neo4j":
+        from graphfaker.sinks.neo4j_live import Target, load_tables
+
+        target = Target()
+        typer.echo(f"loading into {target.uri} database {target.database!r} ...")
+        typer.echo(load_tables(run.tables, target, run.truth, wipe_first=True).summary())
     else:
         raise typer.BadParameter(f"unknown sink {sink!r}")
 
@@ -228,7 +234,7 @@ def generate(
     out: str = typer.Option("graphfaker_out", help="Output directory."),
     seed: int = typer.Option(None, help="Seed for a reproducible dataset."),
     workers: int = typer.Option(1, help="Processes for node sampling. Does not change the result."),
-    sink: str = typer.Option("parquet", help="parquet | neo4j-admin | ladybug | gen-fraud-graph."),
+    sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | gen-fraud-graph."),
 ):
     """Example: graphfaker generate fraud --scale 0.01 --hardness high --seed 1 --out ./bank"""
     from graphfaker.domains import get
@@ -253,7 +259,7 @@ def fraud(
     out: str = typer.Option("fraud_data", help="Output directory."),
     sink: str = typer.Option(
         "parquet",
-        help="parquet | neo4j-admin | ladybug | gen-fraud-graph. Parquet (nodes/, edges/, truth/, manifest) is always written.",
+        help="parquet | neo4j | neo4j-admin | ladybug | gen-fraud-graph. Parquet (nodes/, edges/, truth/, manifest) is always written.",
     ),
     period_days: int = typer.Option(90, help="Length of the transaction period in days."),
     workers: int = typer.Option(1, help="Processes for entity sampling. Does not change the result."),
@@ -288,6 +294,81 @@ def evaluate(
 
     result = _evaluate(data, read(accounts), read(transactions), ring_threshold=ring_threshold)
     typer.echo(result.summary())
+
+
+load_app = typer.Typer(no_args_is_help=True, help="Load a generated dataset into a live database.")
+verify_app = typer.Typer(no_args_is_help=True, help="Check a loaded database against the dataset on disk.")
+app.add_typer(load_app, name="load")
+app.add_typer(verify_app, name="verify")
+
+
+def _target(uri: str, user: str, password: str, database: str):
+    """Connection details, with unset flags falling back to NEO4J_* env vars."""
+    from graphfaker.sinks.neo4j_live import Target
+
+    given = {k: v for k, v in
+             {"uri": uri, "user": user, "password": password, "database": database}.items()
+             if v is not None}
+    return Target(**given)
+
+
+@load_app.command("neo4j", short_help="Load a dataset directory into a running Neo4j over Bolt.")
+def load_neo4j(
+    data: str = typer.Argument(..., help="Directory written by `graphfaker generate` or `graphfaker fraud`."),
+    uri: str = typer.Option(None, help="Bolt URI. Default $NEO4J_URI or neo4j://127.0.0.1:7687."),
+    user: str = typer.Option(None, help="User. Default $NEO4J_USER or neo4j."),
+    password: str = typer.Option(None, help="Password. Default $NEO4J_PASSWORD.", envvar="NEO4J_PASSWORD"),
+    database: str = typer.Option(None, help="Database name. Default $NEO4J_DATABASE or neo4j."),
+    truth: bool = typer.Option(
+        True,
+        "--truth/--blind",
+        help="--blind loads the graph only: no (:Pattern) nodes and no is_fraud, so the dataset stays usable as an unbiased benchmark.",
+    ),
+    wipe: bool = typer.Option(False, help="Delete everything in the target database first."),
+    create: bool = typer.Option(False, help="CREATE DATABASE first (Neo4j Enterprise or Aura)."),
+    batch_size: int = typer.Option(10_000, help="Rows per write transaction. Lower it if the server heap is small."),
+    verify: bool = typer.Option(True, help="Run the checks in `graphfaker verify neo4j` after loading."),
+):
+    """Example: graphfaker load neo4j ./bank --database fraud --create --wipe"""
+    from graphfaker.sinks.neo4j_live import load_directory
+    from graphfaker.sinks.neo4j_verify import verify_directory
+
+    target = _target(uri, user, password, database)
+    typer.echo(f"loading {data} into {target.uri} database {target.database!r}" + ("" if truth else " (blind)"))
+    try:
+        report = load_directory(
+            data, target, truth=truth, batch_size=batch_size, wipe_first=wipe, create=create
+        )
+    except (RuntimeError, ImportError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(report.summary())
+    if verify:
+        typer.echo("")
+        result = verify_directory(data, target, truth=truth)
+        typer.echo(result.summary())
+        if not result.ok:
+            raise typer.Exit(code=1)
+
+
+@verify_app.command("neo4j", short_help="Compare a Neo4j database against the dataset it was loaded from.")
+def verify_neo4j(
+    data: str = typer.Argument(..., help="The dataset directory that was loaded. It is the oracle."),
+    uri: str = typer.Option(None, help="Bolt URI. Default $NEO4J_URI or neo4j://127.0.0.1:7687."),
+    user: str = typer.Option(None, help="User. Default $NEO4J_USER or neo4j."),
+    password: str = typer.Option(None, help="Password. Default $NEO4J_PASSWORD.", envvar="NEO4J_PASSWORD"),
+    database: str = typer.Option(None, help="Database name. Default $NEO4J_DATABASE or neo4j."),
+    truth: bool = typer.Option(True, "--truth/--blind", help="--blind for a database loaded without the truth subgraph."),
+    sample: int = typer.Option(25, help="Rows per label fetched back and compared property by property. 0 skips it."),
+    verbose: bool = typer.Option(False, help="Print every check, not only the failures."),
+):
+    """Exits non-zero if the database does not match the dataset."""
+    from graphfaker.sinks.neo4j_verify import verify_directory
+
+    result = verify_directory(data, _target(uri, user, password, database), truth=truth, sample=sample)
+    typer.echo(result.summary(verbose=verbose))
+    if not result.ok:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
