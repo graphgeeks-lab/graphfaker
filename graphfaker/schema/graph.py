@@ -29,6 +29,17 @@ from graphfaker.schema.topology import SocialTopology, TopologyModel
 _IDENT = r"^[A-Za-z_][A-Za-z0-9_]*$"
 
 
+def _looks_like_path(text: str) -> bool:
+    """A short single-line string naming an existing file. Guarded because
+    ``Path(long_yaml_text).exists()`` raises on Linux (name too long)."""
+    if len(text) > 4096:
+        return False
+    try:
+        return Path(text).is_file()
+    except OSError:
+        return False
+
+
 class LatentFactor(BaseModel):
     """A hidden grouping shared by every node type, with per-group parameters.
 
@@ -297,8 +308,10 @@ class GraphSchema(BaseModel):
 
     @classmethod
     def from_yaml(cls, source: str | Path) -> GraphSchema:
-        path = Path(source)
-        text = path.read_text(encoding="utf-8") if path.exists() else str(source)
+        """Load from a file path, or parse YAML text directly."""
+        text = str(source)
+        if isinstance(source, Path) or ("\n" not in text and _looks_like_path(text)):
+            text = Path(source).read_text(encoding="utf-8")
         return cls.from_dict(yaml.safe_load(text))
 
     def digest(self) -> str:

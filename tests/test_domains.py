@@ -1,5 +1,7 @@
 """The domain registry and the generic CLI commands."""
 
+import re
+
 import pytest
 from pydantic import BaseModel
 from typer.testing import CliRunner
@@ -77,9 +79,17 @@ def test_cli_generate_any_domain(tmp_path):
     assert (tmp_path / "manifest.json").exists()
 
 
+def _plain(output: str) -> str:
+    """Typer renders errors with rich: strip ANSI codes and box drawing so the
+    assertions see the words, whatever the terminal on the CI runner."""
+    text = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    text = re.sub(r"[\u2500-\u257f]", " ", text)
+    return re.sub(r"\s+", " ", text)
+
+
 def test_cli_generate_reports_bad_options(tmp_path):
     result = runner.invoke(app, ["generate", "social", "--colour", "blue", "--out", str(tmp_path)])
     assert result.exit_code != 0
-    assert "--colour" in result.output
+    assert "--colour" in _plain(result.output)
     result = runner.invoke(app, ["generate", "nope", "--out", str(tmp_path)])
-    assert result.exit_code != 0 and "social" in result.output
+    assert result.exit_code != 0 and "social" in _plain(result.output)
