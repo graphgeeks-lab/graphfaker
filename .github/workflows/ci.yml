@@ -30,14 +30,16 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
 
+      # Installs the versions pinned in uv.lock into a project venv.
+      # The examples extra brings kuzu, so the LadybugDB sink test runs.
       - name: Install
-        run: uv pip install --system -e ".[dev]" kuzu
+        run: uv sync --locked --extra dev --extra examples
 
       - name: Lint
-        run: ruff check graphfaker tests
+        run: uv run ruff check graphfaker tests
 
       - name: Test
-        run: pytest -q -m "not network"
+        run: uv run pytest -q -m "not network"
 
   audit:
     name: dependency audit
@@ -48,9 +50,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
-        run: uv pip install --system -e ".[dev,examples,docs]"
+        run: uv sync --locked --extra dev --extra examples --extra docs
       - name: pip-audit
-        run: pip-audit --skip-editable --progress-spinner off
+        run: uv run pip-audit --skip-editable --progress-spinner off
 
   docs:
     name: docs build
@@ -61,6 +63,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
-        run: uv pip install --system -e ".[docs]"
+        run: uv sync --locked --extra docs
       - name: Sphinx
-        run: python -m sphinx -q -b html docs docs/_build/html
+        run: uv run python -m sphinx -q -b html docs docs/_build/html
