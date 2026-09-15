@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphfaker"
-version = "0.3.1"
-description = "an open-source python library for generating, and loading both synthetic and real-world graph datasets"
+version = "0.5.0"
+description = "Generate realistic graph datasets from a schema: entities, relationships and events whose structure, attributes and timing agree."
 readme = "README.md"
 authors = [
   {name = "Dennis Irorere", email = "denironyx@gmail.com"}
@@ -14,33 +14,92 @@ maintainers = [
   {name = "Dennis Irorere", email = "denironyx@gmail.com"}
 ]
 classifiers = [
-
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Database",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 license = "MIT"
-keywords = ["faker", "graph-data", "flights", "osmnx", "graphs", "graphfaker"]
+requires-python = ">=3.10"
+keywords = [
+  "synthetic-data",
+  "graph-data",
+  "graph-generator",
+  "knowledge-graph",
+  "fraud-detection",
+  "anti-money-laundering",
+  "benchmark",
+  "ground-truth",
+  "entity-resolution",
+  "graphrag",
+  "neo4j",
+  "kuzu",
+  "ladybugdb",
+  "cypher",
+  "networkx",
+  "polars",
+  "parquet",
+  "osmnx",
+  "flights",
+  "faker",
+]
 dependencies = [
   "faker>=37.1.0",
   "networkx>=3.4.2",
+  "numpy>=1.26",
   "osmnx==2.0.2",
   "pandas>=2.2.2",
+  "polars>=1.0",
+  "pyarrow>=15.0",
+  "pydantic>=2.6",
+  "pyyaml>=6.0",
   "requests>=2.32.3",
+  "tqdm>=4.66.0",
   "typer",
+  "urllib3>=2.0.0",
   "wikipedia>=1.4.0",
 ]
 
 [project.optional-dependencies]
+examples = [
+    "matplotlib>=3.8",
+    "kuzu>=0.11",  # LadybugDB-compatible embedded graph database for the notebook queries
+    "nbformat",
+    "nbclient",
+    "ipykernel",
+    "notebook",
+]
+docs = [
+    "sphinx>=8.0",
+    "myst-nb>=1.2",
+    "myst-parser>=4.0",
+]
 dev = [
     "coverage",  # testing
     "mypy",  # linting
     "pytest",  # testing
-    "ruff"  # linting
+    "ruff",  # linting
+    "pip-audit",  # dependency vulnerability check
 ]
 
-[project.urls]
+[project.scripts]
+graphfaker = "graphfaker.cli:app"
 
-bugs = "https://github.com/graphgeeks-lab/graphfaker/issues"
-changelog = "https://github.com/graphgeeks-lab/graphfaker/blob/master/changelog.md"
+[project.urls]
 homepage = "https://github.com/graphgeeks-lab/graphfaker/"
+documentation = "https://graphfaker.readthedocs.io"
+repository = "https://github.com/graphgeeks-lab/graphfaker"
+changelog = "https://github.com/graphgeeks-lab/graphfaker/blob/main/HISTORY.rst"
+issues = "https://github.com/graphgeeks-lab/graphfaker/issues"
+discord = "https://discord.gg/mQQz9bRRpH"
 
 [tool.setuptools]
 package-dir = {"graphfaker" = "graphfaker"}
@@ -63,3 +122,9 @@ warn_unreachable = true
 warn_no_return = true
 
 
+
+
+[tool.pytest.ini_options]
+markers = [
+  "network: test reaches the internet; deselect with -m 'not network'",
+]

@@ -22,24 +22,41 @@ Usage:
     flights_df  = FlightGraphFetcher.fetch_flights(year=2024, month=1)
     G = FlightGraphFetcher.build_graph(airlines_df, airports_df, flights_df)
 """
-import os
 import io
+import os
 import zipfile
 from datetime import datetime, timedelta
-from typing import Tuple, Optional
 from io import StringIO
-from graphfaker.logger import logger
-import requests
-import pandas as pd
-from tqdm.auto import tqdm
+
 import networkx as nx
+import pandas as pd
+import requests
 
-
-# suppress only the single warning from unverified HTTPS
+# TLS certificate verification is ON by default. The BTS host has historically
+# served a chain that some systems fail to validate, which is why this was once
+# disabled outright, but silently turning off verification for every user is a
+# man-in-the-middle risk, so it is now opt-in and noisy.
+#
+# Set GRAPHFAKER_INSECURE_TLS=1 to skip verification, and understand that doing
+# so means the downloaded data is no longer authenticated.
 import urllib3
+from tqdm.auto import tqdm
 from urllib3.exceptions import InsecureRequestWarning
 
-urllib3.disable_warnings(InsecureRequestWarning)
+from graphfaker.logger import logger
+
+VERIFY_TLS = os.environ.get("GRAPHFAKER_INSECURE_TLS", "").strip().lower() not in (
+    "1",
+    "true",
+    "yes",
+)
+
+if not VERIFY_TLS:
+    urllib3.disable_warnings(InsecureRequestWarning)
+    logger.warning(
+        "GRAPHFAKER_INSECURE_TLS is set: TLS certificate verification is "
+        "DISABLED for flight data downloads. Data integrity is not guaranteed."
+    )
 
 # Data source URLs
 AIRLINE_LOOKUP_URL = (
@@ -125,14 +142,14 @@ class FlightGraphFetcher:
             HTTPError if download fails.
         """
         logger.info("Fetching airlines lookup from BTS…")
-        resp = requests.get(AIRLINE_LOOKUP_URL, verify=False)
+        resp = requests.get(AIRLINE_LOOKUP_URL, verify=VERIFY_TLS)
         resp.raise_for_status()
         df = pd.read_csv(StringIO(resp.text))
         return df.rename(columns={"Code": "carrier", "Description": "airline_name"})
 
     @staticmethod
     def fetch_airports(
-        country: Optional[str] = "United States", keep_only_with_faa: bool = True
+        country: str | None = "United States", keep_only_with_faa: bool = True
     ) -> pd.DataFrame:
         """
         Download and tidy the OpenFlights airports dataset:
@@ -184,7 +201,7 @@ class FlightGraphFetcher:
     @staticmethod
     def _download_extract_csv(url: str) -> io.BytesIO:
         """Stream-download a BTS zip file and return CSV data as BytesIO."""
-        resp = requests.get(url, stream=True, verify=False)
+        resp = requests.get(url, stream=True, verify=VERIFY_TLS)
         resp.raise_for_status()
         buf = io.BytesIO()
         total = int(resp.headers.get("content-length", 0))
@@ -199,9 +216,9 @@ class FlightGraphFetcher:
 
     @staticmethod
     def fetch_flights(
-        year: Optional[int] = None,
-        month: Optional[int] = None,
-        date_range: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None,
+        year: int | None = None,
+        month: int | None = None,
+        date_range: tuple[tuple[int, int], tuple[int, int]] | None = None,
     ) -> pd.DataFrame:
         """
         Fetch BTS on-time performance data for a given month or a range of months.
@@ -329,7 +346,7 @@ class FlightGraphFetcher:
 
         elapsed = time.time() - t0
         logger.info(
-            f"✅ Graph built in {elapsed:.2f}s — "
+            f"Graph built in {elapsed:.2f}s; "
             f"{G.number_of_nodes()} nodes, {G.number_of_edges()} edges"
         )
 

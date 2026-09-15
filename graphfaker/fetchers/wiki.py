@@ -21,10 +21,12 @@ Usage:
     print(page['sections'], page['links'][:5], page['references'][:5])
     wiki.export_page_json(page, "graph_theory.json")    
 """
-import os
 import json
-from typing import Dict, Any, List, Optional
+import os
+from typing import Any
+
 import wikipedia
+
 
 class WikiFetcher:
     """
@@ -32,7 +34,7 @@ class WikiFetcher:
     """
     
     @staticmethod
-    def fetch_page(title: str) -> Dict[str, Any]:
+    def fetch_page(title: str) -> dict[str, Any]:
             """ 
             Retrieve a Wikipedia page by title and return core fields.
             
@@ -65,7 +67,7 @@ class WikiFetcher:
             return data
     
     @staticmethod
-    def export_page_json(page: Dict[str, Any], filename: str) -> None:
+    def export_page_json(page: dict[str, Any], filename: str) -> None:
         """
         Write the fetched Wikipedia page data to a JSON file.
 

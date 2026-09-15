@@ -1,6 +1,5 @@
 import logging
 
-
 PACKAGE_NAME = "graphfaker"
 LOGGING_FORMAT = f"{PACKAGE_NAME}:%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 

@@ -1,11 +1,60 @@
-"""Top-level package for graphfaker."""
+"""GraphFaker: synthetic graph data that behaves like the real thing.
+
+Generate realistic graph datasets from a schema, or pick a ready-made domain
+such as a bank with laundering patterns, and get entities, relationships and
+events whose structure, attributes and timing agree, with the ground truth
+included.
+"""
 
 __author__ = """Dennis Irorere"""
 __email__ = "denironyx@gmail.com"
-__version__ = "0.2.0"
+__version__ = "0.5.0"
 
+from .backends import GraphTables
 from .core import GraphFaker
+from .corpus import (
+    Corpus,
+    DuplicationReport,
+    attribute_nodes,
+    duplication_report,
+    generate_corpus,
+)
+from .engine import GraphRun, Manifest, generate
+from .export import export_csv, export_cypher, export_neo4j_csv
 from .fetchers.wiki import WikiFetcher
-from .logger import configure_logging, logger
+from .logger import add_file_logging, configure_logging, logger
+from .metrics import compare_topology, graph_stats
+from .resolve import (
+    ResolutionResult,
+    evaluate_clusters,
+    merge_clusters,
+    resolve_entities,
+)
+from .schema import GraphSchema
 
-__all__ = ["GraphFaker", "logger", "configure_logging", "add_file_logging"]
+__all__ = [
+    "Corpus",
+    "DuplicationReport",
+    "GraphFaker",
+    "GraphRun",
+    "GraphSchema",
+    "GraphTables",
+    "Manifest",
+    "ResolutionResult",
+    "WikiFetcher",
+    "add_file_logging",
+    "attribute_nodes",
+    "compare_topology",
+    "configure_logging",
+    "duplication_report",
+    "evaluate_clusters",
+    "export_csv",
+    "export_cypher",
+    "export_neo4j_csv",
+    "generate",
+    "generate_corpus",
+    "graph_stats",
+    "logger",
+    "merge_clusters",
+    "resolve_entities",
+]
