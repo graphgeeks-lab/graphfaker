@@ -409,22 +409,20 @@ md("""
 
 `load_directory` builds an embedded database from the files on disk, with the ground truth as a subgraph (`Pattern`
 nodes, `IN_PATTERN` memberships with roles, `is_fraud` on the money relationships), and verifies the load against the
-Parquet it came from. One file, no server. Needs a driver: `pip install kuzu` (or `ladybug`, same API). From the command
+Parquet it came from. One file, no server. Needs a driver: `pip install ladybug` (`kuzu` still works, same API). From the command
 line this is `graphfaker load ladybug bank`.
 """)
 
 code("""
 from graphfaker.sinks import write_neo4j_admin
 from graphfaker.sinks.ladybug import load_directory, verify_directory
+from graphfaker.sinks.ladybug import _driver
 try:
-    import kuzu as driver
+    driver = _driver()
 except ImportError:
-    try:
-        import ladybug as driver
-    except ImportError:
-        driver = None
+    driver = None
 if driver is None:
-    print("no driver installed: pip install kuzu (or ladybug) to run the queries below")
+    print("no driver installed: pip install ladybug to run the queries below")
 else:
     report = load_directory(WORK / "bank", WORK / "bank.db")
     print(report.summary())

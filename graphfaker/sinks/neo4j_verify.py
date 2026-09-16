@@ -27,6 +27,7 @@ from graphfaker.sinks.verify import (
     DEFAULT_SAMPLE,
     TOLERANCE,
     Check,
+    CypherBackend,
     Verification,
     _equal,
     _native,
@@ -56,7 +57,7 @@ __all__ = [
 _truth_labels = truth_labels
 
 
-class Neo4jBackend:
+class Neo4jBackend(CypherBackend):
     def __init__(self, driver: Driver, database: str):
         self.driver = driver
         self.database = database
@@ -77,11 +78,11 @@ class Neo4jBackend:
         is answered from the count store, so asking what is populated rather than
         what is registered costs nothing and is the question we mean."""
         tokens = self.run("CALL db.labels() YIELD label RETURN collect(label) AS labels")[0]["labels"]
-        return [label for label in tokens if self.run(f"MATCH (n:{_quote(label)}) RETURN count(n) AS n")[0]["n"]]
+        return [label for label in tokens if self.count_nodes(label)]
 
     def types_in_use(self) -> list[str]:
         tokens = self.run("CALL db.relationshipTypes() YIELD relationshipType RETURN collect(relationshipType) AS t")[0]["t"]
-        return [rel for rel in tokens if self.run(f"MATCH ()-[r:{_quote(rel)}]->() RETURN count(r) AS n")[0]["n"]]
+        return [rel for rel in tokens if self.count_edges(rel)]
 
     def constraints(self, labels: list[str]) -> set[str] | None:
         rows = self.run("SHOW CONSTRAINTS YIELD name, labelsOrTypes, properties RETURN name")

@@ -98,43 +98,24 @@ COLUMN_MAP = {
 
 
 class FlightGraphFetcher:
-    """
-    FlightGraphFetcher provides static methods to fetch and transform flight-related data
-    into a NetworkX graph.
+    """Fetch flight-related data and build a NetworkX graph from it.
 
-    Methods:
-        fetch_airlines() -> pd.DataFrame
-            Download the BTS airlines lookup and return a DataFrame with columns:
-                - carrier (IATA code)
-                - airline_name
-
-        fetch_airports(country: str = None, keep_only_with_faa: bool = True) -> pd.DataFrame
-            Download and tidy the OpenFlights airports dataset, optionally filter by country
-            and FAA code. Returns columns:
-                - faa, name, city, country, lat, lon
-
-        fetch_flights(year: int = None, month: int = None,
-                      date_range: Optional[Tuple[Tuple[int,int], Tuple[int,int]]] = None)
-            Fetch BTS on-time performance data for a single month or date range. Returns
-            DataFrame with columns:
-                - year, month, day, carrier, flight, origin, dest, cancelled, delayed
-
-        build_graph(airlines_df: pd.DataFrame,
-                    airports_df: pd.DataFrame,
-                    flights_df: pd.DataFrame) -> nx.DiGraph
-            Construct and return a directed graph with nodes and edges:
-                • Airline nodes from airlines_df
-                • Airport nodes from airports_df
-                • Flight nodes from flights_df, with 'cancelled' and 'delayed' attributes
-                • Relationships: OPERATED_BY, DEPARTS_FROM, ARRIVES_AT
+    ``fetch_airlines`` downloads the BTS airlines lookup (``carrier``,
+    ``airline_name``); ``fetch_airports`` tidies the OpenFlights airports
+    dataset, optionally filtered by country and FAA code (``faa``, ``name``,
+    ``city``, ``country``, ``lat``, ``lon``); ``fetch_flights`` fetches BTS
+    on-time performance data for a month or a date range (``year``, ``month``,
+    ``day``, ``carrier``, ``flight``, ``origin``, ``dest``, ``cancelled``,
+    ``delayed``); ``build_graph`` turns the three frames into a directed graph
+    of Airline, Airport and Flight nodes joined by OPERATED_BY, DEPARTS_FROM
+    and ARRIVES_AT relationships.
     """
 
     @staticmethod
     def fetch_airlines() -> pd.DataFrame:
         """
         Download and tidy BTS airlines lookup table.
-        Source:
-            airline -> https://transtats.bts.gov/Download_Lookup.asp?Y11x72=Y_haVdhR_PNeeVRef
+        Source: https://transtats.bts.gov/Download_Lookup.asp?Y11x72=Y_haVdhR_PNeeVRef
 
         Returns:
             pd.DataFrame with columns ['carrier', 'airline_name']
@@ -153,8 +134,7 @@ class FlightGraphFetcher:
     ) -> pd.DataFrame:
         """
         Download and tidy the OpenFlights airports dataset:
-        Source:
-            airports -> https://openflights.org/data.php
+        Source: https://openflights.org/data.php
 
         Args:
             country: filter airports by country name (optional).

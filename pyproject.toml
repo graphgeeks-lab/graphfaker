@@ -41,8 +41,9 @@ keywords = [
   "entity-resolution",
   "graphrag",
   "neo4j",
-  "kuzu",
   "ladybugdb",
+  "duckdb",
+  "sql/pgq",
   "cypher",
   "networkx",
   "polars",
@@ -72,20 +73,27 @@ dependencies = [
 neo4j = [
     "neo4j>=5.26",  # driver for `graphfaker load neo4j` / `graphfaker verify neo4j`
 ]
+duckdb = [
+    # DuckPGQ is a community extension built per DuckDB release; this is the newest
+    # release it exists for. Check https://community-extensions.duckdb.org/extensions/duckpgq.html before bumping.
+    "duckdb==1.5.4",
+]
 examples = [
     "matplotlib>=3.8",
-    "kuzu>=0.11",  # LadybugDB-compatible embedded graph database for the notebook queries
+    "ladybug>=0.20",  # LadybugDB, the embedded graph database the notebooks query
     "scikit-learn>=1.4",  # the model in docs/notebooks/neo4j_fraud_analysis.ipynb
     "nbformat",
     "nbclient",
     "ipykernel",
     "notebook",
     "neo4j>=5.26",
+    "duckdb==1.5.4",
 ]
 docs = [
     "sphinx>=8.0",
     "myst-nb>=1.2",
     "myst-parser>=4.0",
+    "pydata-sphinx-theme>=0.19.0",
 ]
 dev = [
     "coverage",  # testing

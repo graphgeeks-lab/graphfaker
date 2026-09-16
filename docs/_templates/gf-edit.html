@@ -1,0 +1,10 @@
+{# Pages cut from the README are edited there; everything else on GitHub in docs/. #}
+{% if pagename in readme_pages %}
+<div class="tocsection editthispage">
+  <a href="https://github.com/{{ github_user }}/{{ github_repo }}/edit/{{ github_version }}/README.md">
+    <i class="fa-solid fa-pencil"></i> {{ _("Edit in the README") }}
+  </a>
+</div>
+{% else %}
+{% include "components/edit-this-page.html" %}
+{% endif %}

@@ -4,7 +4,7 @@ An embedded graph database with Cypher and Parquet scanning is the best
 zero-infrastructure place to land a generated graph: one ``pip install``,
 one file, and the whole dataset is queryable. This module writes the DDL and
 load script from the tables' schema, runs it when a driver is installed
-(``ladybug`` or ``kuzu``; the API is the same), loads a dataset that is
+(``ladybug``; ``kuzu``, which it forked from, still works, the API is the same), loads a dataset that is
 already on disk, and verifies the result with the same checks the Neo4j
 sink uses.
 
@@ -40,7 +40,7 @@ from graphfaker.backends.tables import ID, SOURCE, TARGET, GraphTables
 from graphfaker.logger import logger
 from graphfaker.sinks.neo4j import infer_endpoints
 from graphfaker.sinks.neo4j_live import LoadReport, read_truth
-from graphfaker.sinks.verify import DEFAULT_SAMPLE, MEMBER_REL, PATTERN_LABEL, Verification, verify
+from graphfaker.sinks.verify import DEFAULT_SAMPLE, MEMBER_REL, PATTERN_LABEL, CypherBackend, Verification, verify
 
 _TYPES = {
     pl.String: "STRING", pl.Utf8: "STRING",
@@ -212,12 +212,23 @@ def _truth_statements(source: _Source, tables: GraphTables, truth: dict[str, pl.
 
 
 def _driver():
+    """The first importable driver: ``ladybug``, then ``kuzu``.
+
+    Importing is not enough of a test: ``ladybug`` loads its native library
+    lazily, and a wheel whose library cannot load (the Windows wheel looks
+    for OpenSSL DLLs it does not ship) fails later with a ``RuntimeError``.
+    Reading the version forces the load, so any failure moves on to the next
+    candidate.
+    """
+    errors = []
     for name in ("ladybug", "kuzu"):
         try:
-            return __import__(name)
-        except ImportError:
-            continue
-    raise ImportError("install the driver with `pip install ladybug` (or `kuzu`) to load a database")
+            module = __import__(name)
+            str(module.__version__)  # forces the native library to load
+            return module
+        except Exception as exc:
+            errors.append(f"{name}: {exc}")
+    raise ImportError("install the driver with `pip install ladybug` to load a database (" + "; ".join(errors) + ")")
 
 
 def connect(db_path: str | Path):
@@ -271,9 +282,7 @@ def _table_counts(conn, tables: GraphTables, truth: dict[str, pl.DataFrame] | No
         if truth.get("transactions") is not None:
             for rel, frame in tables.edges.items():
                 if "tx_id" in frame.columns:
-                    extra[f"{rel}.is_fraud"] = backend.run(
-                        f"MATCH ()-[r:{_quote(rel)}]->() WHERE r.is_fraud RETURN count(r) AS n"
-                    )[0]["n"]
+                    extra[f"{rel}.is_fraud"] = backend.count_edges(rel, flag="is_fraud")
         for label in _latent_frames(truth):
             extra[label] = backend.count_nodes(label)
     return nodes, edges, extra
@@ -337,7 +346,7 @@ def _strip_internal(record: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in record.items() if not k.startswith("_")}
 
 
-class LadybugBackend:
+class LadybugBackend(CypherBackend):
     """The :class:`~graphfaker.sinks.verify.Backend` for LadybugDB / Kùzu.
 
     Primary keys and relationship endpoint types are part of the table
@@ -364,12 +373,6 @@ class LadybugBackend:
     def _tables(self, kind: str) -> list[str]:
         rows = self.run("CALL show_tables() RETURN *")
         return [row["name"] for row in rows if str(row.get("type", "")).upper() == kind]
-
-    def count_nodes(self, label: str) -> int:
-        return self.run(f"MATCH (n:{_quote(label)}) RETURN count(n) AS n")[0]["n"]
-
-    def count_edges(self, rel: str) -> int:
-        return self.run(f"MATCH ()-[r:{_quote(rel)}]->() RETURN count(r) AS n")[0]["n"]
 
     def labels_in_use(self) -> list[str]:
         return [t for t in self._tables("NODE") if self.count_nodes(t)]

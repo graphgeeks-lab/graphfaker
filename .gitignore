@@ -115,3 +115,11 @@ cache/
 
 /docs/design/
 /bank/
+
+# pages generated from README.md by docs/_readme_pages.py at build time
+docs/get-started/install.md
+docs/get-started/first-commands.md
+docs/get-started/python.md
+docs/domains/index.md
+docs/reference/cli.md
+docs/guides/entity-resolution.md

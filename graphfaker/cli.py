@@ -174,6 +174,13 @@ def _write_sink(run, out: str, sink: str, blind: bool = False) -> None:
             write_ladybug(run.tables, out, db_path=os.path.join(out, "graph.lbdb"), truth=None if blind else run.truth)
         except ImportError as exc:
             typer.echo(f"wrote {out}/load.cypher; database not created: {exc}", err=True)
+    elif sink == "duckdb":
+        from graphfaker.sinks.duckdb import write_duckdb
+
+        try:
+            write_duckdb(run.tables, out, db_path=os.path.join(out, "graph.duckdb"), truth=None if blind else run.truth, graph=run.schema.name)
+        except ImportError as exc:
+            typer.echo(f"wrote {out}/load.sql; database not created: {exc}", err=True)
     elif sink == "gen-fraud-graph":
         from graphfaker.sinks import write_gen_fraud_graph
 
@@ -238,7 +245,7 @@ def generate(
     out: str = typer.Option("graphfaker_out", help="Output directory."),
     seed: int = typer.Option(None, help="Seed for a reproducible dataset."),
     workers: int = typer.Option(1, help="Processes for node sampling. Does not change the result."),
-    sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | gen-fraud-graph."),
+    sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | duckdb | gen-fraud-graph."),
     blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
 ):
     """Example: graphfaker generate fraud --scale 0.01 --hardness high --seed 1 --out ./bank"""
@@ -264,7 +271,7 @@ def fraud(
     out: str = typer.Option("fraud_data", help="Output directory."),
     sink: str = typer.Option(
         "parquet",
-        help="parquet | neo4j | neo4j-admin | ladybug | gen-fraud-graph. Parquet (nodes/, edges/, truth/, manifest) is always written.",
+        help="parquet | neo4j | neo4j-admin | ladybug | duckdb | gen-fraud-graph. Parquet (nodes/, edges/, truth/, manifest) is always written.",
     ),
     period_days: int = typer.Option(90, help="Length of the transaction period in days."),
     workers: int = typer.Option(1, help="Processes for entity sampling. Does not change the result."),
@@ -420,6 +427,55 @@ def verify_ladybug(
     from graphfaker.sinks.ladybug import verify_directory
 
     result = verify_directory(data, db or os.path.join(data, "graph.lbdb"), truth=truth, sample=sample)
+    typer.echo(result.summary(verbose=verbose))
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
+@load_app.command("duckdb", short_help="Load a dataset directory into a new DuckDB database with a SQL/PGQ property graph.")
+def load_duckdb(
+    data: str = typer.Argument(..., help="Directory written by `graphfaker generate` or `graphfaker fraud`."),
+    db: str = typer.Option(None, help="Database file to create. Default <data>/graph.duckdb."),
+    graph: str = typer.Option(None, help="Property graph name. Default: the dataset's schema name (fraud, social)."),
+    truth: bool = typer.Option(
+        True,
+        "--truth/--blind",
+        help="--blind loads the graph only: no Pattern table and no is_fraud, so the dataset stays usable as an unbiased benchmark.",
+    ),
+    wipe: bool = typer.Option(False, help="Replace the database if it already exists."),
+    verify: bool = typer.Option(True, help="Run the checks in `graphfaker verify duckdb` after loading."),
+):
+    """Example: graphfaker load duckdb ./bank --db ./bank/graph.duckdb"""
+    from graphfaker.sinks.duckdb import load_directory, verify_directory
+
+    db_path = db or os.path.join(data, "graph.duckdb")
+    typer.echo(f"loading {data} into {db_path}" + ("" if truth else " (blind)"))
+    try:
+        report = load_directory(data, db_path, truth=truth, graph=graph, wipe_first=wipe)
+    except (RuntimeError, ImportError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(report.summary())
+    if verify:
+        typer.echo("")
+        result = verify_directory(data, db_path, truth=truth)
+        typer.echo(result.summary())
+        if not result.ok:
+            raise typer.Exit(code=1)
+
+
+@verify_app.command("duckdb", short_help="Compare a DuckDB database against the dataset it was loaded from.")
+def verify_duckdb(
+    data: str = typer.Argument(..., help="The dataset directory that was loaded. It is the oracle."),
+    db: str = typer.Option(None, help="Database file. Default <data>/graph.duckdb."),
+    truth: bool = typer.Option(True, "--truth/--blind", help="--blind for a database loaded without the truth."),
+    sample: int = typer.Option(25, help="Rows per table fetched back and compared column by column. 0 skips it."),
+    verbose: bool = typer.Option(False, help="Print every check, not only the failures."),
+):
+    """Exits non-zero if the database does not match the dataset."""
+    from graphfaker.sinks.duckdb import verify_directory
+
+    result = verify_directory(data, db or os.path.join(data, "graph.duckdb"), truth=truth, sample=sample)
     typer.echo(result.summary(verbose=verbose))
     if not result.ok:
         raise typer.Exit(code=1)

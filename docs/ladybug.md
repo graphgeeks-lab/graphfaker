@@ -3,7 +3,7 @@
 LadybugDB (formerly Kùzu) is an embedded graph database: no server, one file on disk, Cypher, and it reads Parquet natively. That makes it the shortest path from a generated dataset to a queryable graph. Two commands:
 
 ```bash
-pip install kuzu                                  # or: pip install ladybug (same API)
+pip install ladybug                               # the LadybugDB driver; kuzu still works, same API
 graphfaker fraud --scale 0.01 --seed 42 --out ./bank
 graphfaker load ladybug ./bank                    # creates ./bank/graph.lbdb, loads it, verifies it
 ```
@@ -89,8 +89,8 @@ graphfaker verify ladybug ./bank --verbose      # every check, not only failures
 ## Querying
 
 ```python
-import kuzu
-conn = kuzu.Connection(kuzu.Database("bank/graph.lbdb"))
+import ladybug
+conn = ladybug.Connection(ladybug.Database("bank/graph.lbdb"))
 ```
 
 Who collects from many senders, and were they planted?
@@ -149,7 +149,7 @@ write_ladybug(run.tables, "bank", db_path="bank/graph.lbdb", truth=run.truth)
 
 | | LadybugDB | Neo4j (Bolt) |
 |---|---|---|
-| setup | `pip install kuzu`, nothing to run | a server or Aura |
+| setup | `pip install ladybug`, nothing to run | a server or Aura |
 | load speed at scale 0.01 | about 10 seconds, from memory | about a minute and a half |
 | good for | exploring, notebooks, CI, scoring detectors, shipping a dataset as one file | a graph others connect to, Graph Data Science, Bloom |
 | verification | same checks | same checks |

@@ -31,7 +31,7 @@ jobs:
           enable-cache: true
 
       # Installs the versions pinned in uv.lock into a project venv.
-      # The examples extra brings kuzu, so the LadybugDB sink test runs.
+      # The examples extra brings the ladybug driver, so the LadybugDB sink tests run.
       - name: Install
         run: uv sync --locked --extra dev --extra examples
 

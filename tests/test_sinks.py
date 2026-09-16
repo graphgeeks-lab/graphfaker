@@ -14,6 +14,7 @@ from graphfaker.sinks import (
     write_ladybug,
     write_neo4j_admin,
 )
+from graphfaker.sinks.ladybug import _driver
 
 
 @pytest.fixture(scope="module")
@@ -66,7 +67,10 @@ def test_ladybug_write_without_driver(tmp_path, run):
 
 
 def test_ladybug_load(tmp_path, run):
-    driver = pytest.importorskip("kuzu")
+    try:
+        driver = _driver()
+    except ImportError as exc:
+        pytest.skip(str(exc))
     write_ladybug(run.tables, tmp_path / "data", db_path=tmp_path / "graph.db")
     conn = driver.Connection(driver.Database(str(tmp_path / "graph.db")))
     assert conn.execute("MATCH (a:Account) RETURN count(a)").get_next()[0] == run.tables.nodes["Account"].height

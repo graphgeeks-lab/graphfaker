@@ -1,7 +1,7 @@
 """The LadybugDB / Kùzu sink: load, ground truth, verification.
 
-These run wherever the driver is installed (``pip install kuzu`` or
-``ladybug``); the database is embedded, so there is nothing to start.
+These run wherever a driver is installed (``pip install ladybug``; ``kuzu``
+still works); the database is embedded, so there is nothing to start.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from graphfaker.domains import fraud, social
 from graphfaker.engine import generate
 from graphfaker.sinks.ladybug import (
     LadybugBackend,
+    _driver,
     connect,
     execute_script,
     ladybug_script,
@@ -25,7 +26,10 @@ from graphfaker.sinks.ladybug import (
 )
 from graphfaker.sinks.verify import MEMBER_REL, PATTERN_LABEL
 
-driver = pytest.importorskip("kuzu")
+try:
+    driver = _driver()
+except ImportError as exc:
+    pytest.skip(str(exc), allow_module_level=True)
 runner = CliRunner()
 
 

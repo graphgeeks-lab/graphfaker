@@ -1,0 +1,6 @@
+{# The whole page tree: sections as captions, their pages beneath. #}
+<nav class="bd-docs-nav bd-links gf-sidebar" aria-label="{{ _('Site navigation') }}">
+  <div class="bd-toc-item navbar-nav">
+    {{- generate_toctree_html("sidebar", startdepth=0, show_nav_level=2, maxdepth=2, collapse=False, includehidden=True, titles_only=True) -}}
+  </div>
+</nav>
