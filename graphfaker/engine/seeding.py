@@ -16,6 +16,8 @@ from dataclasses import dataclass
 import numpy as np
 from faker import Faker
 
+from graphfaker.engine.fastfaker import FastFaker
+
 
 @dataclass
 class Streams:
@@ -25,6 +27,14 @@ class Streams:
     rng: np.random.Generator
     rand: random.Random
     fake: Faker
+    _fast: FastFaker | None = None
+
+    @property
+    def fast(self) -> FastFaker:
+        """Vectorised draws from ``fake``'s tables, built on first use."""
+        if self._fast is None:
+            self._fast = FastFaker(self.fake)
+        return self._fast
 
     @classmethod
     def from_sequence(cls, sequence: np.random.SeedSequence) -> Streams:

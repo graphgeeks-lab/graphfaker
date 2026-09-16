@@ -134,7 +134,7 @@ def generate(
     with node_pool(workers) as executor:
         for node in schema.generation_order():
             tables[node.name] = sample_nodes(
-                node, schema, latent, tables, node_streams[node.name], shard_size=shard_size, executor=executor
+                node, schema, latent, tables, node_streams[node.name], shard_size=shard_size, workers=workers, executor=executor
             )
             logger.debug("nodes: %s x %d", node.name, tables[node.name].height)
 

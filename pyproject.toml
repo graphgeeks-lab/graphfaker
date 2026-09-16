@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphfaker"
-version = "0.5.0"
+version = "0.6.0"
 description = "Generate realistic graph datasets from a schema: entities, relationships and events whose structure, attributes and timing agree."
 readme = "README.md"
 authors = [
@@ -77,6 +77,10 @@ duckdb = [
     # DuckPGQ is a community extension built per DuckDB release; this is the newest
     # release it exists for. Check https://community-extensions.duckdb.org/extensions/duckpgq.html before bumping.
     "duckdb==1.5.4",
+]
+pyg = [
+    "torch>=2.2",
+    "torch_geometric>=2.5",
 ]
 examples = [
     "matplotlib>=3.8",

@@ -13,7 +13,12 @@ processes will, and it is what the shard boundary here is for.
 
 from __future__ import annotations
 
+import contextlib
 import math
+import os
+import pickle
+import tempfile
+from collections.abc import Iterator
 from concurrent.futures import Executor, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -69,7 +74,7 @@ class RowContext:
     #: attributes drawn so far, column -> values for the shard
     columns: dict[str, list[Any]] = field(default_factory=dict)
     #: (node_type, factor|None) -> {group: [ids]} for foreign keys
-    fk_index: dict[tuple[str, str | None], dict[Any, list[str]]] = field(default_factory=dict)
+    fk_index: dict[tuple[str, str | None], FKIndex] = field(default_factory=dict)
 
     def param(self, value: Any, row: int) -> Any:
         """Resolve a ``@factor.param`` reference for a row, or pass through."""
@@ -131,14 +136,7 @@ def draw(sampler: Any, ctx: RowContext, row: int) -> Any:
     if isinstance(sampler, BernoulliSampler):
         return rand.random() < ctx.param(sampler.p, row)
     if isinstance(sampler, FakerSampler):
-        value = getattr(ctx.streams.fake, sampler.provider)(**sampler.kwargs)
-        if sampler.join is not None:
-            value = sampler.join.join(str(item) for item in value)
-        if sampler.transform is not None:
-            value = getattr(str(value), sampler.transform)()
-        if sampler.as_type is not None:
-            value = {"str": str, "float": float, "int": int}[sampler.as_type](value)
-        return value
+        return _finish_faker(sampler, getattr(ctx.streams.fake, sampler.provider)(**sampler.kwargs))
     if isinstance(sampler, ExpressionSampler):
         value = eval(sampler.expr, {"__builtins__": _SAFE_BUILTINS}, ctx.namespace(row))
         return _round(value, sampler.decimals) if isinstance(value, float) else value
@@ -149,14 +147,8 @@ def draw(sampler: Any, ctx: RowContext, row: int) -> Any:
         chosen = rand.choices(sampler.components, weights=weights, k=1)[0]
         return draw(chosen.sampler, ctx, row)
     if isinstance(sampler, ForeignKeySampler):
-        index = ctx.fk_index[(sampler.node_type, sampler.same_group)]
-        if sampler.same_group is not None:
-            group = int(ctx.group_ids[sampler.same_group][row])
-            local = index.get(group)
-            if local:
-                return rand.choice(local)
-        everything = ctx.fk_index[(sampler.node_type, None)].get(None, [])
-        return rand.choice(everything) if everything else ""
+        group = int(ctx.group_ids[sampler.same_group][row]) if sampler.same_group is not None else None
+        return _foreign_keys(sampler, ctx, np.array([group]) if group is not None else None, 1)[0]
     raise TypeError(f"unsupported sampler {type(sampler).__name__}")
 
 
@@ -166,7 +158,86 @@ _SAFE_BUILTINS = {
 }
 
 
+def _finish_faker(sampler: FakerSampler, value: Any) -> Any:
+    if sampler.join is not None:
+        value = sampler.join.join(str(item) for item in value)
+    if sampler.transform is not None:
+        value = getattr(str(value), sampler.transform)()
+    if sampler.as_type is not None:
+        value = {"str": str, "float": float, "int": int}[sampler.as_type](value)
+    return value
+
+
+_VECTOR = (ConstantSampler, CategorySampler, UniformSampler, GaussianSampler, LognormalSampler, PoissonSampler, BernoulliSampler, ReferenceSampler)
+
+
+def _params(value: Any, ctx: RowContext, count: int) -> Any:
+    """A sampler parameter for every row: the constant itself, or the
+    latent group's value gathered by each row's group index."""
+    if not is_ref(value):
+        return value
+    factor, name = parse_ref(value)
+    per_group = np.asarray([group[name] for group in ctx.latent[factor].values])
+    return per_group[ctx.group_ids[factor][:count]]
+
+
+def _rounded(values: np.ndarray, decimals: int | None) -> list[Any]:
+    return (np.round(values, decimals) if decimals is not None else values).tolist()
+
+
+def sample_vector(sampler: Any, count: int, ctx: RowContext) -> list[Any]:
+    """A whole column of a simple sampler from the shard's numpy stream."""
+    rng = ctx.streams.rng
+    if isinstance(sampler, ConstantSampler):
+        return [sampler.value] * count
+    if isinstance(sampler, CategorySampler):
+        weights = None
+        if sampler.weights is not None:
+            weights = np.asarray(sampler.weights, dtype=np.float64)
+            weights = weights / weights.sum()
+        index = rng.choice(len(sampler.values), size=count, p=weights)
+        return [sampler.values[i] for i in index.tolist()]
+    if isinstance(sampler, ReferenceSampler):
+        values = _params(sampler.ref, ctx, count)
+        return values.tolist() if isinstance(values, np.ndarray) else [values] * count
+    if isinstance(sampler, UniformSampler):
+        low, high = _params(sampler.low, ctx, count), _params(sampler.high, ctx, count)
+        if sampler.integer:
+            return rng.integers(np.asarray(low, dtype=np.int64), np.asarray(high, dtype=np.int64) + 1, size=count).tolist()
+        return _rounded(rng.uniform(low, high, size=count), sampler.decimals)
+    if isinstance(sampler, GaussianSampler):
+        values = rng.normal(_params(sampler.mean, ctx, count), _params(sampler.sd, ctx, count), size=count)
+        if sampler.low is not None or sampler.high is not None:
+            values = np.clip(values, sampler.low, sampler.high)
+        if sampler.integer:
+            return values.astype(np.int64).tolist()
+        return _rounded(values, sampler.decimals)
+    if isinstance(sampler, LognormalSampler):
+        values = rng.lognormal(_params(sampler.mu, ctx, count), _params(sampler.sigma, ctx, count), size=count)
+        return _rounded(values, sampler.decimals)
+    if isinstance(sampler, PoissonSampler):
+        return rng.poisson(_params(sampler.lam, ctx, count), size=count).astype(int).tolist()
+    if isinstance(sampler, BernoulliSampler):
+        return (rng.random(count) < _params(sampler.p, ctx, count)).tolist()
+    raise TypeError(f"no vectorised form for {type(sampler).__name__}")
+
+
 def sample_column(sampler: Any, count: int, ctx: RowContext) -> list[Any]:
+    """A whole column.
+
+    The simple samplers and the Faker providers with a vectorised form are
+    drawn in one go from the shard's numpy stream. Expressions, mixtures,
+    subcategories and foreign keys, which look at other columns or per-group
+    lists, go row by row.
+    """
+    if isinstance(sampler, _VECTOR):
+        return sample_vector(sampler, count, ctx)
+    if isinstance(sampler, ForeignKeySampler):
+        groups = ctx.group_ids[sampler.same_group][:count] if sampler.same_group is not None else None
+        return _foreign_keys(sampler, ctx, groups, count)
+    if isinstance(sampler, FakerSampler) and ctx.streams.fast.supports(sampler.provider, sampler.kwargs):
+        values = ctx.streams.fast.draw(sampler.provider, sampler.kwargs, count, ctx.streams.rng)
+        return [_finish_faker(sampler, value) for value in values]
     return [draw(sampler, ctx, row) for row in range(count)]
 
 
@@ -201,16 +272,74 @@ def _default_groups(schema: GraphSchema) -> int:
 # ------------------------------------------------------------------- nodes
 
 
-def fk_index(
-    tables: dict[str, pl.DataFrame], node_type: str, factor: str | None
-) -> dict[Any, list[str]]:
-    frame = tables[node_type]
-    if factor is None:
-        return {None: frame[ID].to_list()}
-    grouped: dict[Any, list[str]] = {}
-    for node_id, group in zip(frame[ID].to_list(), frame[factor].to_list()):
-        grouped.setdefault(group, []).append(node_id)
-    return grouped
+@dataclass
+class FKIndex:
+    """The members of a node type by latent group, compact enough to hand to
+    every shard and every worker process.
+
+    Generated ids are ``prefix_position``, so the index stores int32 row
+    positions per group and rebuilds the id on the way out: seven million
+    customers are 28 MB, not a list of seven million strings. A table whose
+    ids do not follow the convention (one a caller supplied) keeps its ids as
+    an array and the positions index into it.
+    """
+
+    prefix: str | None
+    members: dict[Any, np.ndarray]
+    ids: np.ndarray | None = None
+
+    @classmethod
+    def build(cls, frame: pl.DataFrame, factor: str | None) -> FKIndex:
+        ids = frame[ID]
+        prefix = None
+        if frame.height:
+            head, _, tail = ids[0].rpartition("_")
+            if tail == "0":
+                expected = (head + "_") + pl.Series(np.arange(frame.height)).cast(pl.String)
+                if bool((ids == expected).all()):
+                    prefix = head
+        positions = np.arange(frame.height, dtype=np.int32)
+        if factor is None:
+            members = {None: positions}
+        else:
+            groups = frame[factor].to_numpy()
+            order = np.argsort(groups, kind="stable")
+            keys, starts = np.unique(groups[order], return_index=True)
+            bounds = [*starts.tolist(), len(order)]
+            members = {key.item() if hasattr(key, "item") else key: positions[order[a:b]] for key, a, b in zip(keys, bounds[:-1], bounds[1:])}
+        return cls(prefix=prefix, members=members, ids=None if prefix is not None else ids.to_numpy().astype(object))
+
+    def pick(self, group: Any, rng: np.random.Generator, k: int) -> list[str]:
+        """``k`` members of ``group`` (``None`` for the whole table), with
+        replacement; an empty group yields empty strings."""
+        pool = self.members.get(group)
+        if pool is None or len(pool) == 0:
+            return [""] * k
+        chosen = pool[rng.integers(len(pool), size=k)]
+        if self.prefix is not None:
+            return [f"{self.prefix}_{i}" for i in chosen.tolist()]
+        return self.ids[chosen].tolist()
+
+
+def fk_index(tables: dict[str, pl.DataFrame], node_type: str, factor: str | None) -> FKIndex:
+    return FKIndex.build(tables[node_type], factor)
+
+
+def _foreign_keys(sampler: ForeignKeySampler, ctx: RowContext, groups: np.ndarray | None, count: int) -> list[str]:
+    """A column of foreign keys: same-group members where the group has any,
+    the whole table otherwise."""
+    rng = ctx.streams.rng
+    everything = ctx.fk_index[(sampler.node_type, None)]
+    if sampler.same_group is None or groups is None:
+        return everything.pick(None, rng, count)
+    local = ctx.fk_index[(sampler.node_type, sampler.same_group)]
+    out: list[str] = [""] * count
+    for group in np.unique(groups).tolist():
+        rows = np.flatnonzero(groups == group)
+        index = local if len(local.members.get(group, ())) else everything
+        for row, value in zip(rows.tolist(), index.pick(group if index is local else None, rng, len(rows))):
+            out[row] = value
+    return out
 
 
 def shard_bounds(count: int, shard_size: int) -> list[tuple[int, int]]:
@@ -220,10 +349,10 @@ def shard_bounds(count: int, shard_size: int) -> list[tuple[int, int]]:
     return [(start, min(shard_size, count - start)) for start in range(0, count, shard_size)]
 
 
-def fk_indexes(node: NodeType, tables: dict[str, pl.DataFrame]) -> dict[tuple[str, str | None], dict[Any, list[str]]]:
+def fk_indexes(node: NodeType, tables: dict[str, pl.DataFrame]) -> dict[tuple[str, str | None], FKIndex]:
     """Every foreign-key lookup a node type needs, built once per type so
     shards (and worker processes) receive the index, not the whole table."""
-    indexes: dict[tuple[str, str | None], dict[Any, list[str]]] = {}
+    indexes: dict[tuple[str, str | None], FKIndex] = {}
     for sampler in node.attributes.values():
         if isinstance(sampler, ForeignKeySampler):
             key = (sampler.node_type, sampler.same_group)
@@ -232,19 +361,53 @@ def fk_indexes(node: NodeType, tables: dict[str, pl.DataFrame]) -> dict[tuple[st
     return indexes
 
 
+#: Foreign-key indexes installed in a worker process by :func:`_install_indexes`.
+_WORKER_INDEXES: dict[tuple[str, str | None], FKIndex] = {}
+
+
+def _install_indexes(path: str) -> None:
+    """Pool initialiser: read the indexes the parent pickled to ``path``.
+
+    They go through a file rather than ``initargs`` because on Windows the
+    parent writes a process's arguments into a pipe the child only reads
+    after importing its main module, and a few megabytes of arguments make
+    every ``Process.start()`` block for that import, so workers start one at
+    a time. A path is a few bytes; the workers start together and load the
+    file in parallel.
+    """
+    with open(path, "rb") as handle:
+        indexes = pickle.load(handle)
+    _WORKER_INDEXES.clear()
+    _WORKER_INDEXES.update(indexes)
+
+
+@contextlib.contextmanager
+def _index_file(indexes: dict[tuple[str, str | None], FKIndex]) -> Iterator[str]:
+    handle = tempfile.NamedTemporaryFile(prefix="graphfaker-fk-", suffix=".pkl", delete=False)
+    try:
+        pickle.dump(indexes, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        handle.close()
+        yield handle.name
+    finally:
+        handle.close()
+        with contextlib.suppress(OSError):
+            os.unlink(handle.name)
+
+
 def sample_node_shard(
     node: NodeType,
     factors: list[LatentFactor],
     latent: dict[str, GroupParams],
-    indexes: dict[tuple[str, str | None], dict[Any, list[str]]],
+    indexes: dict[tuple[str, str | None], FKIndex] | None,
     sequence: np.random.SeedSequence,
     start: int,
     count: int,
 ) -> pl.DataFrame:
     """One shard of a node type. Takes a seed sequence rather than streams so
-    it can run in another process; every argument is picklable."""
+    it can run in another process; every argument is picklable. ``indexes``
+    is ``None`` in a worker that received them from the pool initialiser."""
     streams = Streams.from_sequence(sequence)
-    ctx = RowContext(streams=streams, latent=latent, fk_index=indexes)
+    ctx = RowContext(streams=streams, latent=latent, fk_index=indexes if indexes is not None else _WORKER_INDEXES)
     for factor in factors:
         groups = latent[factor.name].groups
         ctx.group_ids[factor.name] = streams.rng.integers(0, groups, size=count)
@@ -275,10 +438,12 @@ def sample_nodes(
 ) -> pl.DataFrame:
     """All rows of one node type, sharded, each shard on its own stream.
 
-    ``workers > 1`` runs shards in a process pool (``executor`` reuses one
-    across node types; spawning a pool per type costs more than it saves).
-    The result does not depend on either: shard seeds come from the spawn
-    tree, not from which process happened to draw them.
+    ``workers > 1`` runs shards in a process pool. ``executor`` reuses one
+    across node types; a type with foreign keys gets a pool of its own so the
+    index travels to each worker once, in the initialiser, instead of with
+    every shard (at ``scale=1.0`` the customer index is 28 MB and there are
+    a thousand shards). The result does not depend on any of this: shard
+    seeds come from the spawn tree, not from which process drew them.
     """
     bounds = shard_bounds(node.count, shard_size)
     if not bounds:
@@ -286,15 +451,21 @@ def sample_nodes(
         return pl.DataFrame({column: [] for column in columns})
     children = streams.sequence.spawn(len(bounds))
     indexes = fk_indexes(node, tables)
-    jobs = [
-        (node, schema.latent, latent, indexes, child, start, count)
-        for (start, count), child in zip(bounds, children)
-    ]
-    if executor is not None and len(jobs) > 1:
-        frames = list(executor.map(_run_shard, jobs))
-    elif workers > 1 and len(jobs) > 1:
-        with ProcessPoolExecutor(max_workers=min(workers, len(jobs))) as pool:
-            frames = list(pool.map(_run_shard, jobs))
+    jobs_count = len(bounds)
+    parallel = jobs_count > 1 and (executor is not None or workers > 1)
+    if parallel and indexes:
+        jobs = [(node, schema.latent, latent, None, child, start, count) for (start, count), child in zip(bounds, children)]
+        with _index_file(indexes) as path, ProcessPoolExecutor(
+            max_workers=min(max(workers, 1), jobs_count), initializer=_install_indexes, initargs=(path,)
+        ) as pool:
+            frames = list(pool.map(_run_shard, jobs, chunksize=4))
     else:
-        frames = [_run_shard(job) for job in jobs]
+        jobs = [(node, schema.latent, latent, indexes, child, start, count) for (start, count), child in zip(bounds, children)]
+        if executor is not None and jobs_count > 1:
+            frames = list(executor.map(_run_shard, jobs, chunksize=4))
+        elif workers > 1 and jobs_count > 1:
+            with ProcessPoolExecutor(max_workers=min(workers, jobs_count)) as pool:
+                frames = list(pool.map(_run_shard, jobs, chunksize=4))
+        else:
+            frames = [_run_shard(job) for job in jobs]
     return pl.concat(frames, how="vertical_relaxed") if len(frames) > 1 else frames[0]

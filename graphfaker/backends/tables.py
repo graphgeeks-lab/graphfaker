@@ -139,11 +139,27 @@ class GraphTables:
         return cls(nodes=nodes, edges=edges)
 
 
-def write_parquet(frame: pl.DataFrame, path: str | Path) -> None:
+#: Rows per row group when writing; also the size of the slice converted to
+#: Arrow at a time, so the transient copy of a 90M-row table is bounded.
+WRITE_CHUNK = 2_000_000
+
+
+def write_parquet(frame: pl.DataFrame, path: str | Path, chunk: int = WRITE_CHUNK) -> None:
     """Write through pyarrow: its timestamp annotation is what third-party
     loaders (Kùzu/LadybugDB ``COPY``, Spark) read; polars' native writer
-    produces one Kùzu rejects as INT64."""
-    frame.write_parquet(path, use_pyarrow=True)
+    produces one Kùzu rejects as INT64. Large frames go out in slices of
+    ``chunk`` rows, one row group each, so only a slice is ever copied into
+    Arrow memory."""
+    if frame.height <= chunk:
+        frame.write_parquet(path, use_pyarrow=True)
+        return
+    import pyarrow.parquet as pq
+
+    first = frame.slice(0, chunk).to_arrow()
+    with pq.ParquetWriter(str(path), first.schema, compression="zstd") as writer:
+        writer.write_table(first)
+        for start in range(chunk, frame.height, chunk):
+            writer.write_table(frame.slice(start, chunk).to_arrow().cast(first.schema))
 
 
 def _drop_none(data: dict[str, Any]) -> dict[str, Any]:

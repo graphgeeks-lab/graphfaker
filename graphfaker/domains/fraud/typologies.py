@@ -116,7 +116,13 @@ class TypologyContext:
         # found by degree alone. Ordinary accounts plus a few extra edges hide
         # better; ring size (``size_scale``) is the lever for degree.
         self.recruit_weight = np.ones(pop.n_accounts)
+        self._uniform_recruitment = True
         self.credit = np.flatnonzero((pop.account_type == "credit") & (pop.account_status == "active"))
+        # decoys draw from these; computed once, not per pattern (each is a
+        # pass over every account)
+        is_business = pop.account_type == "business"
+        self.business_active = np.flatnonzero(is_business & (pop.account_status == "active"))
+        self.business_open = np.flatnonzero(is_business & (pop.account_status != "closed"))
         self.rows: dict[str, list[tuple]] = {PAYS: [], TRANSFERS: [], WIRES: []}
         self.shared_devices: list[tuple[int, int]] = []
         self.customer_overrides: dict[int, dict[str, Any]] = {}
@@ -127,18 +133,41 @@ class TypologyContext:
 
     def pick(self, k: int, pool: np.ndarray | None = None) -> np.ndarray:
         """``k`` distinct accounts. With ``ring_overlap`` probability a member is
-        drawn from accounts already in a pattern; otherwise from fresh ones."""
+        drawn from accounts already in a pattern; otherwise from fresh ones.
+
+        Fresh members are drawn by rejection: a uniform index into the pool,
+        retried when it is already used. Patterns touch a few thousand of a
+        million accounts, so a retry is rare and the draw is O(1) instead of a
+        set difference over the whole pool per member. When the pool is nearly
+        used up (tiny populations, the credit-card pool for bust-outs) the
+        explicit difference is taken once instead.
+        """
         pool = self.eligible if pool is None else pool
-        fresh = np.setdiff1d(pool, np.fromiter(self.used, dtype=np.int64, count=len(self.used)))
         used = np.fromiter(self.used, dtype=np.int64, count=len(self.used))
+        uniform = self._uniform_recruitment
+        fresh: np.ndarray | None = None
         chosen: list[int] = []
+        misses = 0
         while len(chosen) < k:
             take_used = self.allow_overlap and len(used) and self.rng.random() < self.profile.ring_overlap
-            source = used if take_used else fresh
-            if len(source) == 0:
+            if take_used:
+                candidate = int(used[self.rng.integers(len(used))])
+            elif fresh is None and uniform:
+                candidate = int(pool[self.rng.integers(len(pool))])
+                if candidate in self.used:
+                    misses += 1
+                    if misses > 20:
+                        fresh = np.setdiff1d(pool, used)
+                    continue
+            else:
+                if fresh is None:
+                    fresh = np.setdiff1d(pool, used)
                 source = fresh if len(fresh) else pool
-            weights = self.recruit_weight[source]
-            candidate = int(self.rng.choice(source, p=weights / weights.sum()))
+                if uniform:
+                    candidate = int(source[self.rng.integers(len(source))])
+                else:
+                    weights = self.recruit_weight[source]
+                    candidate = int(self.rng.choice(source, p=weights / weights.sum()))
             if candidate not in chosen:
                 chosen.append(candidate)
             if len(pool) <= k and len(chosen) == len(set(pool.tolist())):
@@ -156,7 +185,13 @@ class TypologyContext:
     def bystanders(self, k: int) -> np.ndarray:
         """Accounts that send to a pattern without being part of it (victims
         of a mule network, customers of a marketplace)."""
-        return self.rng.choice(self.eligible, size=k, replace=False)
+        if k * 4 >= len(self.eligible):
+            return self.rng.choice(self.eligible, size=min(k, len(self.eligible)), replace=False)
+        chosen: dict[int, None] = {}
+        while len(chosen) < k:  # a few draws with replacement, deduplicated: O(k), not a permutation of every account
+            for i in self.rng.integers(len(self.eligible), size=k - len(chosen)).tolist():
+                chosen[i] = None
+        return self.eligible[np.fromiter(chosen, dtype=np.int64, count=k)]
 
     # --------------------------------------------------------------- timing
 
@@ -455,7 +490,7 @@ def synthetic_identity(ctx: TypologyContext, pattern: Pattern) -> None:
 
 def decoy_fan_out(ctx: TypologyContext, pattern: Pattern) -> None:
     """Payroll: a business pays many people similar amounts on one day."""
-    business = np.flatnonzero((ctx.pop.account_type == "business") & (ctx.pop.account_status == "active"))
+    business = ctx.business_active
     k = int(ctx.rng.integers(5, 16))
     payer = int(ctx.pick(1, pool=business if len(business) else None)[0])
     receivers = ctx.pick(k)
@@ -480,7 +515,7 @@ def decoy_fan_in(ctx: TypologyContext, pattern: Pattern) -> None:
 def decoy_cycle(ctx: TypologyContext, pattern: Pattern) -> None:
     """Suppliers invoicing each other in a loop over weeks."""
     depth = int(ctx.rng.integers(3, 6))
-    business = np.flatnonzero((ctx.pop.account_type == "business") & (ctx.pop.account_status != "closed"))
+    business = ctx.business_open
     members = ctx.pick(depth, pool=business if len(business) >= depth else None)
     for acc in members:
         pattern.roles[int(acc)] = "supplier"

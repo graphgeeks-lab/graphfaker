@@ -65,12 +65,8 @@ def generate(
     tables["Account"] = _apply_fresh_accounts(tables["Account"], pop, injection)
     tables["Customer"] = _apply_identity_overrides(tables["Customer"], injection)
     uses = _apply_shared_devices(uses, tables, pop, injection, config)
-    if injection.stripped_accounts:
-        stripped = set(pop.account_ids[list(injection.stripped_accounts)].tolist())
-        legit = {
-            ch: f.filter(~pl.col("source").is_in(stripped) & ~pl.col("target").is_in(stripped))
-            for ch, f in legit.items()
-        }
+    stripped = set(pop.account_ids[list(injection.stripped_accounts)].tolist()) if injection.stripped_accounts else set()
+    fresh = None
     if injection.fresh_accounts:
         # A freshly opened mule account cannot have been transacting before it
         # existed; drop the camouflage that predates its opening.
@@ -80,10 +76,10 @@ def generate(
                 "opened": [d.astype("datetime64[D]").astype(dt.date) for d in injection.fresh_accounts.values()],
             }
         ).with_columns(pl.col("opened").cast(pl.Date))
-        legit = {ch: _drop_before_opening(f, fresh) for ch, f in legit.items()}
 
-    # 5. Merge, order in time, assign ids
-    edges, tx_truth = _merge_transactions(legit, injection)
+    # 5. Merge, order in time, assign ids. ``legit`` is consumed channel by
+    # channel so that only one channel is ever held twice.
+    edges, tx_truth = _merge_transactions(legit, injection, stripped, fresh)
     edges["OWNS"] = entities.owns_edges(tables["Account"])
     edges["USES"] = uses
 
@@ -168,36 +164,68 @@ def _apply_shared_devices(uses: pl.DataFrame, tables, pop, injection: typologies
     return pl.concat([uses, extra.select(uses.columns)])
 
 
-def _merge_transactions(legit: dict[str, pl.DataFrame], injection: typologies.Injection) -> tuple[dict[str, pl.DataFrame], pl.DataFrame]:
-    """Union legitimate and injected transactions, order them in time, and
-    assign ``tx_id`` sequentially. Ids increase with time like a real ledger,
-    so the id itself does not leak which rows were injected."""
-    parts = []
+def _merge_transactions(
+    legit: dict[str, pl.DataFrame],
+    injection: typologies.Injection,
+    stripped: set[str] | None = None,
+    fresh: pl.DataFrame | None = None,
+) -> tuple[dict[str, pl.DataFrame], pl.DataFrame]:
+    """Legitimate plus injected transactions per channel, numbered in time
+    order across channels, with the truth's transaction labels.
+
+    Memory is the constraint at scale (90M rows), so this never holds a
+    second copy of everything: each channel is taken out of ``legit``,
+    filtered, joined with its injected rows and released, and the global
+    time ordering is computed on a narrow (channel, row, timestamp) frame
+    rather than by concatenating the wide ones.
+    """
+    columns = ["source", "target", "amount", "timestamp", "memo", "recurring", "pattern_id"]
+    per_channel: dict[str, pl.DataFrame] = {}
     for channel in process.CHANNELS:
-        frame = legit.get(channel)
+        frame = legit.pop(channel, None)
         if frame is not None and frame.height:
-            parts.append(frame.with_columns(pl.lit(None, dtype=pl.String).alias("pattern_id"), pl.lit(channel).alias("channel")))
+            if stripped:
+                frame = frame.filter(~pl.col("source").is_in(stripped) & ~pl.col("target").is_in(stripped))
+            if fresh is not None:
+                frame = _drop_before_opening(frame, fresh)
+            frame = frame.with_columns(pl.lit(None, dtype=pl.String).alias("pattern_id")).select(columns)
         injected = injection.transactions.get(channel)
         if injected is not None and injected.height:
-            parts.append(injected.with_columns(pl.lit(channel).alias("channel")).select(parts[0].columns if parts else injected.columns))
-    if not parts:
+            injected = injected.select(columns)
+            frame = pl.concat([frame, injected], how="vertical_relaxed") if frame is not None and frame.height else injected
+        if frame is not None and frame.height:
+            per_channel[channel] = frame
+    legit.clear()
+    if not per_channel:
         empty = pl.DataFrame({c: [] for c in TX_COLUMNS})
         return {ch: empty for ch in process.CHANNELS}, pl.DataFrame({"tx_id": [], "pattern_id": [], "typology": [], "is_fraud": []})
 
-    columns = ["source", "target", "amount", "timestamp", "memo", "recurring", "pattern_id", "channel"]
-    combined = pl.concat([p.select(columns) for p in parts], how="vertical_relaxed").sort("timestamp", maintain_order=True)
-    combined = combined.with_row_index("n").with_columns(("tx_" + pl.col("n").cast(pl.String)).alias("tx_id")).drop("n")
+    order = pl.concat(
+        [
+            frame.select(pl.lit(channel).alias("channel"), pl.int_range(pl.len(), dtype=pl.UInt32).alias("row"), "timestamp")
+            for channel, frame in per_channel.items()
+        ]
+    ).sort("timestamp", maintain_order=True).with_row_index("n").drop("timestamp")
 
     by_pattern = {p.pattern_id: p for p in injection.patterns}
-    labelled = combined.filter(pl.col("pattern_id").is_not_null()).select(["tx_id", "pattern_id"])
+    edges: dict[str, pl.DataFrame] = {}
+    truth_parts = []
+    for channel in list(per_channel):
+        ranks = order.filter(pl.col("channel") == channel).sort("row")["n"]
+        frame = per_channel.pop(channel)
+        frame = frame.with_columns(("tx_" + ranks.cast(pl.String)).alias("tx_id")).sort("timestamp", maintain_order=True)
+        del ranks
+        truth_parts.append(frame.filter(pl.col("pattern_id").is_not_null()).select(["tx_id", "pattern_id"]))
+        edges[channel] = frame.select(TX_COLUMNS)
+    del order
+    labelled = pl.concat(truth_parts)
     tx_truth = labelled.with_columns(
         pl.col("pattern_id").map_elements(lambda p: by_pattern[p].typology, return_dtype=pl.String).alias("typology"),
         pl.col("pattern_id").map_elements(lambda p: by_pattern[p].is_fraud, return_dtype=pl.Boolean).alias("is_fraud"),
     )
-    edges = {
-        channel: combined.filter(pl.col("channel") == channel).select(TX_COLUMNS)
-        for channel in process.CHANNELS
-    }
+    for channel in process.CHANNELS:
+        if channel not in edges:
+            edges[channel] = pl.DataFrame({c: [] for c in TX_COLUMNS})
     return edges, tx_truth
 
 

@@ -66,6 +66,9 @@ Databases and files
 .. automodule:: graphfaker.sinks.duckdb
    :members: load_directory, load_tables, write_duckdb, verify_directory, verify_tables, duckdb_script, property_graph
 
+.. automodule:: graphfaker.sinks.pyg
+   :members: to_hetero_data, write_pyg, from_directory, arrays, encode_features, GraphArrays
+
 .. automodule:: graphfaker.sinks.neo4j_live
    :members: Target, load_directory, load_tables, LoadReport
 

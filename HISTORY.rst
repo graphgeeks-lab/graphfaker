@@ -2,10 +2,12 @@
 History
 =======
 
-Unreleased
-----------
+0.6.0 (2026-09-16)
+------------------
 
-Getting a generated dataset into a running Neo4j, and proving it arrived intact.
+Every database we said the data would land in now takes it, verified; the same dataset trains a GNN; and a full-size bank (10M accounts, 90M transactions) generates in minutes rather than hours.
+
+Databases:
 
 * ``graphfaker load neo4j <dir>``: loads a dataset into a **running** Neo4j over Bolt with batched ``UNWIND`` writes: no stopped database, no staging files in the server's import directory, no ``neo4j-admin`` on the PATH, and it works against Aura. Roughly 16k rows/s, so about 80 seconds for the 1.34M rows of ``--scale 0.01``. The offline ``--sink neo4j-admin`` path is still there and is still the right answer above a few tens of millions of rows; ``docs/neo4j.md`` has the comparison.
 * Ground truth is loaded as a subgraph rather than flattened onto nodes: ``(:Pattern)`` nodes, ``(:Account)-[:IN_PATTERN {role}]->(:Pattern)`` memberships, ``is_fraud``/``pattern_id``/``typology`` on the money relationship itself, and ``(:Region)`` nodes carrying each latent factor's generation parameters. Membership has to be a relationship because an account can belong to several patterns: 205 memberships across 181 accounts at ``--scale 0.01``.
@@ -17,21 +19,33 @@ Getting a generated dataset into a running Neo4j, and proving it arrived intact.
 * ``docs/neo4j.md``: the walkthrough, what the checks catch, and a Cypher cookbook for the laundering typologies in which every rule is **scored against the ground truth**. The measured result is that single-signal structural rules do badly. A fan-in rule with no time window runs at 0.3% precision, and a cycle detector catches every decoy ring and fewer than half the fraud rings. Adding one behavioural signal takes precision to 66.7%. ``examples/neo4j_detectors.py`` regenerates that table.
 * New optional dependency group: ``pip install 'graphfaker[neo4j]'``.
 * Fixed: relationship types with no attributes (most of the social graph) could not be loaded, because an empty polars struct is not constructible.
+* ``graphfaker load ladybug <dir>`` and ``graphfaker verify ladybug <dir>`` bring the embedded LadybugDB / Kùzu sink to parity with Neo4j: the ground truth is loaded as a subgraph (``Pattern`` nodes, ``IN_PATTERN`` memberships with roles, ``is_fraud`` on the money relationships, latent-factor nodes) using the database's own ``LOAD FROM`` Parquet scan, ``--blind`` leaves it out entirely, and a dataset already on disk can be loaded without regenerating it. Closes issue #40.
+* ``graphfaker.sinks.verify`` holds the load checks once, against ``GraphTables``, behind a small per-database adapter; Neo4j and LadybugDB share them, and the corruption tests run against both. A third sink gets verification for the price of the adapter.
+* ``--blind`` on ``graphfaker generate`` and ``graphfaker fraud`` for the ``neo4j`` and ``ladybug`` sinks.
+* A PyTorch Geometric export, ``graphfaker/sinks/pyg.py``: ``to_hetero_data``, ``write_pyg``, ``from_directory`` and ``--sink pyg``. Features are encoded per table (standardised numerics, 0/1 booleans, days for dates, one-hot for repeating categories; identifiers, foreign keys and latent factors kept out of ``x``), the truth becomes ``y`` and ``decoy`` on accounts and ``y`` plus ``edge_time`` on transactions, and stratified train/val/test masks are drawn from a seed. ``examples/pyg_baseline.py`` and ``docs/pyg.md`` show what the graph is worth to a detector: a GraphSAGE goes from AUC 0.99 to 0.85 to 0.56 across low, medium and high hardness while account features alone stay at chance.
+* A DuckDB sink, ``graphfaker/sinks/duckdb.py``: ``--sink duckdb``, ``graphfaker load duckdb`` and ``graphfaker verify duckdb``. The dataset's tables land as DuckDB tables (DuckDB reads the Parquet itself), the ground truth the same way as in LadybugDB, and one ``CREATE PROPERTY GRAPH`` declares the graph for SQL/PGQ pattern queries through the DuckPGQ community extension. ``load.sql`` records the whole load. Loads scale 0.01 in 5 s and passes the same 154 checks. The ``duckdb`` extra pins the DuckDB release the extension is built for.
+* The verifier's questions moved behind the ``Backend`` protocol: ``CypherBackend`` asks them in Cypher (Neo4j and LadybugDB inherit it), ``DuckDBBackend`` in SQL. The checks themselves are unchanged.
+* The LadybugDB driver is now ``ladybug`` (LadybugDB's own package): the ``examples`` extra installs it, the docs and the tour notebook import it, and ``kuzu`` still works as a fallback because the API is the same. The driver probe forces the native library to load, so a wheel that cannot load (the 0.20 Windows wheel looks for OpenSSL 3 DLLs it does not ship) is reported and skipped instead of failing on the first query.
+* The LadybugDB sink loads from memory: tables are bound to ``COPY ... FROM $df`` and ``LOAD FROM $df`` as Arrow, so nothing is serialised between generation and database. ``GraphTables.to_arrow()`` / ``from_arrow()`` make Arrow the interchange boundary. Scale 0.01 loads in about 10 seconds, half the file path.
+
+Scale:
+
+* Node attributes are drawn a column at a time. ``graphfaker.engine.fastfaker`` draws Faker providers (names, emails, phones, addresses, cities, companies, dates, uuids) from Faker's own locale tables with numpy, a column per call, keeping the vocabulary and the weights; the simple samplers (constant, category, uniform, gaussian, lognormal, poisson, bernoulli, reference) and foreign keys are vectorised too. Only expressions, mixtures, subcategories and the few providers without a vectorised form (``iban``, ``catch_phrase``) still go row by row. Scale 0.02 went from 230 s to 21 s, scale 0.1 (a million accounts, nine million transactions) from 165 s to about 60 s single-process, and scale 1.0 (ten million accounts, ninety million transactions) from over two hours to eight minutes with four workers, plus two minutes to write 2 GB of Parquet, at a 32 GB peak.
+* Foreign-key indexes are int32 positions per group rather than lists of id strings, and a worker pool receives them once through a file in its initialiser instead of with every shard: at scale 1.0 the old form spent two hours pickling seven million customer ids a thousand times. Pattern recruitment draws members in O(1) instead of a set difference over every account, and decoys reuse the account pools instead of scanning for them per pattern.
+* Memory: transaction frames are built with polars columns rather than numpy arrays of Python strings, the channels are merged one at a time with the time ordering computed on a narrow frame instead of a concatenation of everything, and Parquet is written in 2M-row chunks. The true peak (sampled, workers included) is about five times the final tables: 3.7 GB at scale 0.1, 32 GB at scale 1.0. Streaming the transaction process to disk is the next step.
+* **Datasets change.** Runs are still a pure function of seed and shard size, but the values drawn for a given seed differ from 0.5.0's, because the attribute columns now come from the shard's numpy stream rather than Faker's and ``random``'s call sequences. Node counts, structure and distributions are unchanged; edge counts move by about 0.15% at ``scale=0.01`` and 0.02% at ``scale=0.1``, because pattern injection consumes its randomness differently and so draws a slightly different number of transactions.
+
+Documentation:
+
+* The documentation site is rebuilt on pydata-sphinx-theme with a landing page, a header with six sections (Get started, Guides, Domains, Databases, Reference, Project), the full page tree in the left sidebar, the page outline on the right, breadcrumbs, previous and next links, a light and a dark variant, and an API reference generated from the docstrings. The Install, first commands, Python usage, domains overview and command-line pages are cut from the README at build time so the two cannot drift.
+* The site is light only, the LadybugDB driver in every example is ``ladybug``, and the old ``readme``, ``installation``, ``quickstart`` and ``usage`` pages redirect to their new homes.
+* A Credits section names what was borrowed: gen-fraud-graph's scale convention, evaluator levels and output layout; AMLworld's typology catalogue; Data Designer as the reference point. The fraud pack has a one-paragraph abstract at the top of its page and its README section.
+* The OSM tests carry the ``network`` marker; CI no longer depends on Overpass answering.
 
 0.5.0 (2026-09-15)
 ------------------
 
 GraphFaker becomes a generator of synthetic graph data that behaves like the real thing: you describe the graph you need, or pick a ready-made domain, and get entities, relationships and events whose structure, attributes and timing agree, with the ground truth included. Tabular generators produce rows; GraphFaker generates the connections. This release adds schema-driven generation, the fraud domain pack, database sinks, a modular domain registry, and realistic graph topology.
-
-Databases:
-
-* ``graphfaker load ladybug <dir>`` and ``graphfaker verify ladybug <dir>`` bring the embedded LadybugDB / Kùzu sink to parity with Neo4j: the ground truth is loaded as a subgraph (``Pattern`` nodes, ``IN_PATTERN`` memberships with roles, ``is_fraud`` on the money relationships, latent-factor nodes) using the database's own ``LOAD FROM`` Parquet scan, ``--blind`` leaves it out entirely, and a dataset already on disk can be loaded without regenerating it. Closes issue #40.
-* ``graphfaker.sinks.verify`` holds the load checks once, against ``GraphTables``, behind a small per-database adapter; Neo4j and LadybugDB share them, and the corruption tests run against both. A third sink gets verification for the price of the adapter.
-* ``--blind`` on ``graphfaker generate`` and ``graphfaker fraud`` for the ``neo4j`` and ``ladybug`` sinks.
-* A DuckDB sink, ``graphfaker/sinks/duckdb.py``: ``--sink duckdb``, ``graphfaker load duckdb`` and ``graphfaker verify duckdb``. The dataset's tables land as DuckDB tables (DuckDB reads the Parquet itself), the ground truth the same way as in LadybugDB, and one ``CREATE PROPERTY GRAPH`` declares the graph for SQL/PGQ pattern queries through the DuckPGQ community extension. ``load.sql`` records the whole load. Loads scale 0.01 in 5 s and passes the same 154 checks. The ``duckdb`` extra pins the DuckDB release the extension is built for.
-* The verifier's questions moved behind the ``Backend`` protocol: ``CypherBackend`` asks them in Cypher (Neo4j and LadybugDB inherit it), ``DuckDBBackend`` in SQL. The checks themselves are unchanged.
-* The LadybugDB driver is now ``ladybug`` (LadybugDB's own package): the ``examples`` extra installs it, the docs and the tour notebook import it, and ``kuzu`` still works as a fallback because the API is the same. The driver probe forces the native library to load, so a wheel that cannot load (the 0.20 Windows wheel looks for OpenSSL 3 DLLs it does not ship) is reported and skipped instead of failing on the first query.
-* The LadybugDB sink loads from memory: tables are bound to ``COPY ... FROM $df`` and ``LOAD FROM $df`` as Arrow, so nothing is serialised between generation and database. ``GraphTables.to_arrow()`` / ``from_arrow()`` make Arrow the interchange boundary. Scale 0.01 loads in about 10 seconds, half the file path.
 
 Positioning and documentation:
 
@@ -39,7 +53,6 @@ Positioning and documentation:
 * New guides: ``docs/how-it-works.md`` (schema to tables), ``docs/fraud-generation.md`` (every step of the bank and its typologies), ``docs/methods.md`` (families of synthetic graph generation and which GraphFaker uses), ``docs/adding-a-domain.md``.
 * ``graphfaker.domains.registry``: every domain is a ``Domain`` with a name, an options model and a ``generate`` function; third-party domains register through the ``graphfaker.domains`` entry-point group. ``graphfaker domains`` lists them, ``graphfaker generate <domain> --option value`` runs any of them.
 * The README explains what each option means (``--seed``, ``--scale``, ``--hardness`` and the rest) and when to change it.
-* The documentation site is rebuilt on pydata-sphinx-theme with a landing page, a header with six sections (Get started, Guides, Domains, Databases, Reference, Project), the full page tree in the left sidebar, the page outline on the right, breadcrumbs, previous and next links, a light and a dark variant, and an API reference generated from the docstrings. The Install, first commands, Python usage, domains overview and command-line pages are cut from the README at build time so the two cannot drift.
 
 * ``graphfaker.schema``: declarative ``GraphSchema``: node types with attribute samplers, latent factors with per-group parameters, edge families, topology models. Validated with pydantic; round-trips through YAML/JSON; content-hashed.
 * ``graphfaker.engine``: ``generate(schema, seed, shard_size)`` → ``GraphRun`` with columnar tables (polars), ground truth, and a manifest. Reproducible across processes; node generation is sharded with independent seeded streams.
