@@ -148,6 +148,8 @@ A parameter written as `"@factor.param"` varies by latent group. That is how att
 
 ## The fraud pack
 
+A bank's transaction graph is the most useful dataset a fraud team cannot share. GraphFaker generates one that behaves like it without containing anyone: customers, accounts, merchants and devices with correlated attributes; a transaction process with salaries, rent, repeat partners and seasonality; and money-laundering typologies injected on top with every account, role and transaction recorded. Realism is measured, not asserted (degree distribution, clustering, communities, assortativity against a random baseline), and so is how hard the fraud is to find (the AUC of every single-feature rule a detector would try first). The result loads into Neo4j, LadybugDB or DuckDB and verifies against the files it came from, with a blind copy for honest benchmarks. No real customer data goes in, so none can come out.
+
 `fraud.generate` builds a bank and a period of activity: salary on payday, rent on the first, subscriptions, card payments that follow merchant popularity, transfers that go mostly to the same few contacts, seasonality by hour and weekday, amounts that scale with income. Then it injects laundering typologies and records them.
 
 ```python
@@ -403,4 +405,11 @@ MIT. See [LICENSE](LICENSE).
 
 ## Credits
 
-Created with Cookiecutter and the `audreyr/cookiecutter-pypackage` project template.
+Some of this design is borrowed, and the debts are worth naming.
+
+- [gen-fraud-graph](https://github.com/SantanderAI/gen-fraud-graph) by the Santander AI team (Apache-2.0). The scale convention (`1.0` is about 10M accounts and 90M transactions), the three levels the evaluator scores at (accounts, transactions, patterns) and the `accounts/`, `transactions/`, `fraud/` layout that `write_gen_fraud_graph` reproduces all come from it, so that datasets from the two generators are comparable and a pipeline built on one can switch to the other. Their framing, realistic financial data with no real customer in it, is the one the fraud pack sets out to earn: the background traffic has to be realistic enough that laundering is hard to find in it. No code was copied.
+- [AMLworld](https://arxiv.org/abs/2306.16424) (Altman et al., 2023). The first seven laundering typologies (fan-in, fan-out, gather-scatter, scatter-gather, cycle, stack, bipartite) follow its catalogue, which is the shared vocabulary of the AML benchmarking literature.
+- [NVIDIA Data Designer](https://github.com/NVIDIA-NeMo/DataDesigner). Not a dependency, but the reference point for what a synthetic data product looks like: it generates the tables, GraphFaker generates the connections, and the latent factors here are a graph-shaped answer to the problem its column dependencies solve for rows.
+- NetworkX, Polars, Apache Arrow, Faker, Pydantic, OSMnx, and the Neo4j, LadybugDB and DuckDB / DuckPGQ projects, which do the heavy lifting under every command.
+
+The project was started from Cookiecutter's `audreyr/cookiecutter-pypackage` template.

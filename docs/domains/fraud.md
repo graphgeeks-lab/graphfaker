@@ -1,5 +1,7 @@
 # Fraud and AML
 
+A bank's transaction graph is the most useful dataset a fraud team cannot share. GraphFaker generates one that behaves like it without containing anyone: customers, accounts, merchants and devices with correlated attributes; a transaction process with salaries, rent, repeat partners and seasonality; and money-laundering typologies injected on top with every account, role and transaction recorded. Realism is measured, not asserted (degree distribution, clustering, communities, assortativity against a random baseline), and so is how hard the fraud is to find (the AUC of every single-feature rule a detector would try first). The result loads into Neo4j, LadybugDB or DuckDB and verifies against the files it came from, with a blind copy for honest benchmarks. No real customer data goes in, so none can come out.
+
 The fraud domain generates a bank: customers, accounts, merchants, devices and external counterparties; a period of realistic transaction activity; and laundering typologies injected into it and recorded. It is the dataset for demonstrating a graph database, benchmarking a fraud detector, or training a GNN against a known answer.
 
 ```bash
@@ -51,4 +53,4 @@ Every pattern is recorded in `truth/patterns` (typology, accounts, roles, transa
 
 `hardness_report` scores every single feature a simple rule might threshold on (amount, round amounts, proximity to the threshold, degree, pass-through, burstiness, account age) by the AUC it achieves against the truth. On a 20K-account run the transaction `amount` AUC falls from 0.94 at `low` to 0.62 at `high`; degree remains the signal that survives. `evaluate` scores flagged accounts and transactions at account, transaction and pattern level, the way gen-fraud-graph's evaluator does.
 
-The full method, step by step, is in [How the fraud graph is generated](../fraud-generation.md). To put the result in a database with the truth alongside, see [Neo4j](../neo4j.md), [LadybugDB](../ladybug.md) and [DuckDB](../duckdb.md).
+The scale convention, the evaluator's three levels and the compatible output layout come from Santander's [gen-fraud-graph](https://github.com/SantanderAI/gen-fraud-graph), so the two generators' datasets are comparable; the first seven typologies follow AMLworld. The full method, step by step, is in [How the fraud graph is generated](../fraud-generation.md). To put the result in a database with the truth alongside, see [Neo4j](../neo4j.md), [LadybugDB](../ladybug.md) and [DuckDB](../duckdb.md).

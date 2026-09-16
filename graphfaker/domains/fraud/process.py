@@ -1,8 +1,8 @@
 """The legitimate transaction process.
 
 Everything here is vectorised with numpy so 90M transactions is a matter of
-memory, not of Python loops. Realism comes from four things gen-fraud-graph
-does not have:
+memory, not of Python loops. Realism comes from four things a uniform random
+transaction model (gen-fraud-graph's, for one) leaves out:
 
 * **Recurring flows.** Salary from employers on payday, rent on the first of
   the month, utilities and subscriptions on their own schedule. Most of a
