@@ -190,7 +190,7 @@ Sinks put the same tables into a database's own loader format:
 |---|---|---|
 | `load_tables`, `load_directory` | batched `UNWIND` writes into a **running** Neo4j over Bolt, including the truth as a subgraph | a Neo4j you already have up, or Aura; no restart, no file staging |
 | `verify_tables`, `verify_directory` | every check in [docs/neo4j.md](docs/neo4j.md): counts, constraints, endpoint labels, per-property aggregates, sampled round trips, truth coverage | proving the load is the dataset, in CI |
-| `write_ladybug`, `graphfaker load ladybug` | DDL, `COPY FROM` Parquet and the truth subgraph; loads and verifies when the `ladybug` driver is installed (`kuzu` still works) | an embedded graph database, one file, Cypher, no server; see [docs/ladybug.md](docs/ladybug.md) |
+| `write_ladybug`, `graphfaker load ladybug` | DDL, `COPY FROM` Parquet and the truth subgraph; loads and verifies when the `ladybug` driver is installed | an embedded graph database, one file, Cypher, no server; see [docs/ladybug.md](docs/ladybug.md) |
 | `write_duckdb`, `graphfaker load duckdb` | the tables as DuckDB tables plus a `CREATE PROPERTY GRAPH` for SQL/PGQ pattern queries; DuckDB reads the Parquet itself | no graph database at all: SQL, with graph patterns, on the same files; see [docs/duckdb.md](docs/duckdb.md) |
 | `write_neo4j_admin` | typed CSVs and the `neo4j-admin database import` command | the fastest path into Neo4j, offline, at any scale |
 | `write_gen_fraud_graph` | gen-fraud-graph's `accounts/`, `transactions/`, `fraud/` layout | pipelines built on that generator |

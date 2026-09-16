@@ -384,7 +384,7 @@ md("""
 ## 7. Write it, read it back, query it
 
 A run writes `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json`. Parquet is the interchange format; it
-is what Neo4j's importer, LadybugDB/Kùzu `COPY`, Spark and PyTorch Geometric all read.
+is what Neo4j's importer, LadybugDB `COPY`, Spark and PyTorch Geometric all read.
 """)
 
 code("""
@@ -409,7 +409,7 @@ md("""
 
 `load_directory` builds an embedded database from the files on disk, with the ground truth as a subgraph (`Pattern`
 nodes, `IN_PATTERN` memberships with roles, `is_fraud` on the money relationships), and verifies the load against the
-Parquet it came from. One file, no server. Needs a driver: `pip install ladybug` (`kuzu` still works, same API). From the command
+Parquet it came from. One file, no server. Needs a driver: `pip install ladybug`. From the command
 line this is `graphfaker load ladybug bank`.
 """)
 

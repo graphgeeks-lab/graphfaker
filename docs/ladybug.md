@@ -3,7 +3,7 @@
 LadybugDB (formerly Kùzu) is an embedded graph database: no server, one file on disk, Cypher, and it reads Parquet natively. That makes it the shortest path from a generated dataset to a queryable graph. Two commands:
 
 ```bash
-pip install ladybug                               # the LadybugDB driver; kuzu still works, same API
+pip install ladybug                               # the LadybugDB driver
 graphfaker fraud --scale 0.01 --seed 42 --out ./bank
 graphfaker load ladybug ./bank                    # creates ./bank/graph.lbdb, loads it, verifies it
 ```
@@ -118,8 +118,6 @@ ORDER BY n DESC
 ```
 
 Most of the rows that come back are businesses paying salaries, which is the false positive every AML analyst knows; the fraud pack produces it from the process rather than scripting it.
-
-One Kùzu 0.11 quirk worth knowing: an `OPTIONAL MATCH` that finds nothing, placed after a `WITH` that mixes `count(DISTINCT ...)` with another aggregate, returns null for the other aggregate. `EXISTS { }` and a two-stage `WITH`, as above, avoid it.
 
 Score a query as a detector with the built-in evaluator:
 
