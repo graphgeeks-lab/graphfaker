@@ -249,3 +249,27 @@ def test_two_step_generation_still_works():
     assert gf.G.number_of_edges() == 0
     gf.generate_edges(total_edges=300)
     assert 270 <= gf.G.number_of_edges() <= 330
+
+
+def test_worker_pool_produces_the_same_bytes(monkeypatch):
+    """Shards drawn in worker processes, with the foreign-key index arriving
+    through the temp file, equal the in-process result. The row threshold
+    is lowered so a small graph actually goes to the pool."""
+    from graphfaker.domains import fraud
+    from graphfaker.engine import sampling
+
+    single = fraud.generate(scale=0.001, seed=5, shard_size=1000)
+    monkeypatch.setattr(sampling, "PARALLEL_MIN_ROWS", 0)
+    pooled = fraud.generate(scale=0.001, seed=5, shard_size=1000, workers=2)
+    assert fingerprint(pooled) == fingerprint(single)
+    assert pooled.tables.nodes["Account"]["customer"].to_list() == single.tables.nodes["Account"]["customer"].to_list()
+
+
+def test_small_node_types_stay_in_process(monkeypatch):
+    """Below the threshold the pool is never used, whatever ``workers`` says."""
+    from graphfaker.engine import sampling
+
+    calls = []
+    monkeypatch.setattr(sampling, "ProcessPoolExecutor", lambda *a, **k: calls.append(1) or (_ for _ in ()).throw(AssertionError("pool used")))
+    run = generate(social.schema(120, 400), seed=2, workers=4)
+    assert run.tables.nodes["Person"].height > 0 and not calls

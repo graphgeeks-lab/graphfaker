@@ -361,28 +361,44 @@ def fk_indexes(node: NodeType, tables: dict[str, pl.DataFrame]) -> dict[tuple[st
     return indexes
 
 
-#: Foreign-key indexes installed in a worker process by :func:`_install_indexes`.
-_WORKER_INDEXES: dict[tuple[str, str | None], FKIndex] = {}
+#: Rows a node type needs before its shards go to the worker pool. Below
+#: this the pool's start-up (5 to 7 s of imports per worker on Windows, 2 to
+#: 3 s on macOS) costs more than the parallelism saves; measured on a 2019
+#: laptop, a type this size takes about 5 s single-process.
+PARALLEL_MIN_ROWS = 250_000
+
+#: Foreign-key indexes a worker process has loaded, by the file they came
+#: from. One node type is in flight at a time, so only the latest is kept.
+_WORKER_INDEXES: dict[str, dict[tuple[str, str | None], FKIndex]] = {}
 
 
-def _install_indexes(path: str) -> None:
-    """Pool initialiser: read the indexes the parent pickled to ``path``.
+def _indexes_from(path: str) -> dict[tuple[str, str | None], FKIndex]:
+    """The indexes pickled to ``path``, loaded once per worker process.
 
-    They go through a file rather than ``initargs`` because on Windows the
-    parent writes a process's arguments into a pipe the child only reads
-    after importing its main module, and a few megabytes of arguments make
-    every ``Process.start()`` block for that import, so workers start one at
-    a time. A path is a few bytes; the workers start together and load the
-    file in parallel.
+    The parent writes a node type's indexes to a temp file and puts the path
+    in every shard job; a worker loads the file the first time it sees the
+    path and reuses it for every later shard of that type. A path is a few
+    bytes, so jobs stay small, and one pool serves the whole run: no pool
+    per node type, no initialiser arguments. (Large ``initargs`` are what to
+    avoid on Windows: the parent writes them into a pipe the child reads
+    only after importing its main module, so every worker start waits for
+    the previous one's import.)
     """
-    with open(path, "rb") as handle:
-        indexes = pickle.load(handle)
-    _WORKER_INDEXES.clear()
-    _WORKER_INDEXES.update(indexes)
+    if path not in _WORKER_INDEXES:
+        with open(path, "rb") as handle:
+            loaded = pickle.load(handle)
+        _WORKER_INDEXES.clear()
+        _WORKER_INDEXES[path] = loaded
+    return _WORKER_INDEXES[path]
 
 
 @contextlib.contextmanager
-def _index_file(indexes: dict[tuple[str, str | None], FKIndex]) -> Iterator[str]:
+def _index_file(indexes: dict[tuple[str, str | None], FKIndex]) -> Iterator[str | None]:
+    """``indexes`` pickled to a temp file for the workers, or ``None`` when
+    there are none; the file lives as long as the block."""
+    if not indexes:
+        yield None
+        return
     handle = tempfile.NamedTemporaryFile(prefix="graphfaker-fk-", suffix=".pkl", delete=False)
     try:
         pickle.dump(indexes, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -398,16 +414,19 @@ def sample_node_shard(
     node: NodeType,
     factors: list[LatentFactor],
     latent: dict[str, GroupParams],
-    indexes: dict[tuple[str, str | None], FKIndex] | None,
+    indexes: dict[tuple[str, str | None], FKIndex] | str | None,
     sequence: np.random.SeedSequence,
     start: int,
     count: int,
 ) -> pl.DataFrame:
     """One shard of a node type. Takes a seed sequence rather than streams so
     it can run in another process; every argument is picklable. ``indexes``
-    is ``None`` in a worker that received them from the pool initialiser."""
+    is the foreign-key index mapping itself in-process, or the path of the
+    file holding it in a worker (see :func:`_indexes_from`)."""
+    if isinstance(indexes, str):
+        indexes = _indexes_from(indexes)
     streams = Streams.from_sequence(sequence)
-    ctx = RowContext(streams=streams, latent=latent, fk_index=indexes if indexes is not None else _WORKER_INDEXES)
+    ctx = RowContext(streams=streams, latent=latent, fk_index=indexes or {})
     for factor in factors:
         groups = latent[factor.name].groups
         ctx.group_ids[factor.name] = streams.rng.integers(0, groups, size=count)
@@ -438,11 +457,12 @@ def sample_nodes(
 ) -> pl.DataFrame:
     """All rows of one node type, sharded, each shard on its own stream.
 
-    ``workers > 1`` runs shards in a process pool. ``executor`` reuses one
-    across node types; a type with foreign keys gets a pool of its own so the
-    index travels to each worker once, in the initialiser, instead of with
-    every shard (at ``scale=1.0`` the customer index is 28 MB and there are
-    a thousand shards). The result does not depend on any of this: shard
+    ``workers > 1`` runs shards in a process pool: ``executor`` when the
+    caller passes one (one pool serves the whole run), otherwise a pool of
+    this call's own. A node type below :data:`PARALLEL_MIN_ROWS` stays in
+    process whatever ``workers`` says, because the pool's start-up would
+    cost more than it saves. Foreign-key indexes reach the workers through a
+    temp file each loads once. The result depends on none of this: shard
     seeds come from the spawn tree, not from which process drew them.
     """
     bounds = shard_bounds(node.count, shard_size)
@@ -451,21 +471,15 @@ def sample_nodes(
         return pl.DataFrame({column: [] for column in columns})
     children = streams.sequence.spawn(len(bounds))
     indexes = fk_indexes(node, tables)
-    jobs_count = len(bounds)
-    parallel = jobs_count > 1 and (executor is not None or workers > 1)
-    if parallel and indexes:
-        jobs = [(node, schema.latent, latent, None, child, start, count) for (start, count), child in zip(bounds, children)]
-        with _index_file(indexes) as path, ProcessPoolExecutor(
-            max_workers=min(max(workers, 1), jobs_count), initializer=_install_indexes, initargs=(path,)
-        ) as pool:
-            frames = list(pool.map(_run_shard, jobs, chunksize=4))
+    parallel = len(bounds) > 1 and node.count >= PARALLEL_MIN_ROWS and (executor is not None or workers > 1)
+    if not parallel:
+        frames = [sample_node_shard(node, schema.latent, latent, indexes, child, start, count) for (start, count), child in zip(bounds, children)]
     else:
-        jobs = [(node, schema.latent, latent, indexes, child, start, count) for (start, count), child in zip(bounds, children)]
-        if executor is not None and jobs_count > 1:
-            frames = list(executor.map(_run_shard, jobs, chunksize=4))
-        elif workers > 1 and jobs_count > 1:
-            with ProcessPoolExecutor(max_workers=min(workers, jobs_count)) as pool:
-                frames = list(pool.map(_run_shard, jobs, chunksize=4))
-        else:
-            frames = [_run_shard(job) for job in jobs]
+        with _index_file(indexes) as path:
+            jobs = [(node, schema.latent, latent, path, child, start, count) for (start, count), child in zip(bounds, children)]
+            if executor is not None:
+                frames = list(executor.map(_run_shard, jobs, chunksize=4))
+            else:
+                with ProcessPoolExecutor(max_workers=min(workers, len(bounds))) as pool:
+                    frames = list(pool.map(_run_shard, jobs, chunksize=4))
     return pl.concat(frames, how="vertical_relaxed") if len(frames) > 1 else frames[0]

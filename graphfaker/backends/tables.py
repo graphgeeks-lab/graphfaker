@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import networkx as nx
 import polars as pl
 import pyarrow as pa
 
@@ -67,11 +66,13 @@ class GraphTables:
 
     # -------------------------------------------------------------- networkx
 
-    def to_networkx(self) -> nx.DiGraph:
+    def to_networkx(self) -> Any:
         """Materialise as a directed graph with the attribute layout the rest of
         GraphFaker (export, resolve, metrics) already understands: ``type`` on
         nodes, ``relationship`` on edges. ``None`` attributes are dropped
         because GraphML cannot serialise them."""
+        import networkx as nx
+
         G = nx.DiGraph()
         for node_type, node_id, data in self.iter_nodes():
             G.add_node(node_id, type=node_type, **_drop_none(data))
@@ -80,7 +81,7 @@ class GraphTables:
         return G
 
     @classmethod
-    def from_networkx(cls, G: nx.Graph) -> GraphTables:
+    def from_networkx(cls, G: Any) -> GraphTables:
         by_type: dict[str, list[dict[str, Any]]] = {}
         for node_id, data in G.nodes(data=True):
             row = {ID: node_id, **{k: v for k, v in data.items() if k != TYPE}}

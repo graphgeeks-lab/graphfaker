@@ -401,7 +401,7 @@ graphfaker fraud --scale 0.1 --seed 42 --out ./bank
 | 0.3 | 3M | 27M | 709.9 s | 39.8 s |
 | 1.0 | 10M | 90M | over 2 hours (Windows, 4 workers) | 8 min (Windows, 4 workers) |
 
-At `scale=0.1` the time splits roughly 57% node attributes, 38% the transaction process, and the rest indexing and pattern injection. Only the first part is parallel, so `--workers` buys about 1.2x at that scale and earns its keep from `scale=1.0` upward.
+At `scale=0.1` the time splits roughly 57% node attributes, 38% the transaction process, and the rest indexing and pattern injection. Only the first part is parallel, so four workers are worth about 1.5x from `scale=0.1` upward (an Amdahl bound of 1.6x) and nothing below it, where node types stay in process because the pool's start-up would cost more than it saves.
 
 Memory is the limit. Every table is held in memory until the write, and the peak is a few times the size of the final tables: on Windows 3.7 GB at `scale=0.1`, 10.1 GB at `scale=0.3` and 32 GB at `scale=1.0`, about 33 GB per unit of scale. macOS reports lower peaks for the same runs because it compresses idle pages out of the resident set, so size a machine from the Windows numbers. Streaming the transaction process to disk as it goes is the next step and would bring `scale=1.0` under 16 GB.
 

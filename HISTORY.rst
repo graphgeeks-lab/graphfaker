@@ -2,6 +2,16 @@
 History
 =======
 
+0.6.1 (unreleased)
+------------------
+
+``--workers`` now pays for itself from about ``scale=0.1`` instead of ``scale=1.0``. Measuring 0.6.0 by phase and by worker count (the Karp-Flatt analysis in ``docs/scaling-and-realism.md``) showed the run behaving 80 to 90% serial against a 43 to 51% phase split; the difference was start-up, not work.
+
+* One process pool serves the whole run. A node type with foreign keys used to get a pool of its own so the index could be installed once per worker; now the index goes to a temp file whose path travels with every shard job, and a worker loads it the first time it sees the path. ``Account`` at ``scale=0.1`` no longer pays 5 s of start-up for 2 s of work.
+* A node type below ``PARALLEL_MIN_ROWS`` (250,000 rows) stays in process whatever ``--workers`` says; below that the pool costs more than it saves.
+* ``import graphfaker`` and ``import graphfaker.engine`` are lazy (PEP 562): the public names load on first use instead of pulling in networkx, pandas, the fetchers and every domain at import. A worker process now imports in 1.5 s warm instead of 2.9 s, and every CLI invocation starts faster. ``from graphfaker import GraphFaker`` and the rest work as before.
+* Measured on the i7 laptop, four workers: ``scale=0.1`` 1.05x before, 1.45x after; ``scale=0.3`` 1.13x before, 1.52x after, against an Amdahl bound of about 1.6x. The output is byte-identical with or without workers, and a test now exercises the pool path with the threshold lowered.
+
 0.6.0 (2026-09-16)
 ------------------
 

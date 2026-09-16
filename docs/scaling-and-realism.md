@@ -71,6 +71,23 @@ The memory column is the Mac reading; see the limits section for why it undercou
 
 Which makes `scale=1.0` a memory question rather than an algorithmic one, and that is the useful conclusion here.
 
+## The same curve on a second machine
+
+The Mac is fast hardware. To separate what the software does from what the hardware does, the same harness ran on a 2019 laptop: Intel Core i7-9850H (6 cores, 12 threads, 2.6 GHz base), 48 GB, NVMe SSD, Windows 11, Python 3.12.3. Same command, same seed, generation only, single process, best of three where a run took under 45 s. Results in `benchmarks/scaling-win-i7.json`.
+
+| scale | accounts | M3 Pro | i7-9850H | ratio | i7 local slope |
+|---|---|---|---|---|---|
+| 0.005 | 50K | 0.6 s | 2.7 s | 4.5x | |
+| 0.01 | 100K | 1.1 s | 4.9 s | 4.5x | 0.86 |
+| 0.02 | 200K | 2.3 s | 9.2 s | 4.0x | 0.91 |
+| 0.05 | 500K | 5.9 s | 20.1 s | 3.4x | 0.85 |
+| 0.1 | 1M | 12.2 s | 40.9 s | 3.4x | 1.02 |
+| 0.3 | 3M | 39.8 s | 121.9 s | 3.1x | 0.99 |
+
+Two things to take from it. The absolute gap is the hardware: three to four times, closing slightly as the data grows and fixed costs matter less. The shape is the software: the i7's local slope sits at 1.0 across the range, exactly as the M3's does, with no knee. A generator that was linear on one machine and not on another would be telling you something about memory or the OS; this one is telling you the algorithm.
+
+Memory is where the two machines disagree, and the disagreement is instructive rather than a discrepancy: the i7 reads 3.4 GB at `scale=0.1` and 9.4 GB at `scale=0.3` against the M3's 2.9 and 5.6 GB. The limits section takes that up.
+
 ## What actually changed in the code
 
 Four things, in rough order of how much they mattered.
@@ -98,15 +115,53 @@ At `scale=0.1`, where the time goes now:
 
 Node generation used to dominate a run. It is now a little over half, with a single-threaded transaction process making up most of the rest. Which means the `--workers` flag, the thing we built to make large runs tractable, has very little left to divide. Best of three runs at `scale=0.1`:
 
-| workers | generate |
-|---|---|
-| 1 | 12.4 s |
-| 4 | 10.4 s |
-| 8 | 10.7 s |
+| workers | M3 Pro | i7-9850H |
+|---|---|---|
+| 1 | 12.4 s | 40.9 s |
+| 2 | | 37.5 s |
+| 4 | 10.4 s | 39.0 s |
+| 8 | 10.7 s | 48.0 s |
 
-About 1.2x from four processes, and eight buys nothing over four. With 57% of the run parallel, Amdahl's law caps four workers at 1.75x and any number of workers at 2.3x, and process start-up eats into what is left.
+About 1.2x from four processes on the Mac, nothing on the i7, and eight workers are slower than one on the i7. At `scale=0.3` the i7 gets 1.13x from four workers (121.9 s to 107.8 s).
 
-The optimisation was successful enough to make its own parallelism close to redundant at mid scale. `--workers` still earns its keep at `scale=1.0`, where entity generation is large enough to amortise a few seconds of start-up, and it is close to pointless below `scale=0.1`. The next real gain is vectorising or streaming the transaction process, not adding processes. We would not have known that without measuring by phase, and we would have happily kept telling people to add workers.
+### Does it obey Amdahl's law?
+
+Amdahl's law says that if a fraction `f` of a run is parallel, `p` workers give a speed-up of `1 / ((1 - f) + f / p)`. The phase split above puts `f` at 0.57 on the Mac and 0.49 on the i7 (node attributes are the parallel part; the transaction process, the population index and the merge are not). So the law predicts 1.75x from four workers on the Mac and 1.58x on the i7, and it caps the Mac at 2.3x however many workers you add.
+
+The measurements fall well short of that, and the useful question is not whether the law holds (it always does; it is a bound) but how much of the run is behaving as serial in practice. The Karp-Flatt metric answers it: from a measured speed-up `S` on `p` workers, `e = (1/S - 1/p) / (1 - 1/p)` is the serial fraction the run *acts* as if it had. If overhead were zero, `e` would equal `1 - f` at every `p`. If `e` grows with `p`, the overhead grows with the worker count.
+
+| machine, scale | workers | measured | Amdahl predicts | Karp-Flatt `e` | `1 - f` |
+|---|---|---|---|---|---|
+| M3 Pro, 0.1 | 4 | 1.19x | 1.75x | 0.78 | 0.43 |
+| M3 Pro, 0.1 | 8 | 1.16x | 2.00x | 0.84 | 0.43 |
+| i7, 0.1 | 2 | 1.09x | 1.32x | 0.83 | 0.51 |
+| i7, 0.1 | 4 | 1.05x | 1.58x | 0.94 | 0.51 |
+| i7, 0.1 | 8 | 0.85x | 1.75x | 1.20 | 0.51 |
+| i7, 0.3 | 4 | 1.13x | 1.77x | 0.85 | 0.42 |
+
+The run behaves as if 80 to 90% of it were serial, against a measured 43 to 51%, and `e` rises with `p` on both machines. That is the signature of overhead rather than of a wrong phase split, and we can see what the overhead is because the node phase was timed on its own on the i7:
+
+| workers | node phase | of which Customer (72 shards) | of which Account (100 shards, has a foreign key) |
+|---|---|---|---|
+| 1 | 20.2 s | 13.8 s | 1.9 s |
+| 2 | 22.9 s | 13.5 s | 5.9 s |
+| 4 | 20.6 s | 11.5 s | 6.5 s |
+| 8 | 26.7 s | 13.2 s | 11.1 s |
+
+Three costs, none of them in Amdahl's model. A worker process has to import graphfaker before it can do anything, which is 5 to 7 s on Windows and 2 to 3 s on the Mac; with the shards traced individually, the first Customer shard starts 7 s after the pool is created and the rest run at 3.8x parallelism for the remaining 7 s, which is why 13.8 s becomes 11.5 s and not 4 s. Node types with a foreign key get a pool of their own so the index can be installed once per worker, so Account pays that start-up again for 1.9 s of work and gets slower with every worker added. And the work itself slows down when the processes run together: an in-worker shard takes 1.5 to 1.7 times longer with four processes busy than alone, which on a laptop is the clock dropping once several cores are loaded, and past six workers the i7 is sharing physical cores between hyperthreads.
+
+So the parallel part is real, and it does scale, but only once it is large enough to amortise a start-up cost that is fixed per pool and a slowdown that is proportional to the work. At `scale=1.0` the Customer table alone is about 140 s of single-process work, the start-up is noise, and four workers bring the node phase from an estimated 300 s to the 150 to 200 s we measured. Below `scale=0.3` on Windows the flag should not be used at all. Two fixes follow directly: reuse one pool across node types and have workers load the index file on demand, which removes the repeated start-up, and skip the pool for a node type whose work is smaller than the start-up cost. Neither changes the output. Both are in 0.6.1, along with a third that came out of looking at what a worker spends its first seconds on: `import graphfaker` was pulling in networkx, pandas, the fetchers and every domain, so the package now imports its public names lazily and a worker's import fell from 2.9 s to 1.5 s warm.
+
+Same laptop, same harness, four workers, measured after those changes (the single-process times were about 20% slower in this session than in the table above, the laptop having warmed up, so read the ratios rather than the seconds):
+
+| scale | 0.6.0 speed-up | 0.6.1 speed-up | Amdahl bound | Karp-Flatt `e`, 0.6.0 | Karp-Flatt `e`, 0.6.1 |
+|---|---|---|---|---|---|
+| 0.1 | 1.05x | 1.45x | 1.6x | 0.94 | 0.59 |
+| 0.3 | 1.13x | 1.52x | 1.6x | 0.85 | 0.54 |
+
+The effective serial fraction is now within a few points of the measured phase split, which is as close to Amdahl as a laptop gets: what remains is the per-shard slowdown when four processes run together (0.15 s alone, 0.22 s with two, 0.37 s with four, and the same with polars pinned to one thread, so it is the clock and the caches rather than thread oversubscription). The Customer table is still the case that gains least, because it is the first type to reach the pool and absorbs the start-up; on the Mac, where a process starts in 2 s, the gain should be larger, and that is a measurement worth repeating there.
+
+The larger point stands. The optimisation was successful enough to make its own parallelism close to redundant at mid scale. The next real gain is vectorising or streaming the transaction process, not adding processes, and we would not have known that without measuring by phase.
 
 ## What this means for synthetic data of this nature
 
@@ -189,7 +244,7 @@ None of which makes one generator better than the other. gen-fraud-graph is aime
 
 Memory is now the binding constraint rather than time, and our memory numbers are the weakest measurement in this document. The peak grows strongly sublinearly across the range we tested: 2.93 GB at `scale=0.1` rising to only 8.16 GB at `scale=0.8`, so 2.8 times the memory for eight times the data. Per unit of scale that is a fall from 29 GB to 10 GB. We do not fully believe it.
 
-The same runs on the Windows laptop, same sampler, same interval, single process, tell a different story: 3.7 GB at `scale=0.1`, 10.1 GB at `scale=0.3`, 32 GB at `scale=1.0`. That is linear, about 33 GB per unit of scale, and the two machines agree at `scale=0.1` and then diverge (10.1 GB against 5.6 GB at `scale=0.3`). Resident size is not the same measurement on the two systems: macOS compresses pages that are not being touched and reports them outside the resident set, and its allocator returns freed memory to the system more readily than the Windows heap does, so the Mac figure under-counts a peak made of transient frames while the Windows figure counts memory that was freed but not yet returned. The truth is between them and closer to Windows for sizing purposes, because a machine has to hold the uncompressed working set at the moment of the peak. Until the transaction process streams to disk, treat the Windows numbers as the requirement and the Mac numbers as a floor.
+The same runs on the i7 laptop, same sampler, same interval, single process, tell a different story: 3.4 to 3.7 GB at `scale=0.1`, 9.4 to 10.1 GB at `scale=0.3`, 32 GB at `scale=1.0` (the lower figure of each pair is generation only, the higher includes the write). That is linear, about 33 GB per unit of scale, and the two machines agree at `scale=0.1` and then diverge (10.1 GB against 5.6 GB at `scale=0.3`). Resident size is not the same measurement on the two systems: macOS compresses pages that are not being touched and reports them outside the resident set, and its allocator returns freed memory to the system more readily than the Windows heap does, so the Mac figure under-counts a peak made of transient frames while the Windows figure counts memory that was freed but not yet returned. The truth is between them and closer to Windows for sizing purposes, because a machine has to hold the uncompressed working set at the moment of the peak. Until the transaction process streams to disk, treat the Windows numbers as the requirement and the Mac numbers as a floor.
 
 The remaining limits are unchanged. Every table is held in memory until the write, and the transaction assembly briefly holds a channel twice. Streaming the transaction process to disk as it goes is the next piece of work. The social topology model is still sequential and suits graphs up to about a million edges. Balances are not tracked as a running ledger.
 
@@ -207,4 +262,4 @@ python benchmarks/scaling.py \
     --scale 0.005 --scale 0.01 --scale 0.02 --scale 0.05 --scale 0.1
 ```
 
-`benchmarks/bench_scale.py` measures one run and prints a line of JSON. `benchmarks/compare.py` runs a set of scales across versions and prints the comparison. `benchmarks/scaling.py` fits the growth and reports the per-interval slopes. Raw results for the tables above are in `benchmarks/scaling-m3pro.json` and `benchmarks/scaling-m3pro-high.json`.
+`benchmarks/bench_scale.py` measures one run and prints a line of JSON. `benchmarks/compare.py` runs a set of scales across versions and prints the comparison. `benchmarks/scaling.py` fits the growth and reports the per-interval slopes. Raw results for the tables above are in `benchmarks/scaling-m3pro.json`, `benchmarks/scaling-m3pro-high.json` and `benchmarks/scaling-win-i7.json`.
