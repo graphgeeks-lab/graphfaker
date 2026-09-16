@@ -156,7 +156,7 @@ def build_nodes(config: FraudConfig, streams: Streams, shard_size: int, workers:
     with node_pool(workers) as executor:
         for node in node_schema.generation_order():
             tables[node.name] = sample_nodes(
-                node, node_schema, latent, tables, children[node.name], shard_size, executor=executor
+                node, node_schema, latent, tables, children[node.name], shard_size, workers=workers, executor=executor
             )
     ordered = {node.name: tables[node.name] for node in node_schema.nodes}
     return ordered, latent

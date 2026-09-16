@@ -43,7 +43,7 @@ GraphFaker
      <div class="gf-card">
        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="2.6"></ellipse><path d="M5 6v12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6"></path></svg>
        <h3>Loadable</h3>
-       <p>Neo4j, LadybugDB, DuckDB with SQL/PGQ, Parquet, NetworkX. Loaded from Arrow, verified against the files it came from, with a blind copy for honest benchmarks.</p>
+       <p>Neo4j, LadybugDB, DuckDB with SQL/PGQ, PyTorch Geometric, Parquet, NetworkX. Loaded from Arrow, verified against the files it came from, with a blind copy for honest benchmarks.</p>
      </div>
    </section>
 
@@ -76,6 +76,7 @@ GraphFaker
          <a href="fraud-generation.html">How the fraud graph is generated</a>
          <a href="methods.html">Ways to generate synthetic graphs</a>
          <a href="adding-a-domain.html">Adding a domain</a>
+         <a href="pyg.html">Training a GNN on the bank</a>
        </div>
        <div class="gf-doc">
          <a class="gf-doc-kicker" href="domains/index.html">Domains</a>

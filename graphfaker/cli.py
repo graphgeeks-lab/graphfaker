@@ -181,6 +181,13 @@ def _write_sink(run, out: str, sink: str, blind: bool = False) -> None:
             write_duckdb(run.tables, out, db_path=os.path.join(out, "graph.duckdb"), truth=None if blind else run.truth, graph=run.schema.name)
         except ImportError as exc:
             typer.echo(f"wrote {out}/load.sql; database not created: {exc}", err=True)
+    elif sink == "pyg":
+        from graphfaker.sinks.pyg import write_pyg
+
+        try:
+            write_pyg(run.tables, os.path.join(out, "graph.pt"), None if blind else run.truth, seed=run.manifest.seed or 0)
+        except ImportError as exc:
+            typer.echo(f"graph.pt not written: {exc}", err=True)
     elif sink == "gen-fraud-graph":
         from graphfaker.sinks import write_gen_fraud_graph
 
@@ -245,7 +252,7 @@ def generate(
     out: str = typer.Option("graphfaker_out", help="Output directory."),
     seed: int = typer.Option(None, help="Seed for a reproducible dataset."),
     workers: int = typer.Option(1, help="Processes for node sampling. Does not change the result."),
-    sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | duckdb | gen-fraud-graph."),
+    sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | duckdb | pyg | gen-fraud-graph."),
     blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
 ):
     """Example: graphfaker generate fraud --scale 0.01 --hardness high --seed 1 --out ./bank"""
@@ -271,7 +278,7 @@ def fraud(
     out: str = typer.Option("fraud_data", help="Output directory."),
     sink: str = typer.Option(
         "parquet",
-        help="parquet | neo4j | neo4j-admin | ladybug | duckdb | gen-fraud-graph. Parquet (nodes/, edges/, truth/, manifest) is always written.",
+        help="parquet | neo4j | neo4j-admin | ladybug | duckdb | pyg | gen-fraud-graph. Parquet (nodes/, edges/, truth/, manifest) is always written.",
     ),
     period_days: int = typer.Option(90, help="Length of the transaction period in days."),
     workers: int = typer.Option(1, help="Processes for entity sampling. Does not change the result."),

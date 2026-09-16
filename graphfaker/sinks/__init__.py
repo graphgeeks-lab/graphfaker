@@ -16,6 +16,7 @@ from graphfaker.sinks.neo4j_verify import (
     verify_directory,
     verify_tables,
 )
+from graphfaker.sinks.pyg import to_hetero_data, write_pyg
 
 __all__ = [
     "LoadReport",
@@ -27,10 +28,12 @@ __all__ = [
     "load_directory",
     "load_tables",
     "read_truth",
+    "to_hetero_data",
     "verify_directory",
     "verify_tables",
     "write_duckdb",
     "write_gen_fraud_graph",
     "write_ladybug",
     "write_neo4j_admin",
+    "write_pyg",
 ]

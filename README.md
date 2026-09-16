@@ -194,6 +194,7 @@ Sinks put the same tables into a database's own loader format:
 | `verify_tables`, `verify_directory` | every check in [docs/neo4j.md](docs/neo4j.md): counts, constraints, endpoint labels, per-property aggregates, sampled round trips, truth coverage | proving the load is the dataset, in CI |
 | `write_ladybug`, `graphfaker load ladybug` | DDL, `COPY FROM` Parquet and the truth subgraph; loads and verifies when the `ladybug` driver is installed | an embedded graph database, one file, Cypher, no server; see [docs/ladybug.md](docs/ladybug.md) |
 | `write_duckdb`, `graphfaker load duckdb` | the tables as DuckDB tables plus a `CREATE PROPERTY GRAPH` for SQL/PGQ pattern queries; DuckDB reads the Parquet itself | no graph database at all: SQL, with graph patterns, on the same files; see [docs/duckdb.md](docs/duckdb.md) |
+| `to_hetero_data`, `write_pyg`, `graphfaker generate ... --sink pyg` | a PyTorch Geometric `HeteroData`: features encoded, `y` and `decoy` on accounts, `y` and `edge_time` on transactions, stratified train/val/test masks | training and evaluating GNNs against a known answer; see [docs/pyg.md](docs/pyg.md) |
 | `write_neo4j_admin` | typed CSVs and the `neo4j-admin database import` command | the fastest path into Neo4j, offline, at any scale |
 | `write_gen_fraud_graph` | gen-fraud-graph's `accounts/`, `transactions/`, `fraud/` layout | pipelines built on that generator |
 | `export_csv`, `export_neo4j_csv`, `export_cypher` | from a NetworkX graph: CSV, neo4j-admin CSV, Cypher, openCypher, ISO GQL | Memgraph, Neptune, TigerGraph, any bulk loader |
@@ -212,7 +213,7 @@ print(load_directory("bank", target, wipe_first=True).summary())
 assert verify_directory("bank", target).ok
 ```
 
-On the command line, `--sink parquet|neo4j|neo4j-admin|ladybug|duckdb|gen-fraud-graph` on `graphfaker fraud` and `graphfaker generate` (add `--blind` to keep the ground truth out of the database), and `graphfaker load neo4j|ladybug|duckdb` / `graphfaker verify neo4j|ladybug|duckdb` for a dataset already on disk. All three loaders put the truth in the graph the same way (`Pattern` nodes, `IN_PATTERN` memberships with roles, `is_fraud` on the money relationships) and verify the load with the same checks.
+On the command line, `--sink parquet|neo4j|neo4j-admin|ladybug|duckdb|pyg|gen-fraud-graph` on `graphfaker fraud` and `graphfaker generate` (add `--blind` to keep the ground truth out of the database), and `graphfaker load neo4j|ladybug|duckdb` / `graphfaker verify neo4j|ladybug|duckdb` for a dataset already on disk. All three loaders put the truth in the graph the same way (`Pattern` nodes, `IN_PATTERN` memberships with roles, `is_fraud` on the money relationships) and verify the load with the same checks.
 
 ## Reproducibility
 
@@ -263,7 +264,7 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 | `--out DIR` | where to write (default `graphfaker_out`) |
 | `--seed N` | reproducible output; the same seed gives the same bytes on any machine |
 | `--workers N` | processes for node sampling; faster, does not change the result |
-| `--sink parquet\|neo4j\|neo4j-admin\|ladybug\|duckdb\|gen-fraud-graph` | also load a live database, or write a loader layout (Parquet is always written) |
+| `--sink parquet\|neo4j\|neo4j-admin\|ladybug\|duckdb\|pyg\|gen-fraud-graph` | also load a live database, or write a loader layout (Parquet is always written) |
 
 ### What the options mean
 
@@ -272,7 +273,7 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 - `--seed N`: any whole number. Generation is random, but the randomness is derived from the seed, so the same seed with the same options produces the same bytes on any machine. Use a seed when you want a dataset others can regenerate (a benchmark, a tutorial, a bug report). Leave it out and every run produces a different dataset.
 - `--out DIR`: the folder to write. It will contain `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json`. The manifest records the seed and every option, so a run can always be reproduced from its folder.
 - `--workers N`: how many processes generate node attributes. Use it on large runs; it changes the speed and nothing else.
-- `--sink`: what else to do besides writing Parquet. `neo4j` loads a running Neo4j over Bolt (configured with `NEO4J_URI`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`); `ladybug` builds an embedded graph database you can query in Cypher; `duckdb` builds a DuckDB file with a SQL/PGQ property graph on the tables; `neo4j-admin` writes CSVs and the `neo4j-admin database import` command; `gen-fraud-graph` writes the layout of Santander's generator for pipelines built on it.
+- `--sink`: what else to do besides writing Parquet. `neo4j` loads a running Neo4j over Bolt (configured with `NEO4J_URI`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`); `ladybug` builds an embedded graph database you can query in Cypher; `duckdb` builds a DuckDB file with a SQL/PGQ property graph on the tables; `pyg` writes a PyTorch Geometric `HeteroData` with labels and splits to `graph.pt`; `neo4j-admin` writes CSVs and the `neo4j-admin database import` command; `gen-fraud-graph` writes the layout of Santander's generator for pipelines built on it.
 
 **`fraud` options** (see [docs/fraud-generation.md](docs/fraud-generation.md) for the mechanics)
 
@@ -387,7 +388,15 @@ print(report.summary())
 
 ## Performance and limits
 
-At `scale=0.01` (100K accounts, 900K transactions) the transaction process takes about two seconds; the run takes about 70 seconds single-process and about 45 seconds with `workers=12` on a six-core laptop, because Faker attribute generation costs about a millisecond per customer. The social topology model is sequential and suits graphs up to about a million edges. Full-scale fraud runs (`scale=1.0`) need a vectorised person sampler and chunked writes, both planned. Balances are not tracked as a running ledger. See the design document for the roadmap.
+Measured on a laptop (12 logical cores, Windows), single process unless stated:
+
+| scale | accounts | transactions | generate | write | peak memory |
+|---|---|---|---|---|---|
+| 0.01 | 100K | 900K | 10 s | 1 s | under 1 GB |
+| 0.1 | 1M | 9M | 40 s | 10 s | 3.7 GB |
+| 1.0 | 10M | 90M | 8 min with `--workers 4` | 2 min | 32 GB |
+
+Attributes are drawn a column at a time (names and addresses from Faker's tables with numpy, not Faker call by call), so node generation is seconds per million rows and `--workers` divides it further once a run is large enough to amortise a few seconds of process start-up. The transaction process is vectorised and linear in the number of transactions. Memory is the limit today. Every table is held in memory until the write, and the transaction assembly briefly holds a channel twice, so the peak (sampled every 0.2 s, workers included) is about five times the size of the final tables: `scale=1.0` wants a machine with 32 GB, `scale=0.3` fits in 16 GB. Parquet is written in 2M-row chunks so the write itself adds little. Streaming the transaction process to disk as it goes is the next step and would bring `scale=1.0` under 16 GB. The social topology model is sequential and suits graphs up to about a million edges. Balances are not tracked as a running ledger.
 
 ## Notes on network access
 
