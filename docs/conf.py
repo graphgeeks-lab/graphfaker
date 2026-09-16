@@ -36,6 +36,7 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "myst_nb",
+    "sphinx_reredirects",
 ]
 
 source_suffix = {
@@ -64,6 +65,14 @@ napoleon_numpy_docstring = False
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "polars": ("https://docs.pola.rs/api/python/stable/", None),
+}
+
+# Pages the old site had, so links to them keep working.
+redirects = {
+    "readme": "index.html",
+    "installation": "get-started/install.html",
+    "quickstart": "get-started/first-commands.html",
+    "usage": "get-started/python.html",
 }
 
 # --------------------------------------------------------------------- html

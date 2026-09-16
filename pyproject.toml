@@ -94,6 +94,7 @@ docs = [
     "myst-nb>=1.2",
     "myst-parser>=4.0",
     "pydata-sphinx-theme>=0.19.0",
+    "sphinx-reredirects>=0.1.6",
 ]
 dev = [
     "coverage",  # testing
