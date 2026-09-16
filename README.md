@@ -388,15 +388,109 @@ print(report.summary())
 
 ## Performance and limits
 
-Measured on a laptop (12 logical cores, Windows), single process unless stated:
+### What 0.6.0 changed
 
-| scale | accounts | transactions | generate | write | peak memory |
+[docs/scaling-and-realism.md](docs/scaling-and-realism.md) has the full write-up: the seven-scale curve, what changed in the code, what it means for synthetic fraud data, and a measured comparison with Santander's gen-fraud-graph.
+
+0.5.0 drew every node attribute through a Faker call, one row at a time, and it kept foreign-key indexes as lists of id strings that were pickled to every worker for every shard. 0.6.0 draws attributes a column at a time from Faker's own locale tables with numpy, and passes int32 position indexes to the worker pool once. Both versions, same seed, same command:
+
+```sh
+graphfaker fraud --scale 0.1 --seed 42 --out ./bank
+```
+
+Apple M3 Pro, 12 logical cores, 36 GB, macOS, Python 3.12, single process. Generation only, best of three runs per point where a run took under 45 s:
+
+| scale | accounts | transactions | 0.5.0 | 0.6.0 | speed-up |
 |---|---|---|---|---|---|
-| 0.01 | 100K | 900K | 10 s | 1 s | under 1 GB |
-| 0.1 | 1M | 9M | 40 s | 10 s | 3.7 GB |
-| 1.0 | 10M | 90M | 8 min with `--workers 4` | 2 min | 32 GB |
+| 0.005 | 50K | 450K | 7.2 s | 0.6 s | 12.0x |
+| 0.01 | 100K | 900K | 14.5 s | 1.1 s | 13.2x |
+| 0.02 | 200K | 1.8M | 28.8 s | 2.3 s | 12.5x |
+| 0.05 | 500K | 4.5M | 75.4 s | 5.9 s | 12.8x |
+| 0.1 | 1M | 9M | 159.8 s | 12.2 s | 13.1x |
+| 0.2 | 2M | 18M | 383.3 s | 24.8 s | **15.5x** |
+| 0.3 | 3M | 27M | 709.9 s | 39.8 s | **17.8x** |
 
-Attributes are drawn a column at a time (names and addresses from Faker's tables with numpy, not Faker call by call), so node generation is seconds per million rows and `--workers` divides it further once a run is large enough to amortise a few seconds of process start-up. The transaction process is vectorised and linear in the number of transactions. Memory is the limit today. Every table is held in memory until the write, and the transaction assembly briefly holds a channel twice, so the peak (sampled every 0.2 s, workers included) is about five times the size of the final tables: `scale=1.0` wants a machine with 32 GB, `scale=0.3` fits in 16 GB. Parquet is written in 2M-row chunks so the write itself adds little. Streaming the transaction process to disk as it goes is the next step and would bring `scale=1.0` under 16 GB. The social topology model is sequential and suits graphs up to about a million edges. Balances are not tracked as a running ledger.
+There are two separate wins in that table and it is worth telling them apart.
+
+**A constant factor, from vectorising the attributes.** Between `scale=0.005` and `scale=0.1` the speed-up sits flat between 12x and 13x. Both versions are linear in the data over that range, so this is simply the cost of drawing a column with numpy against drawing it with a Python loop. It does not grow.
+
+**An asymptotic one, from removing the superlinear costs.** Above `scale=0.1` the two versions stop growing at the same rate. The log-log slope between adjacent points shows it directly:
+
+| range | 0.5.0 | 0.6.0 |
+|---|---|---|
+| 0.005 to 0.01 | 1.01 | 0.87 |
+| 0.01 to 0.02 | 0.99 | 1.06 |
+| 0.02 to 0.05 | 1.05 | 1.03 |
+| 0.05 to 0.1 | 1.08 | 1.05 |
+| 0.1 to 0.2 | **1.26** | 1.02 |
+| 0.2 to 0.3 | **1.52** | 1.17 |
+
+A slope of 1.0 means time grows in step with the data, which is the best a generator can do. 0.5.0 holds near 1.0 up to `scale=0.1` and then climbs to 1.5, because the number of injected patterns grows with the scale and pattern recruitment did a set difference over every account for each one. 0.6.0 stays near 1.0 throughout. Fitting each half separately: 0.5.0 goes from an exponent of 1.03 below `scale=0.1` to 1.35 at and above it, while 0.6.0 moves only from 1.01 to 1.07.
+
+So the honest summary is two sentences rather than one number. Below a million accounts, 0.6.0 is a flat 12x to 13x faster. Above it, 0.5.0 degrades and 0.6.0 does not, so the ratio keeps opening: 17.8x at `scale=0.3`, and the reported figures at `scale=1.0` (over two hours against eight minutes) are consistent with that trend continuing. Any speed-up quoted for this change should come with the scale it was measured at.
+
+A single power law fitted across the whole range gives 1.10 for 0.5.0 and 1.03 for 0.6.0 with r-squared above 0.996, and it is misleading: the residuals are structured and the fit under-predicts `scale=0.3` by 15% because it is averaging two regimes. `benchmarks/scaling.py` prints the per-interval slopes and a split fit for exactly this reason.
+
+Reproduce any of it:
+
+```sh
+uv venv --python 3.12 /tmp/gf050
+uv pip install --python /tmp/gf050/bin/python graphfaker==0.5.0 psutil
+python benchmarks/scaling.py \
+    --version 0.5.0=/tmp/gf050/bin/python \
+    --version 0.6.0=.venv/bin/python \
+    --scale 0.005 --scale 0.01 --scale 0.02 --scale 0.05 --scale 0.1
+```
+
+The whole seven-point curve above took 30 minutes, almost all of it 0.5.0 at the top two scales. Peak memory is sampled across the process tree every 0.2 s rather than taken from `getrusage`, because node sampling happens in worker processes and the number that matters is what the machine has to hold at once.
+
+### Two machines
+
+0.6.0 end to end, generation and write, single process unless stated. Each row is one host, so nothing is averaged across hardware:
+
+| machine | scale | accounts | transactions | generate | write | peak memory | output |
+|---|---|---|---|---|---|---|---|
+| Windows laptop, 12 cores | 0.01 | 100K | 900K | 10 s | 1 s | under 1 GB | |
+| Windows laptop, 12 cores | 0.1 | 1M | 9M | 40 s | 10 s | 3.7 GB | |
+| Windows laptop, 12 cores | 1.0 | 10M | 90M | 8 min (`--workers 4`) | 2 min | 32 GB | 2 GB |
+| M3 Pro, 12 cores, 36 GB | 0.01 | 100K | 900K | 1.2 s | 0.3 s | 0.6 GB | 0.02 GB |
+| M3 Pro, 12 cores, 36 GB | 0.1 | 1M | 9M | 12.4 s | 2.5 s | 3.4 GB | 0.18 GB |
+| M3 Pro, 12 cores, 36 GB | 0.3 | 3M | 27M | 37.7 s | 8.2 s | 6.3 GB | 0.55 GB |
+
+`scale=1.0` has not been measured on the M3 Pro: it wants about 32 GB against the machine's 36 GB, so the figure would measure swap rather than GraphFaker.
+
+Note which half of the table moved. 0.5.0 took 159.8 s at `scale=0.1` on the M3 Pro, within a few seconds of the 165 s recorded on the Windows laptop, because an interpreter loop costs about the same everywhere. 0.6.0 is no longer interpreter-bound, so it benefits from the faster machine. Expect a larger multiple on hardware where numpy runs well, and treat any single speed-up figure as specific to both a scale and a machine.
+
+### Where the time goes now
+
+At `scale=0.1`, by phase:
+
+| phase | seconds | share | parallelised by `--workers` |
+|---|---|---|---|
+| entities (node attributes) | 5.5 s | 57% | yes |
+| legitimate transactions | 3.7 s | 38% | no |
+| population index | 0.4 s | 4% | no |
+| pattern injection | 0.1 s | 1% | no |
+
+Worth reading before reaching for `--workers`. Vectorising the attributes moved the bottleneck: node generation used to dominate, and is now about half the run, with a single-threaded transaction process making up most of the rest. Amdahl's law caps what more processes can do, and process start-up eats into what is left. Measured at `scale=0.1`:
+
+| workers | generate |
+|---|---|
+| 1 | 12.4 s |
+| 4 | 10.4 s |
+| 8 | 10.7 s |
+
+Best of three runs each. About 1.2x from four workers, and eight buys nothing over four. `--workers` earns its keep at `scale=1.0`, where entity generation is large enough to amortise a few seconds of process start-up, and it is close to pointless below `scale=0.1`. Vectorising the transaction process, or streaming it, would do more for a mid-sized run than any number of workers.
+
+### Limits
+
+Memory is the binding constraint. Every table is held in memory until the write, and the transaction assembly briefly holds a channel twice, so the peak is a few times the size of the final tables: 3.4 GB at `scale=0.1`, 6.3 GB at `scale=0.3`, about 32 GB at `scale=1.0`. Parquet goes out in 2M-row row groups so the write itself adds little, and only one slice is ever copied into Arrow memory. Streaming the transaction process to disk as it goes is the next step and would bring `scale=1.0` under 16 GB.
+
+Two other limits are unchanged. The social topology model is sequential and suits graphs up to about a million edges. Balances are not tracked as a running ledger, so an account's balance is a starting attribute rather than the sum of its transactions.
+
+### Datasets changed in 0.6.0
+
+A run is still a pure function of its seed and shard size, and node counts are identical to 0.5.0's for a given seed. Attribute values differ, because columns now come from the shard's numpy stream rather than from Faker's and `random`'s call sequences, and edge counts differ by about 0.15% at `scale=0.01` because pattern injection consumes its randomness differently and so draws a slightly different number of transactions. If you have a 0.5.0 dataset you need to reproduce exactly, keep it, or keep 0.5.0 pinned to regenerate it.
 
 ## Notes on network access
 
