@@ -1,10 +1,12 @@
-# Ten times faster, and why that was the easy part
+# Scaling and realism: notes from 0.6.0
 
-Notes from making GraphFaker 0.6.0, with the measurements behind the claims.
+Ten times faster, and why that was the easy part. Notes from making GraphFaker 0.6.0, with the measurements behind the claims.
 
 We set out to make the fraud generator fast enough to be useful at a million accounts and above. It is now between 12 and 18 times faster than 0.5.0, depending on the size of the dataset, and the "depending on" turns out to be the interesting part. Along the way the work changed our mind about which properties of a synthetic fraud dataset are worth optimising. This is a record of what we measured and what we concluded.
 
 Everything below is reproducible. The harness is in `benchmarks/`, both versions were installed side by side, and the raw results sit next to the tables in `benchmarks/scaling-m3pro.json`.
+
+If you read one paragraph: below a million accounts 0.6.0 is a flat 12 to 13 times faster, from drawing attributes a column at a time; above it 0.5.0 turned superlinear and 0.6.0 stays linear, so the gap keeps widening; the bottleneck is now the single-threaded transaction process rather than node attributes, which makes `--workers` nearly redundant at mid scale; memory, not time, is what limits a full-size bank; and the speed matters because fraud is rare enough that only a large dataset gives a detector benchmark an error bar smaller than the effect it measures.
 
 ## What we measured
 
@@ -65,7 +67,7 @@ Not one we can find. Running 0.6.0 alone from `scale=0.1` to `scale=0.8`, which 
 | 0.6 | 80.5 s | 7.97 GB | 1.02 |
 | 0.8 | 118.8 s | 8.16 GB | 1.35 |
 
-Fitted across the whole range the exponent is 1.072 with an r-squared of 0.9987. The slopes bounce around 1.0 with the noise you would expect from single runs at the expensive end, including one interval at 0.85 that cannot be real. The last interval at 1.35 is the only hint of a turn, and on one measurement we would not call it. Time, then, is linear in the data as far as we have looked.
+The memory column is the Mac reading; see the limits section for why it undercounts and what the Windows laptop measured. Fitted across the whole range the time exponent is 1.072 with an r-squared of 0.9987. The slopes bounce around 1.0 with the noise you would expect from single runs at the expensive end, including one interval at 0.85 that cannot be real. The last interval at 1.35 is the only hint of a turn, and on one measurement we would not call it. Time, then, is linear in the data as far as we have looked.
 
 Which makes `scale=1.0` a memory question rather than an algorithmic one, and that is the useful conclusion here.
 
@@ -75,9 +77,9 @@ Four things, in rough order of how much they mattered.
 
 **Attributes are drawn a column at a time.** Faker is the right source of names, addresses and emails: its locale tables are large, weighted and maintained by people who care. It is also about a millisecond per call, because every call re-parses a format string and re-normalises a weight table. A bank at `scale=1.0` has seven million customers with six such columns each, which is a lot of milliseconds. `graphfaker.engine.fastfaker` reads the same tables off the Faker instance it is given and draws from them with numpy, a column per call, keeping the vocabulary and the weights. It works the way Faker's providers work underneath: pick a format, resolve each token from an element table or another format list, fill the digit and letter placeholders. Providers that do more than that, like `iban` with its checksum, are reported as unsupported and still drawn row by row. The simple samplers (constant, category, uniform, gaussian, lognormal, poisson, bernoulli, reference) and foreign keys are vectorised too.
 
-**Foreign-key indexes stopped being lists of strings.** They are now int32 positions per group, and a worker pool receives them once through a file in its initialiser rather than with every shard. This is the cost that made 0.5.0 superlinear: at `scale=1.0` the old form spent two hours pickling seven million customer ids a thousand times over. Nothing about the output changed, only how the work was handed to the workers.
+**Pattern recruitment stopped scanning.** Drawing each member of an injected pattern was a set difference over every eligible account followed by a weighted choice over all of them, and the number of patterns grows with the scale, so injection cost grew with the square of the data. Decoys rebuilt their account pools with a pass over every account per pattern, bystanders were drawn by permuting every account, and the income factor recomputed a mean over every customer per transaction. This is the superlinear term in the single-process table above, and it is why the knee sits where it does: patterns become numerous enough to matter from about a million accounts upward. Recruitment is now an O(1) draw, the pools are built once, and the mean is cached.
 
-**Pattern recruitment stopped scanning.** Drawing the members of an injected pattern was a set difference over every account, once per pattern, and the number of patterns grows with the scale. That is the second superlinear term, and it explains where the knee sits: patterns become numerous enough to matter from about a million accounts upward. It is now an O(1) draw, and decoys reuse the account pools instead of rebuilding them.
+**Foreign-key indexes stopped being lists of strings.** They are now int32 positions per group, and a worker pool receives them once through a file in its initialiser rather than with every shard. This one does not show in the single-process table, because a single process never pickles anything; it is the cost that made `--workers` worse than useless at scale: the old form spent two hours of the first `scale=1.0` run pickling seven million customer ids into a thousand shard jobs. A file rather than `initargs`, because on Windows a few megabytes of initialiser arguments make every worker start wait for the previous one's import. Nothing about the output changed, only how the work was handed to the workers.
 
 **Memory got quieter.** Transaction frames are built with polars columns rather than numpy arrays of Python strings. The channels are merged one at a time, with the time ordering computed on a narrow frame instead of a concatenation of everything. Parquet is written in 2M-row row groups, so only one slice is ever copied into Arrow memory. `GraphTables.to_arrow` hands frames to sinks without a copy at all, which is how the LadybugDB and DuckDB loaders avoid staging files entirely.
 
@@ -102,7 +104,7 @@ Node generation used to dominate a run. It is now a little over half, with a sin
 | 4 | 10.4 s |
 | 8 | 10.7 s |
 
-About 1.2x from four processes, and eight buys nothing over four. Amdahl's law caps it near 1.75x even with free parallelism, and process start-up eats into what is left.
+About 1.2x from four processes, and eight buys nothing over four. With 57% of the run parallel, Amdahl's law caps four workers at 1.75x and any number of workers at 2.3x, and process start-up eats into what is left.
 
 The optimisation was successful enough to make its own parallelism close to redundant at mid scale. `--workers` still earns its keep at `scale=1.0`, where entity generation is large enough to amortise a few seconds of start-up, and it is close to pointless below `scale=0.1`. The next real gain is vectorising or streaming the transaction process, not adding processes. We would not have known that without measuring by phase, and we would have happily kept telling people to add workers.
 
@@ -127,6 +129,16 @@ Having made the thing fast, the honest observation is that speed was the tractab
 We loaded the dataset into Neo4j and tried the obvious detectors, scoring each against the ground truth. A fan-in rule with no time window ran at 0.3% precision. A three-hop cycle query found no fraud at all, because the injected cycles are four and five hops long. The best single rule reached 66.7% precision at 3.3% recall, and only after two rounds of refinement guided by the scores. A thirty-feature model reached 32% precision in its top 25 accounts.
 
 Those are low numbers. They are supposed to be. A generator whose fraud can be found by a one-line rule is not measuring detection, it is measuring whether you wrote the one line.
+
+The same axis shows up at the model level. [`examples/pyg_baseline.py`](https://github.com/graphgeeks-lab/graphfaker/blob/main/examples/pyg_baseline.py) trains a logistic regression on account features alone and a two-layer GraphSAGE on the exported `HeteroData`, at `scale=0.002`, seed 42:
+
+| hardness | features only, AUC | features plus graph, AUC | average precision |
+|---|---|---|---|
+| low | 0.60 | 0.99 | 0.78 |
+| medium | 0.48 | 0.85 | 0.09 |
+| high | 0.49 | 0.56 | 0.01 |
+
+Account attributes say nothing about who launders money, by construction: the pack recruits ordinary accounts. The graph carries the signal, and hardness moves the same model from a near-perfect detector to one barely above chance. [Training a GNN on the bank](pyg.md) has the details and the caveat about small positive counts.
 
 ### You cannot measure precision without hard negatives
 
@@ -179,11 +191,11 @@ None of which makes one generator better than the other. gen-fraud-graph is aime
 
 Memory is now the binding constraint rather than time, and our memory numbers are the weakest measurement in this document. The peak grows strongly sublinearly across the range we tested: 2.93 GB at `scale=0.1` rising to only 8.16 GB at `scale=0.8`, so 2.8 times the memory for eight times the data. Per unit of scale that is a fall from 29 GB to 10 GB. We do not fully believe it.
 
-There are two candidate explanations and we have not separated them. The peak is sampled from the process tree every 0.2 seconds, so a shorter spike is invisible to it, and these particular runs were single-process with the write skipped, whereas the 32 GB we have previously quoted for `scale=1.0` was measured with four workers and the Parquet write included. If the sampling is honest, `scale=1.0` may fit in far less than 32 GB single-process, which would be good news worth confirming. Until someone measures it with a finer interval, treat every peak-memory figure here as a floor rather than a requirement.
+The same runs on the Windows laptop, same sampler, same interval, single process, tell a different story: 3.7 GB at `scale=0.1`, 10.1 GB at `scale=0.3`, 32 GB at `scale=1.0`. That is linear, about 33 GB per unit of scale, and the two machines agree at `scale=0.1` and then diverge (10.1 GB against 5.6 GB at `scale=0.3`). Resident size is not the same measurement on the two systems: macOS compresses pages that are not being touched and reports them outside the resident set, and its allocator returns freed memory to the system more readily than the Windows heap does, so the Mac figure under-counts a peak made of transient frames while the Windows figure counts memory that was freed but not yet returned. The truth is between them and closer to Windows for sizing purposes, because a machine has to hold the uncompressed working set at the moment of the peak. Until the transaction process streams to disk, treat the Windows numbers as the requirement and the Mac numbers as a floor.
 
 The remaining limits are unchanged. Every table is held in memory until the write, and the transaction assembly briefly holds a channel twice. Streaming the transaction process to disk as it goes is the next piece of work. The social topology model is still sequential and suits graphs up to about a million edges. Balances are not tracked as a running ledger.
 
-One more thing changed in 0.6.0 that anyone depending on reproducibility should know. A run is still a pure function of its seed and shard size, and node counts are identical to 0.5.0's for a given seed. But the attribute values differ, because columns now come from the shard's numpy stream rather than from Faker's call sequence, and edge counts move by about 0.15% because pattern injection consumes its randomness differently. We had originally written that counts were unchanged, and measuring showed that was not quite true.
+One more thing changed in 0.6.0 that anyone depending on reproducibility should know. A run is still a pure function of its seed and shard size, and node counts are identical to 0.5.0's for a given seed. But the attribute values differ, because columns now come from the shard's numpy stream rather than from Faker's call sequence, and edge counts move by about 0.15% as a consequence: an account's transaction rate depends on its owner's activity and its type, and those are among the values that changed. We had originally written that counts were unchanged, and measuring showed that was not quite true.
 
 ## Reproducing all of this
 

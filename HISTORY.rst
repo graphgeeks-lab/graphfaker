@@ -2,7 +2,7 @@
 History
 =======
 
-0.6.0 (unreleased)
+0.6.0 (2026-09-16)
 ------------------
 
 Every database we said the data would land in now takes it, verified; the same dataset trains a GNN; and a full-size bank (10M accounts, 90M transactions) generates in minutes rather than hours.

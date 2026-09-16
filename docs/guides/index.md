@@ -9,7 +9,7 @@ How GraphFaker turns a schema into a graph, how the fraud pack builds a bank and
 - [Training a GNN on the bank](../pyg.md): the PyTorch Geometric export (features, labels, splits) and a baseline that shows what the graph is worth to a detector at each hardness.
 - [Entity resolution and duplication](entity-resolution.md): resolving near-duplicate entities and measuring what an extraction pipeline duplicates.
 - [Measuring duplication in an LLM-built knowledge graph](../notebooks/duplication_experiment.ipynb): the experiment, end to end.
-- [Ten times faster, and why that was the easy part](../scaling-and-realism.md): what 0.6.0 changed and what it cost, measured against 0.5.0 across seven scales, plus what the numbers say about synthetic fraud data and how the fraud pack compares to Santander's gen-fraud-graph.
+- [Scaling and realism: notes from 0.6.0](../scaling-and-realism.md): what 0.6.0 changed and what it cost, measured against 0.5.0 across seven scales, plus what the numbers say about synthetic fraud data and how the fraud pack compares to Santander's gen-fraud-graph.
 
 ```{toctree}
 :hidden:
