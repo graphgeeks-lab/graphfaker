@@ -10,7 +10,7 @@ schema  ->  latent factors  ->  node tables  ->  edges  ->  derived attributes  
              parameters)         seeded)          model)                           manifest)
 ```
 
-A **schema** (`graphfaker.schema.GraphSchema`) declares the graph: node types with attribute samplers, latent factors, edge families, a topology model and optional realism targets. It is data. It validates before anything runs, round-trips through YAML and JSON, and hashes into the manifest.
+A **schema** (`graphfaker.schema.GraphSchema`) declares the graph: node types with attribute samplers, latent factors, edge families, a topology model and optional realism targets. It is data. It validates before anything runs, round-trips through YAML and JSON, and hashes into the manifest. `graphfaker schema social --out mine.yaml` writes one to edit, and `graphfaker generate --schema mine.yaml` runs it; every run also writes the schema it used as `schema.yaml` next to its data.
 
 The **engine** (`graphfaker.engine`) turns a schema into tables. `generate(schema, seed, shard_size, workers)` returns a `GraphRun`.
 

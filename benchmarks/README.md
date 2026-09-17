@@ -91,13 +91,15 @@ Tracing the shards individually on the i7 with four workers, 0.6.0: the first Cu
 
 Sampled peak of the process tree every 0.2 s.
 
-| scale | i7, generation only | i7, with write | M3, generation only |
-|---|---|---|---|
-| 0.1 | 3.37 GB | 3.7 GB | 2.93 GB |
-| 0.3 | 9.38 GB | 10.1 GB | 5.62 GB |
-| 1.0 | | 32.4 GB (4 workers) | |
+| scale | i7 0.6.0, generation only | i7 0.6.0, with write | i7 0.6.1, with write | M3 0.6.0, generation only |
+|---|---|---|---|---|
+| 0.1 | 3.37 GB | 3.7 GB | 2.5 GB | 2.93 GB |
+| 0.3 | 9.38 GB | 10.1 GB | 5.2 GB | 5.62 GB |
+| 1.0 | | 32.4 GB (4 workers) | 15.1 GB (single process) | |
 
-The i7 is linear at about 33 GB per unit of scale. The M3 reads lower and increasingly so with scale; macOS compresses idle pages out of the resident set and its allocator returns freed memory sooner. A short spike between samples is invisible to both.
+0.6.1 at `scale=1.0`, single process: nodes 244 s, patterns 27 s, transactions 129 s, generate 426 s, write 95 s, 2.23 GB of Parquet.
+
+The i7 is linear in both versions: about 33 GB per unit of scale in 0.6.0, about 15 GB in 0.6.1. The M3 reads lower and increasingly so with scale; macOS compresses idle pages out of the resident set and its allocator returns freed memory sooner. A short spike between samples is invisible to both.
 
 ## Running it
 

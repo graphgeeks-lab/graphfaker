@@ -96,6 +96,6 @@ None of which makes one generator better than the other. gen-fraud-graph is aime
 
 ## Limits, honestly
 
-Memory is now the binding constraint rather than time: about 33 GB per unit of scale on Windows, so a full-size bank wants a 32 GB machine until the transaction process streams to disk. The Mac reports lower peaks for the same runs and we have said why on the [scaling page](scaling.md); size from the Windows numbers. The social topology model is still sequential and suits graphs up to about a million edges. Balances are not tracked as a running ledger.
+Memory was the binding constraint in 0.6.0, at 32 GB for a full-size bank. 0.6.1 builds the transaction process a block of accounts at a time and assembles the channels without a second copy, which brought that to 15 GB; the [scaling page](scaling.md) has the table and the reasons. Time and memory are both linear in the data now, and a full-size bank generates in seven minutes on a 16 GB laptop. The social topology model is still sequential and suits graphs up to about a million edges. Balances are not tracked as a running ledger.
 
 And one thing changed in 0.6.0 that anyone depending on reproducibility should know. A run is still a pure function of its seed and shard size, but the attribute values differ from 0.5.0's for the same seed, because columns now come from the shard's numpy stream rather than from Faker's call sequence, and edge counts move by about 0.15% as a consequence. We had originally written that counts were unchanged, and measuring showed that was not quite true.

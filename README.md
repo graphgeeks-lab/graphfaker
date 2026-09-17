@@ -257,12 +257,22 @@ Generate a bank with 100K accounts and labelled laundering patterns that are har
 graphfaker generate fraud --scale 0.01 --hardness high --seed 42 --out ./bank
 ```
 
+Or generate from a schema file, which is how you get a graph of your own without writing Python. Start from a built-in schema, edit it, run it:
+
+```sh
+graphfaker schema social --total-nodes 500 --out my_graph.yaml     # a domain's schema as YAML, with its options applied
+graphfaker generate --schema my_graph.yaml --seed 42 --out ./my_graph
+```
+
+The file is the same `schema.yaml` every run writes next to its data, so a dataset can be regenerated, or varied, from the file it came with. `graphfaker schema fraud` prints the bank's entity schema with a note that its transactions and patterns come from code; `graphfaker generate fraud` is the way to get the bank.
+
 Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json` under `--out`. Options shared by every domain:
 
 | option | meaning |
 |---|---|
 | `--out DIR` | where to write (default `graphfaker_out`) |
 | `--seed N` | reproducible output; the same seed gives the same bytes on any machine |
+| `--schema FILE` | generate from a schema YAML instead of a named domain (`--shard-size N` sets the rows per shard, default 10000, and is part of what the seed reproduces) |
 | `--workers N` | processes for node sampling; faster, does not change the result |
 | `--sink parquet\|neo4j\|neo4j-admin\|ladybug\|duckdb\|pyg\|gen-fraud-graph` | also load a live database, or write a loader layout (Parquet is always written) |
 
@@ -399,11 +409,11 @@ graphfaker fraud --scale 0.1 --seed 42 --out ./bank
 | 0.01 | 100K | 900K | 14.5 s | 1.1 s |
 | 0.1 | 1M | 9M | 159.8 s | 12.2 s |
 | 0.3 | 3M | 27M | 709.9 s | 39.8 s |
-| 1.0 | 10M | 90M | over 2 hours (Windows, 4 workers) | 8 min (Windows, 4 workers) |
+| 1.0 | 10M | 90M | over 2 hours (Windows, 4 workers) | 7 min (Windows, single process, 0.6.1) |
 
 At `scale=0.1` the time splits roughly 57% node attributes, 38% the transaction process, and the rest indexing and pattern injection. Only the first part is parallel, so four workers are worth about 1.5x from `scale=0.1` upward (an Amdahl bound of 1.6x) and nothing below it, where node types stay in process because the pool's start-up would cost more than it saves.
 
-Memory is the limit. Every table is held in memory until the write, and the peak is a few times the size of the final tables: on Windows 3.7 GB at `scale=0.1`, 10.1 GB at `scale=0.3` and 32 GB at `scale=1.0`, about 33 GB per unit of scale. macOS reports lower peaks for the same runs because it compresses idle pages out of the resident set, so size a machine from the Windows numbers. Streaming the transaction process to disk as it goes is the next step and would bring `scale=1.0` under 16 GB.
+Memory: the transaction process works a block of accounts at a time and the channels are assembled without a second copy, so the peak is about twice the size of the final tables: on Windows 2.5 GB at `scale=0.1`, 5.2 GB at `scale=0.3` and 15 GB at `scale=1.0` (0.6.0 needed 32 GB). A full-size bank fits a 16 GB machine with little else running; 32 GB is comfortable. macOS reports lower peaks for the same runs because it compresses idle pages out of the resident set, so size from the Windows numbers.
 
 Two other limits are unchanged. The social topology model is sequential and suits graphs up to about a million edges. Balances are not tracked as a running ledger, so an account's balance is a starting attribute rather than the sum of its transactions.
 

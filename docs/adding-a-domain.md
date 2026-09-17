@@ -14,7 +14,7 @@ Domain(
 )
 ```
 
-There are two kinds of domain. Pick the simplest one that fits.
+There are two kinds of domain. Pick the simplest one that fits. And before adding one at all, check whether a schema file is enough: `graphfaker schema social --out mine.yaml`, edit the node types, samplers, latent factors and relationships, then `graphfaker generate --schema mine.yaml`. A domain is worth registering when the graph needs options with defaults, a name people can type, or a process that a schema cannot express.
 
 ## Kind 1: a schema preset
 
@@ -105,8 +105,12 @@ where `DOMAIN` is a `Domain` instance. After `pip install`, the domain appears i
 ```
 graphfaker domains                                  list domains and their options
 graphfaker generate <name> --key value ...          options are validated by the domain's model
-    --out DIR --seed N --workers N --sink parquet|neo4j-admin|ladybug|gen-fraud-graph
+    --out DIR --seed N --workers N --sink parquet|neo4j|neo4j-admin|ladybug|duckdb|pyg|gen-fraud-graph
+graphfaker schema <name> --key value ... --out FILE  a schema-preset domain's schema as YAML, options applied
+graphfaker generate --schema FILE                   generate from a schema file, no domain needed
 ```
+
+A domain that registers `schema=` gets `graphfaker schema <name>` for free, and users can fork its schema on disk instead of in code. A process domain can register a schema too (the fraud pack registers its entity schema) with a `schema_note` saying what the file does not cover.
 
 Option names on the command line use dashes (`--total-nodes`) and map to the model's fields (`total_nodes`). Values are strings and the model converts them, so a typo in a name or a value produces a message naming the option.
 

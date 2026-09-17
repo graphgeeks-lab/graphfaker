@@ -40,6 +40,9 @@ class Domain:
     generate: Callable[..., GraphRun]
     options: type[BaseModel] | None = None
     schema: Callable[..., GraphSchema] | None = None
+    #: Shown at the top of ``graphfaker schema <name>``: what the schema does
+    #: and does not cover, for a domain whose edges come from code.
+    schema_note: str | None = None
 
     def run(self, seed: int | None = None, workers: int = 1, **options: Any) -> GraphRun:
         """Validate ``options`` against the options model, then generate."""

@@ -19,7 +19,7 @@ graphfaker fraud --scale 0.1 --seed 42 --out ./bank
 | 0.1 | 1M | 9M | 159.8 s | 12.2 s | 40.9 s |
 | 0.2 | 2M | 18M | 383.3 s | 24.8 s | |
 | 0.3 | 3M | 27M | 709.9 s | 39.8 s | 121.9 s |
-| 1.0 | 10M | 90M | over 2 h (i7, 4 workers) | | 8 min (i7, 4 workers) |
+| 1.0 | 10M | 90M | over 2 h (i7, 4 workers) | | 8 min (i7, 4 workers); 7 min single process in 0.6.1 |
 
 The machines: an Apple M3 Pro (12 cores, 36 GB, macOS, Python 3.12) and a 2019 laptop with an Intel Core i7-9850H (6 cores, 12 threads, 48 GB, Windows 11, Python 3.12.3). The i7 is three to four times slower in absolute terms and follows the same curve.
 
@@ -68,15 +68,17 @@ In practice: `--workers 4` is worth about 1.5x from `scale=0.1` upward, and noth
 
 Peak resident size of the process tree, sampled every 0.2 s, generation and write:
 
-| scale | i7, Windows | M3 Pro, macOS |
-|---|---|---|
-| 0.1 | 3.7 GB | 3.4 GB |
-| 0.3 | 10.1 GB | 6.3 GB |
-| 1.0 | 32 GB (4 workers) | not run: it would swap |
+| scale | i7, 0.6.0 | i7, 0.6.1 | M3 Pro, 0.6.0 |
+|---|---|---|---|
+| 0.1 | 3.7 GB | 2.5 GB | 3.4 GB |
+| 0.3 | 10.1 GB | 5.2 GB | 6.3 GB |
+| 1.0 | 32 GB (4 workers) | 15.1 GB (single process) | not run |
 
-On Windows the peak is linear, about 33 GB per unit of scale and roughly five times the size of the final tables (6.6 GB at `scale=1.0`), because every table is held in memory until the write and the transaction assembly briefly holds a channel twice. The two machines agree at `scale=0.1` and diverge above it because resident size is not the same measurement on the two systems: macOS compresses idle pages out of the resident set and returns freed memory sooner, so its figure undercounts a peak made of transient frames. Size a machine from the Windows column; treat the Mac column as a floor. Parquet goes out in 2M-row row groups, so the write itself adds little.
+In 0.6.0 the peak was about five times the size of the final tables (6.6 GB at `scale=1.0`): the ad hoc process built every channel's arrays for all accounts at once, the assembly concatenated and sorted whole channels into second copies, and the population held a Python string per id. In 0.6.1 the process works a block of accounts at a time (about four million events per block, so the arrays in flight are a few hundred megabytes at any scale), each block is filtered and released as it is produced, the channels are concatenations of those blocks without a copy, the global time order is one `argsort` over an int64 array, and ids live in the node tables' memory rather than as numpy objects. The peak is now about twice the final tables, and a full-size bank fits a 16 GB machine with little else running. The write (2M-row row groups) adds under a gigabyte.
 
-Streaming the transaction process to disk as it goes is the next step and would bring `scale=1.0` under 16 GB.
+The two machines agree at `scale=0.1` and diverge above it because resident size is not the same measurement on the two systems: macOS compresses idle pages out of the resident set and returns freed memory sooner, so its figure undercounts a peak made of transient frames. Size a machine from the Windows column.
+
+One consequence to know: the edge files are no longer sorted by timestamp. Rows are in generation order, a block of accounts at a time, and `tx_id` carries the transaction's rank in time across all channels; sort by `timestamp` if you want time order.
 
 ## Reproducing it
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import datetime as dt
 import functools
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -59,8 +60,32 @@ WEEKDAY_PROFILE = {
 }
 #: Hour-of-day weights: quiet nights, a lunchtime peak, an evening peak.
 HOUR_PROFILE = np.array(
-    [0.2, 0.1, 0.08, 0.06, 0.06, 0.1, 0.3, 0.6, 0.9, 1.0, 1.1, 1.2,
-     1.4, 1.3, 1.1, 1.0, 1.1, 1.3, 1.5, 1.4, 1.1, 0.8, 0.5, 0.3]
+    [
+        0.2,
+        0.1,
+        0.08,
+        0.06,
+        0.06,
+        0.1,
+        0.3,
+        0.6,
+        0.9,
+        1.0,
+        1.1,
+        1.2,
+        1.4,
+        1.3,
+        1.1,
+        1.0,
+        1.1,
+        1.3,
+        1.5,
+        1.4,
+        1.1,
+        0.8,
+        0.5,
+        0.3,
+    ]
 )
 BUSINESS_HOURS = np.array([0.0] * 8 + [1.0] * 10 + [0.0] * 6)
 
@@ -79,6 +104,8 @@ def transfer_amounts(rng: np.random.Generator, n: int) -> np.ndarray:
     small = rng.lognormal(*TRANSFER_AMOUNT, size=n)
     large = rng.lognormal(*LARGE_TRANSFER_AMOUNT, size=n)
     return np.where(rng.random(n) < LARGE_TRANSFER_RATE, large, small)
+
+
 #: Sensitivity of amounts to income: amount *= exp(k * (log_income - mean)).
 INCOME_ELASTICITY = 0.5
 
@@ -99,24 +126,31 @@ RENT_RATE, UTILITY_RATE, SUBSCRIPTION_MEAN = 0.55, 0.7, 1.5
 
 @dataclass
 class Population:
-    """Column arrays the process and the typologies both read."""
+    """Column arrays the process and the typologies both read.
 
-    account_ids: np.ndarray
+    The id columns stay polars Series, which share the node tables' memory
+    (16 bytes a row); as numpy object arrays they would be a Python string
+    per row, about four times that, and at ``scale=1.0`` more than a
+    gigabyte for nothing. ``ids[i]`` gives one id, ``ids.gather(index)`` many.
+    The short categorical columns are fixed-width numpy strings.
+    """
+
+    account_ids: pl.Series
     account_region: np.ndarray
     account_type: np.ndarray
     account_status: np.ndarray
     account_customer: np.ndarray  # index into customers
     account_opened: np.ndarray  # datetime64[D]
-    customer_ids: np.ndarray
+    customer_ids: pl.Series
     customer_region: np.ndarray
     customer_segment: np.ndarray
     customer_log_income: np.ndarray
     customer_activity: np.ndarray
-    merchant_ids: np.ndarray
+    merchant_ids: pl.Series
     merchant_region: np.ndarray
     merchant_category: np.ndarray
     merchant_prominence: np.ndarray
-    counterparty_ids: np.ndarray
+    counterparty_ids: pl.Series
     period_start: np.datetime64  # [s]
     period_days: int
 
@@ -149,22 +183,22 @@ class Population:
         of them at scale 1.0). Ids that do not follow the convention take the
         slow path.
         """
-        table_ids = getattr(self, f"{table}_ids")
+        table_ids: pl.Series = getattr(self, f"{table}_ids")
         prefix = self._prefix(table)
         if prefix is None:
-            return pl.Series(table_ids[index].astype(object), dtype=pl.String)
+            return table_ids.gather(np.asarray(index, dtype=np.int64))
         return (prefix + pl.Series(np.asarray(index, dtype=np.int64)).cast(pl.String)).alias("id")
 
     @functools.cached_property
     def _prefixes(self) -> dict[str, str | None]:
         found: dict[str, str | None] = {}
         for table in ("account", "merchant", "counterparty"):
-            table_ids = getattr(self, f"{table}_ids")
+            table_ids: pl.Series = getattr(self, f"{table}_ids")
             found[table] = None
             if len(table_ids):
                 head, _, tail = str(table_ids[0]).rpartition("_")
                 expected = (head + "_") + pl.Series(np.arange(len(table_ids))).cast(pl.String)
-                if tail == "0" and bool((pl.Series(table_ids.astype(object), dtype=pl.String) == expected).all()):
+                if tail == "0" and bool((table_ids == expected).all()):
                     found[table] = head + "_"
         return found
 
@@ -184,27 +218,39 @@ class Population:
         return np.flatnonzero(selected)
 
 
+def _fixed(column: pl.Series) -> np.ndarray:
+    """A short string column as a fixed-width numpy array: comparisons and
+    ``np.isin`` work as on an object array, without a Python object per row."""
+    width = max(1, int(column.str.len_chars().max() or 1))
+    return column.to_numpy().astype(f"U{width}")
+
+
 def population(tables: dict[str, pl.DataFrame], config: FraudConfig) -> Population:
     customers, accounts = tables["Customer"], tables["Account"]
     merchants, counterparties = tables["Merchant"], tables["Counterparty"]
-    cust_index = {cid: i for i, cid in enumerate(customers[ID].to_list())}
+    # the customer of each account as a row position, by a join rather than a
+    # dict of every customer id (a gigabyte of Python objects at scale 1.0)
+    positions = customers.select(pl.col(ID).alias("customer"), pl.int_range(pl.len(), dtype=pl.Int64).alias("_i"))
+    account_customer = (
+        accounts.select("customer").join(positions, on="customer", how="left", maintain_order="left")["_i"].to_numpy()
+    )
     return Population(
-        account_ids=accounts[ID].to_numpy(),
+        account_ids=accounts[ID],
         account_region=accounts[REGION].to_numpy(),
-        account_type=accounts["account_type"].to_numpy(),
-        account_status=accounts["status"].to_numpy(),
-        account_customer=np.array([cust_index[c] for c in accounts["customer"].to_list()]),
+        account_type=_fixed(accounts["account_type"]),
+        account_status=_fixed(accounts["status"]),
+        account_customer=account_customer,
         account_opened=accounts["opened_at"].to_numpy().astype("datetime64[D]"),
-        customer_ids=customers[ID].to_numpy(),
+        customer_ids=customers[ID],
         customer_region=customers[REGION].to_numpy(),
-        customer_segment=customers["segment"].to_numpy(),
+        customer_segment=_fixed(customers["segment"]),
         customer_log_income=customers["log_income"].to_numpy().astype(float),
         customer_activity=customers["activity"].to_numpy().astype(float),
-        merchant_ids=merchants[ID].to_numpy(),
+        merchant_ids=merchants[ID],
         merchant_region=merchants[REGION].to_numpy(),
-        merchant_category=merchants["category"].to_numpy(),
+        merchant_category=_fixed(merchants["category"]),
         merchant_prominence=merchants["prominence"].to_numpy().astype(float),
-        counterparty_ids=counterparties[ID].to_numpy(),
+        counterparty_ids=counterparties[ID],
         period_start=np.datetime64(config.period_start.isoformat(), "s"),
         period_days=config.period_days,
     )
@@ -253,7 +299,9 @@ def monthly_dates(pop: Population, day_of_month: np.ndarray) -> list[np.ndarray]
     return out
 
 
-def _frame(source, target, amount, timestamp, memo: str | np.ndarray | None = None, recurring: bool = False) -> pl.DataFrame:
+def _frame(
+    source, target, amount, timestamp, memo: str | np.ndarray | None = None, recurring: bool = False
+) -> pl.DataFrame:
     """One channel's transactions. ``source`` and ``target`` are id columns
     (see :meth:`Population.ids`); ``memo`` is one string for every row or an
     array of them. Constant columns are built by polars, not as arrays of
@@ -325,7 +373,9 @@ class MerchantIndex:
         return out
 
 
-def merchant_amounts(rng: np.random.Generator, pop: Population, merchant_idx: np.ndarray, account_idx: np.ndarray) -> np.ndarray:
+def merchant_amounts(
+    rng: np.random.Generator, pop: Population, merchant_idx: np.ndarray, account_idx: np.ndarray
+) -> np.ndarray:
     categories = pop.merchant_category[merchant_idx]
     mu = np.vectorize(lambda c: MERCHANT_CATEGORIES[c][0])(categories)
     sigma = np.vectorize(lambda c: MERCHANT_CATEGORIES[c][1])(categories)
@@ -395,8 +445,24 @@ def recurring_participation(pop: Population, budget: int) -> float:
     return float(min(1.0, RECURRING_SHARE * budget / expected)) if expected else 1.0
 
 
+Finish = Callable[[pl.DataFrame], pl.DataFrame] | None
+
+
+def _keep(frames: dict[str, list[pl.DataFrame]], channel: str, finish: Finish, part: pl.DataFrame) -> None:
+    """Append a freshly built part, filtered by ``finish`` first so the
+    unfiltered block is released as soon as it has been used."""
+    if finish is not None:
+        part = finish(part)
+    if part.height:
+        frames[channel].append(part)
+
+
 def recurring_flows(
-    rng: np.random.Generator, pop: Population, merchants: MerchantIndex, participation: float = 1.0
+    rng: np.random.Generator,
+    pop: Population,
+    merchants: MerchantIndex,
+    participation: float = 1.0,
+    finish: Finish = None,
 ) -> dict[str, list[pl.DataFrame]]:
     frames: dict[str, list[pl.DataFrame]] = {PAYS: [], TRANSFERS: []}
     active = pop.account_status == "active"
@@ -418,7 +484,9 @@ def recurring_flows(
         cust_idx = np.array([c for c, _ in employed])
         acc_idx = np.array([a for _, a in employed])
         employer = np.empty(len(acc_idx), dtype=np.int64)
-        biz_by_region = {int(r): np.flatnonzero(business & (pop.account_region == r)) for r in np.unique(pop.account_region)}
+        biz_by_region = {
+            int(r): np.flatnonzero(business & (pop.account_region == r)) for r in np.unique(pop.account_region)
+        }
         biz_all = np.flatnonzero(business)
         for region in np.unique(pop.account_region[acc_idx]):
             rows = np.flatnonzero(pop.account_region[acc_idx] == region)
@@ -434,7 +502,10 @@ def recurring_flows(
             hour = rng.choice(24, size=ok.sum(), p=BUSINESS_HOURS / BUSINESS_HOURS.sum())
             ts = stamps[ok] + (hour * 3_600).astype("timedelta64[s]")
             amount = monthly[ok] * rng.normal(1.0, 0.01, size=ok.sum())
-            frames[TRANSFERS].append(
+            _keep(
+                frames,
+                TRANSFERS,
+                finish,
                 _frame(
                     pop.ids("account", employer[ok]),
                     pop.ids("account", acc_idx[ok]),
@@ -442,11 +513,13 @@ def recurring_flows(
                     ts,
                     memo="salary",
                     recurring=True,
-                )
+                ),
             )
 
     # --- rent, utilities, subscriptions: fixed merchant, fixed day, stable amount.
-    def scheduled(category: str, accounts: np.ndarray, per_account: np.ndarray, day_lo: int, day_hi: int, jitter: float):
+    def scheduled(
+        category: str, accounts: np.ndarray, per_account: np.ndarray, day_lo: int, day_hi: int, jitter: float
+    ):
         acc = np.repeat(accounts, per_account)
         if not len(acc):
             return
@@ -460,8 +533,11 @@ def recurring_flows(
             hour = rng.choice(24, size=ok.sum(), p=HOUR_PROFILE / HOUR_PROFILE.sum())
             ts = stamps[ok] + (hour * 3_600).astype("timedelta64[s]")
             amount = base[ok] * rng.normal(1.0, jitter, size=ok.sum())
-            frames[PAYS].append(
-                _frame(pop.ids("account", acc[ok]), pop.ids("merchant", merchant[ok]), amount, ts, recurring=True)
+            _keep(
+                frames,
+                PAYS,
+                finish,
+                _frame(pop.ids("account", acc[ok]), pop.ids("merchant", merchant[ok]), amount, ts, recurring=True),
             )
 
     renters = checking_idx[rng.random(len(checking_idx)) < RENT_RATE * participation]
@@ -476,18 +552,44 @@ def recurring_flows(
 # ------------------------------------------------------------------ ad hoc
 
 
+#: Events per block of the ad hoc process. The process is vectorised over a
+#: block of accounts at a time, so this bounds the numpy arrays and the
+#: polars conversion in flight to a few hundred megabytes whatever the scale.
+ADHOC_BLOCK_ROWS = 4_000_000
+
+
+def _account_blocks(counts: np.ndarray, target: int) -> list[tuple[int, int]]:
+    """``(first, last)`` account ranges whose event counts sum to about ``target``."""
+    if not len(counts) or counts.sum() == 0:
+        return []
+    cumulative = np.cumsum(counts)
+    blocks = []
+    first = 0
+    while first < len(counts):
+        last = int(np.searchsorted(cumulative, cumulative[first] - counts[first] + target, side="right"))
+        last = max(last, first + 1)
+        blocks.append((first, min(last, len(counts))))
+        first = last
+    return blocks
+
+
 def adhoc_flows(
     rng: np.random.Generator,
     pop: Population,
     merchants: MerchantIndex,
     contacts: Contacts,
     budget: int,
+    finish: Finish = None,
 ) -> dict[str, list[pl.DataFrame]]:
+    """One-off card payments, transfers and wires, ``budget`` events across
+    all accounts in proportion to their activity, produced a block of
+    accounts at a time (see :data:`ADHOC_BLOCK_ROWS`)."""
     frames: dict[str, list[pl.DataFrame]] = {PAYS: [], TRANSFERS: [], WIRES: []}
     if budget <= 0:
         return frames
     weights = pop.account_weight
-    expected = weights / weights.sum() * budget
+    global_p = weights / weights.sum()
+    expected = global_p * budget
     counts = rng.poisson(expected)
 
     mix = np.array([CHANNEL_MIX[t] for t in pop.account_type])
@@ -496,28 +598,36 @@ def adhoc_flows(
     p_tr = np.divide(mix[:, 1], 1 - mix[:, 0], out=np.ones(len(mix)), where=(1 - mix[:, 0]) > 0)
     transfers = rng.binomial(rest, np.clip(p_tr, 0, 1))
     wires = rest - transfers
+    del counts, rest, mix, p_tr
 
     # PAYS
-    src = np.repeat(np.arange(pop.n_accounts), pays)
-    if len(src):
+    for first, last in _account_blocks(pays, ADHOC_BLOCK_ROWS):
+        src = np.repeat(np.arange(first, last), pays[first:last])
+        if not len(src):
+            continue
         merchant = merchants.choose_for_accounts(rng, src, None)
-        frames[PAYS].append(
+        _keep(
+            frames,
+            PAYS,
+            finish,
             _frame(
                 pop.ids("account", src),
                 pop.ids("merchant", merchant),
                 merchant_amounts(rng, pop, merchant, src),
                 sample_timestamps(rng, pop, len(src), PAYS),
-            )
+            ),
         )
 
     # TRANSFERS
-    src = np.repeat(np.arange(pop.n_accounts), transfers)
-    if len(src):
+    for first, last in _account_blocks(transfers, ADHOC_BLOCK_ROWS):
+        src = np.repeat(np.arange(first, last), transfers[first:last])
+        if not len(src):
+            continue
         known = rng.random(len(src)) < CONTACT_RATE
         dst = np.empty(len(src), dtype=np.int64)
         dst[known] = contacts.sample(rng, src[known])
         strangers = np.flatnonzero(~known)
-        dst[strangers] = rng.choice(pop.n_accounts, size=len(strangers), p=weights / weights.sum())
+        dst[strangers] = rng.choice(pop.n_accounts, size=len(strangers), p=global_p)
         for _ in range(5):
             bad = np.flatnonzero(dst == src)
             if not len(bad):
@@ -525,44 +635,73 @@ def adhoc_flows(
             dst[bad] = rng.integers(0, pop.n_accounts, size=len(bad))
         amount = transfer_amounts(rng, len(src)) * pop.income_factor(src)
         memo = rng.choice(TRANSFER_MEMOS, size=len(src), p=np.array(TRANSFER_MEMO_WEIGHTS) / sum(TRANSFER_MEMO_WEIGHTS))
-        frames[TRANSFERS].append(
+        _keep(
+            frames,
+            TRANSFERS,
+            finish,
             _frame(
                 pop.ids("account", src),
                 pop.ids("account", dst),
                 amount,
                 sample_timestamps(rng, pop, len(src), TRANSFERS),
                 memo=memo,
-            )
+            ),
         )
 
     # WIRES
-    src = np.repeat(np.arange(pop.n_accounts), wires)
-    if len(src) and len(pop.counterparty_ids):
-        dst = rng.integers(0, len(pop.counterparty_ids), size=len(src))
-        amount = rng.lognormal(*WIRE_AMOUNT, size=len(src)) * pop.income_factor(src)
-        frames[WIRES].append(
-            _frame(
-                pop.ids("account", src),
-                pop.ids("counterparty", dst),
-                amount,
-                sample_timestamps(rng, pop, len(src), WIRES, hours=BUSINESS_HOURS + 0.02),
-                memo="international transfer",
+    if len(pop.counterparty_ids):
+        for first, last in _account_blocks(wires, ADHOC_BLOCK_ROWS):
+            src = np.repeat(np.arange(first, last), wires[first:last])
+            if not len(src):
+                continue
+            dst = rng.integers(0, len(pop.counterparty_ids), size=len(src))
+            amount = rng.lognormal(*WIRE_AMOUNT, size=len(src)) * pop.income_factor(src)
+            _keep(
+                frames,
+                WIRES,
+                finish,
+                _frame(
+                    pop.ids("account", src),
+                    pop.ids("counterparty", dst),
+                    amount,
+                    sample_timestamps(rng, pop, len(src), WIRES, hours=BUSINESS_HOURS + 0.02),
+                    memo="international transfer",
+                ),
             )
-        )
     return frames
 
 
 def legitimate_transactions(
-    rng: np.random.Generator, pop: Population, budget: int
-) -> tuple[dict[str, pl.DataFrame], Contacts, MerchantIndex]:
-    """All legitimate transactions, per channel, within ``budget`` events."""
-    merchants = MerchantIndex(pop)
-    contacts = build_contacts(rng, pop, pop.account_weight + 1e-9)
-    recurring = recurring_flows(rng, pop, merchants, recurring_participation(pop, budget))
+    rng: np.random.Generator,
+    pop: Population,
+    budget: int,
+    *,
+    contacts: Contacts | None = None,
+    merchants: MerchantIndex | None = None,
+    finish: Callable[[pl.DataFrame], pl.DataFrame] | None = None,
+    as_parts: bool = False,
+) -> tuple[dict[str, pl.DataFrame] | dict[str, list[pl.DataFrame]], Contacts, MerchantIndex]:
+    """All legitimate transactions, per channel, within ``budget`` events.
+
+    ``contacts`` and ``merchants`` are built here unless the caller already
+    has them. ``finish`` is applied to every part as it is produced (the
+    fraud pack uses it to drop transactions of accounts a pattern stripped or
+    opened late), so a filter never needs a whole channel in memory twice.
+    The channel frames are concatenations of their parts without a copy;
+    with ``as_parts`` the lists of parts are returned instead, for a caller
+    that wants to add columns one part at a time before concatenating.
+    """
+    merchants = merchants if merchants is not None else MerchantIndex(pop)
+    contacts = contacts if contacts is not None else build_contacts(rng, pop, pop.account_weight + 1e-9)
+    recurring = recurring_flows(rng, pop, merchants, recurring_participation(pop, budget), finish=finish)
     n_recurring = sum(f.height for frames in recurring.values() for f in frames)
-    adhoc = adhoc_flows(rng, pop, merchants, contacts, budget - n_recurring)
+    adhoc = adhoc_flows(rng, pop, merchants, contacts, budget - n_recurring, finish=finish)
+    if as_parts:
+        return {channel: recurring.pop(channel, []) + adhoc.pop(channel, []) for channel in CHANNELS}, contacts, merchants
     out: dict[str, pl.DataFrame] = {}
     for channel in CHANNELS:
-        parts = recurring.get(channel, []) + adhoc.get(channel, [])
-        out[channel] = pl.concat(parts, rechunk=True) if parts else _frame([], [], [], np.array([], dtype="datetime64[s]"))
+        parts = recurring.pop(channel, []) + adhoc.pop(channel, [])
+        out[channel] = (
+            pl.concat(parts, rechunk=False) if parts else _frame([], [], [], np.array([], dtype="datetime64[s]"))
+        )
     return out, contacts, merchants

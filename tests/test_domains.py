@@ -93,3 +93,53 @@ def test_cli_generate_reports_bad_options(tmp_path):
     assert "--colour" in _plain(result.output)
     result = runner.invoke(app, ["generate", "nope", "--out", str(tmp_path)])
     assert result.exit_code != 0 and "social" in _plain(result.output)
+
+
+def test_cli_schema_round_trip(tmp_path):
+    """``schema`` writes a domain's schema; ``generate --schema`` runs it and
+    produces the same dataset as running the domain with those options."""
+    from graphfaker.domains import social
+    from graphfaker.engine import generate
+    from graphfaker.schema import GraphSchema
+
+    schema_file = tmp_path / "social.yaml"
+    result = runner.invoke(app, ["schema", "social", "--total-nodes", "60", "--total-edges", "120", "--out", str(schema_file)])
+    assert result.exit_code == 0, result.output
+    text = schema_file.read_text(encoding="utf-8")
+    assert text.startswith("# Schema of the 'social' domain") and "name: social" in text
+
+    result = runner.invoke(app, ["generate", "--schema", str(schema_file), "--seed", "9", "--out", str(tmp_path / "g")])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "g" / "nodes" / "Person.parquet").exists()
+    written = GraphSchema.from_yaml(tmp_path / "g" / "schema.yaml")
+    assert written.digest() == GraphSchema.from_yaml(schema_file).digest()
+    from graphfaker.backends import GraphTables
+
+    tables = GraphTables.read_parquet(tmp_path / "g")
+    expected = generate(social.schema(60, 120), seed=9)
+    assert tables.nodes["Person"]["name"].to_list() == expected.tables.nodes["Person"]["name"].to_list()
+    assert tables.edges["FRIENDS_WITH"].height == expected.tables.edges["FRIENDS_WITH"].height
+
+
+def test_cli_schema_prints_to_stdout_and_explains_fraud():
+    result = runner.invoke(app, ["schema", "social"])
+    assert result.exit_code == 0 and "kind: faker" in result.output
+    result = runner.invoke(app, ["schema", "fraud"])
+    assert result.exit_code == 0, result.output
+    assert "entities only" in result.output and "name: fraud" in result.output
+
+
+def test_cli_generate_schema_errors(tmp_path):
+    result = runner.invoke(app, ["generate"])
+    assert result.exit_code != 0 and "--schema" in _plain(result.output)
+    result = runner.invoke(app, ["generate", "social", "--schema", "x.yaml"])
+    assert result.exit_code != 0 and "not both" in _plain(result.output)
+    result = runner.invoke(app, ["generate", "--schema", str(tmp_path / "missing.yaml")])
+    assert result.exit_code != 0 and "not found" in _plain(result.output)
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("name: x\nnodes: []\n", encoding="utf-8")
+    result = runner.invoke(app, ["generate", "--schema", str(bad)])
+    assert result.exit_code != 0 and "not a valid schema" in _plain(result.output)
+    bad.write_text("name: [unclosed\n", encoding="utf-8")
+    result = runner.invoke(app, ["generate", "--schema", str(bad)])
+    assert result.exit_code != 0 and "not valid YAML" in _plain(result.output)

@@ -4,6 +4,7 @@ Command-line interface for GraphFaker.
 
 import json
 import os
+from pathlib import Path
 
 import typer
 from pydantic import ValidationError
@@ -242,20 +243,62 @@ def domains():
             typer.echo(f"    --{option.replace('_', '-')} <{kind}>  default {default!r}")
 
 
+def _load_schema(path: str):
+    """A ``GraphSchema`` from a YAML file, with the file's problems reported
+    as the CLI's problems."""
+    import yaml
+
+    from graphfaker.schema import GraphSchema
+
+    if not os.path.isfile(path):
+        raise typer.BadParameter(f"schema file not found: {path}")
+    try:
+        return GraphSchema.from_yaml(Path(path))
+    except yaml.YAMLError as exc:
+        raise typer.BadParameter(f"{path} is not valid YAML: {exc}") from exc
+    except ValidationError as exc:
+        problems = "; ".join(f"{'.'.join(str(p) for p in e['loc']) or 'schema'}: {e['msg']}" for e in exc.errors())
+        raise typer.BadParameter(f"{path} is not a valid schema: {problems}") from exc
+
+
 @app.command(
-    short_help="Generate any domain by name; domain options are passed as --name value.",
+    short_help="Generate a domain by name, or any graph from a schema file.",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )
 def generate(
     ctx: typer.Context,
-    domain: str = typer.Argument(..., help="A domain name from `graphfaker domains`."),
+    domain: str = typer.Argument(None, help="A domain name from `graphfaker domains`. Omit it when generating from --schema."),
+    schema: str = typer.Option(None, "--schema", help="A schema YAML file to generate from (see `graphfaker schema`)."),
     out: str = typer.Option("graphfaker_out", help="Output directory."),
     seed: int = typer.Option(None, help="Seed for a reproducible dataset."),
+    shard_size: int = typer.Option(None, "--shard-size", help="Rows per shard for --schema runs. Part of reproducibility; recorded in the manifest. Default 10000."),
     workers: int = typer.Option(1, help="Processes for node sampling. Does not change the result."),
     sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | duckdb | pyg | gen-fraud-graph."),
     blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
 ):
-    """Example: graphfaker generate fraud --scale 0.01 --hardness high --seed 1 --out ./bank"""
+    """Examples:
+
+      graphfaker generate fraud --scale 0.01 --hardness high --seed 1 --out ./bank
+
+      graphfaker generate --schema my_graph.yaml --seed 1 --out ./my_graph
+    """
+    extra = list(ctx.args)
+    if schema is not None:
+        if domain is not None:
+            raise typer.BadParameter("give either a domain name or --schema, not both")
+        if extra:
+            raise typer.BadParameter(f"a schema file takes no domain options ({' '.join(extra)}); edit the file instead")
+        from graphfaker.engine.run import DEFAULT_SHARD_SIZE
+        from graphfaker.engine.run import generate as _generate
+
+        loaded = _load_schema(schema)
+        run = _generate(loaded, seed=seed, shard_size=shard_size or DEFAULT_SHARD_SIZE, workers=workers)
+        _write_sink(run, out, sink, blind)
+        return
+    if domain is None:
+        raise typer.BadParameter("give a domain name (see `graphfaker domains`) or --schema FILE")
+    if shard_size is not None:
+        raise typer.BadParameter("--shard-size applies to --schema runs; a domain sets its own")
     from graphfaker.domains import get
 
     try:
@@ -263,11 +306,54 @@ def generate(
     except KeyError as exc:
         raise typer.BadParameter(str(exc)) from exc
     try:
-        run = pack.run(seed=seed, workers=workers, **_parse_options(list(ctx.args)))
+        run = pack.run(seed=seed, workers=workers, **_parse_options(extra))
     except ValidationError as exc:
         problems = "; ".join(f"--{'.'.join(str(p) for p in e['loc']).replace('_', '-')}: {e['msg']}" for e in exc.errors())
         raise typer.BadParameter(f"{problems}. Run `graphfaker domains` to see the options.") from exc
     _write_sink(run, out, sink, blind)
+
+
+@app.command(
+    "schema",
+    short_help="Print a domain's schema as YAML, to edit and generate from.",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def schema_command(
+    ctx: typer.Context,
+    domain: str = typer.Argument(..., help="A domain name from `graphfaker domains`."),
+    out: str = typer.Option(None, "--out", help="Write to this file instead of standard output."),
+):
+    """Examples:
+
+      graphfaker schema social --total-nodes 500 --out social.yaml
+
+      graphfaker generate --schema social.yaml --seed 1 --out ./social
+    """
+    from graphfaker.domains import get
+
+    try:
+        pack = get(domain)
+    except KeyError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if pack.schema is None:
+        raise typer.BadParameter(f"the {domain!r} domain is generated by code, not from a schema; it has nothing to print")
+    options = _parse_options(list(ctx.args))
+    try:
+        if pack.options is not None:
+            options = pack.options(**options).model_dump()
+        loaded = pack.schema(**options)
+    except ValidationError as exc:
+        problems = "; ".join(f"--{'.'.join(str(p) for p in e['loc']).replace('_', '-')}: {e['msg']}" for e in exc.errors())
+        raise typer.BadParameter(f"{problems}. Run `graphfaker domains` to see the options.") from exc
+    header = f"# Schema of the {domain!r} domain, written by `graphfaker schema {domain}`.\n# Edit it, then: graphfaker generate --schema {os.path.basename(out) if out else 'this-file.yaml'} --seed 1 --out ./graph\n"
+    if pack.schema_note:
+        header += "".join(f"# {line}\n" for line in pack.schema_note.splitlines())
+    text = header + loaded.to_yaml()
+    if out is None:
+        typer.echo(text, nl=False)
+    else:
+        Path(out).write_text(text, encoding="utf-8")
+        typer.echo(f"wrote {out}")
 
 
 @app.command(short_help="Generate a fraud / AML transaction graph with labelled typologies.")

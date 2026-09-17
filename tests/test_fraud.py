@@ -1,7 +1,9 @@
 """The fraud / AML domain pack."""
 
 import datetime as dt
+import itertools
 
+import numpy as np
 import polars as pl
 import pytest
 
@@ -296,3 +298,27 @@ def test_period_is_configurable():
     tx = r.tables.edges["TRANSFERS"]
     assert tx["timestamp"].min().date() >= dt.date(2025, 6, 1)
     assert tx["timestamp"].max().date() < dt.date(2025, 7, 1)
+
+
+def test_account_blocks_cover_every_account_once():
+    from graphfaker.domains.fraud.process import _account_blocks
+
+    counts = np.array([0, 5, 3, 0, 0, 10, 1, 1, 4])
+    blocks = _account_blocks(counts, target=6)
+    assert blocks[0][0] == 0 and blocks[-1][1] == len(counts)
+    assert all(b[0] == a[1] for a, b in itertools.pairwise(blocks)), "contiguous"
+    assert all(last > first for first, last in blocks)
+    assert sum(counts[a:b].sum() for a, b in blocks) == counts.sum()
+    assert _account_blocks(np.zeros(4, dtype=int), 6) == []
+
+
+def test_transactions_arrive_in_blocks_and_ids_still_rank_time(run):
+    """The process builds each channel in parts; the frames are chunked
+    concatenations, and tx_id is the rank of the transaction in time across
+    all channels."""
+    edges = run.tables.edges
+    assert edges["PAYS"].n_chunks() > 1
+    ranks = pl.concat([f.select("tx_id", "timestamp") for f in (edges["PAYS"], edges["TRANSFERS"], edges["WIRES"])])
+    ranks = ranks.with_columns(pl.col("tx_id").str.strip_prefix("tx_").cast(pl.Int64).alias("n")).sort("n")
+    assert ranks["n"].to_list() == list(range(ranks.height)), "dense ids"
+    assert ranks["timestamp"].is_sorted(), "ids follow time"
