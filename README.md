@@ -409,7 +409,7 @@ Two other limits are unchanged. The social topology model is sequential and suit
 
 Datasets changed in 0.6.0: a run is still a pure function of its seed and shard size, but the attribute values differ from 0.5.0's for the same seed, because columns now come from the shard's numpy stream rather than from Faker's call sequence, and edge counts move by about 0.15% as a consequence. Structure and distributions are unchanged.
 
-[docs/scaling-and-realism.md](docs/scaling-and-realism.md) has the full write-up: the seven-scale curve with the growth exponents, what changed in the code and why, what generation speed means for measuring a rare-event detector, the two-machine memory question, and a measured comparison with gen-fraud-graph. The harness is in `benchmarks/`.
+[docs/scaling.md](docs/scaling.md) has the measurements (the seven-scale curve on two machines, the phase split, workers against Amdahl's bound, memory) and [docs/scaling-and-realism.md](docs/scaling-and-realism.md) what they mean: why speed is what makes a rare-event benchmark usable, why realism is the harder axis, and a measured comparison with gen-fraud-graph. The harness and the raw results are in `benchmarks/`.
 
 ## Notes on network access
 

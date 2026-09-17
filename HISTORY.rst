@@ -5,7 +5,7 @@ History
 0.6.1 (unreleased)
 ------------------
 
-``--workers`` now pays for itself from about ``scale=0.1`` instead of ``scale=1.0``. Measuring 0.6.0 by phase and by worker count (the Karp-Flatt analysis in ``docs/scaling-and-realism.md``) showed the run behaving 80 to 90% serial against a 43 to 51% phase split; the difference was start-up, not work.
+``--workers`` now pays for itself from about ``scale=0.1`` instead of ``scale=1.0``. Measuring 0.6.0 by phase and by worker count (the Karp-Flatt analysis in ``docs/scaling.md``) showed the run behaving 80 to 90% serial against a 43 to 51% phase split; the difference was start-up, not work.
 
 * One process pool serves the whole run. A node type with foreign keys used to get a pool of its own so the index could be installed once per worker; now the index goes to a temp file whose path travels with every shard job, and a worker loads it the first time it sees the path. ``Account`` at ``scale=0.1`` no longer pays 5 s of start-up for 2 s of work.
 * A node type below ``PARALLEL_MIN_ROWS`` (250,000 rows) stays in process whatever ``--workers`` says; below that the pool costs more than it saves.
