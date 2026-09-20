@@ -56,7 +56,6 @@ dependencies = [
   "faker>=37.1.0",
   "networkx>=3.4.2",
   "numpy>=1.26",
-  "osmnx==2.0.2",
   "pandas>=2.2.2",
   "polars>=1.0",
   "pyarrow>=15.0",
@@ -70,6 +69,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+osm = [
+    # The OSM fetcher only. osmnx brings geopandas, shapely, pyproj and pyogrio,
+    # about 150 MB that nothing else in the package uses.
+    "osmnx==2.0.2",
+]
 neo4j = [
     "neo4j>=5.26",  # driver for `graphfaker load neo4j` / `graphfaker verify neo4j`
 ]
@@ -92,6 +96,7 @@ examples = [
     "notebook",
     "neo4j>=5.26",
     "duckdb==1.5.4",
+    "osmnx==2.0.2",
 ]
 docs = [
     "sphinx>=8.0",

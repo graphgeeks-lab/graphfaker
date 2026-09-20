@@ -1,3 +1,4 @@
+import sys
 from unittest.mock import patch
 
 import networkx as nx
@@ -99,6 +100,16 @@ def test_osm_mode_with_place(mock_fetch, tmp_path):
     assert result.exit_code == 0
     mock_fetch.assert_called_once()
     assert (tmp_path / "osm.graphml").exists()
+
+
+def test_osm_mode_without_the_extra_names_it(monkeypatch, tmp_path):
+    """osmnx is an optional extra; without it the CLI says which one, in one
+    line, rather than a traceback."""
+    monkeypatch.setitem(sys.modules, "osmnx", None)  # makes `import osmnx` raise ImportError
+    result = runner.invoke(app, ["gen", "--fetcher", "osm", "--place", "Soho Square, London, UK", "--export", str(tmp_path / "osm.graphml")])
+    assert result.exit_code != 0
+    assert 'pip install "graphfaker[osm]"' in result.output
+    assert "Traceback" not in result.output
 
 
 @patch("graphfaker.fetchers.flights.FlightGraphFetcher.fetch_airlines")

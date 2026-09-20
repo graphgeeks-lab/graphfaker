@@ -1,0 +1,124 @@
+# Build the image, prove it works, then publish it.
+#
+# Every push builds and smoke-tests; only a v* tag publishes. The smoke test is
+# the JOSS reviewer's path, a generate, a load and a verify, run against the
+# exact image that would be published. The version inside the image is the
+# checkout's, and python-publish.yml already refuses a tag whose version does
+# not match pyproject.toml, so the image and the PyPI release cannot drift.
+name: docker
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    name: Build, smoke-test, and publish on a tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # arm64 is emulated on an amd64 runner, so the publish step below needs
+      # QEMU registered before buildx can target it.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,format=short
+
+      # Built to the local daemon first so the smoke test runs against the
+      # exact image that would be published, rather than a rebuild of it.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: graphfaker:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Output is captured to a file before it is searched. Piping `docker run`
+      # into `grep -q` makes grep exit on its first match, docker take SIGPIPE,
+      # and `pipefail` fail the step.
+      - name: The CLI is there and knows its domains
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint python graphfaker:ci -c "import graphfaker; print(graphfaker.__version__)" > /tmp/version.txt
+          docker run --rm graphfaker:ci domains > /tmp/domains.txt
+          VERSION=$(grep -E '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
+          grep -qx "$VERSION" /tmp/version.txt \
+            || { echo "::error::The image reports a different version from pyproject.toml."; cat /tmp/version.txt; exit 1; }
+          grep -q fraud /tmp/domains.txt \
+            || { echo "::error::The fraud domain did not ship in the image."; exit 1; }
+
+      - name: It runs as a non-root user
+        run: |
+          set -euo pipefail
+          UID_IN_IMAGE=$(docker run --rm --entrypoint id graphfaker:ci -u)
+          [ "$UID_IN_IMAGE" != "0" ] \
+            || { echo "::error::The image runs as root."; exit 1; }
+
+      # A run into a bind mount, then a load and a verify against it. This is
+      # what a reviewer types, and the verify is the check that the Parquet the
+      # container wrote and the database it built agree with each other.
+      - name: It generates a bank into a volume, loads it and verifies it
+        run: |
+          set -euo pipefail
+          mkdir -p "$PWD/bank" && chmod 777 "$PWD/bank"
+          docker run --rm -v "$PWD/bank:/data" graphfaker:ci fraud --scale 0.001 --seed 42 --out /data --no-report
+          test -f bank/manifest.json \
+            || { echo "::error::No manifest.json in the output volume."; ls -la bank; exit 1; }
+          docker run --rm -v "$PWD/bank:/data" graphfaker:ci load duckdb /data --no-verify
+          docker run --rm -v "$PWD/bank:/data" graphfaker:ci verify duckdb /data
+
+      - name: A schema round trip works from a volume
+        run: |
+          set -euo pipefail
+          mkdir -p "$PWD/social" && chmod 777 "$PWD/social"
+          docker run --rm -v "$PWD/social:/data" graphfaker:ci schema social --out /data/social.yaml
+          docker run --rm -v "$PWD/social:/data" graphfaker:ci generate --schema /data/social.yaml --seed 1 --out /data/out
+          test -f social/out/manifest.json \
+            || { echo "::error::generate --schema wrote nothing."; ls -laR social; exit 1; }
+
+      - name: Log in to ghcr.io
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Both architectures: the M3 Pro is one of the two machines the
+          # scaling page was measured on, and an emulated amd64 image on Apple
+          # silicon runs several times slower.
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

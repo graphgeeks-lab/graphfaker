@@ -11,10 +11,16 @@ from graphfaker.logger import logger
 
 
 
+MISSING = 'the OSM fetcher needs osmnx: pip install "graphfaker[osm]"'
+
+
 def _osmnx():
-    """osmnx (and its geopandas stack) takes seconds to import, so it is
-    loaded on first use rather than with the package."""
-    import osmnx as ox
+    """osmnx (and its geopandas stack) takes seconds to import and is an
+    optional extra, so it is loaded on first use rather than with the package."""
+    try:
+        import osmnx as ox
+    except ImportError as exc:
+        raise ImportError(MISSING) from exc
 
     ox.utils.settings.log_console = True
     return ox

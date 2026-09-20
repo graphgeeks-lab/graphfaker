@@ -68,6 +68,7 @@ GraphFaker
          <a href="get-started/install.html">Install</a>
          <a href="get-started/first-commands.html">Three things to try</a>
          <a href="get-started/python.html">Using GraphFaker from Python</a>
+         <a href="get-started/docker.html">Docker</a>
          <a href="notebooks/graphfaker_tour.html">The tour notebook</a>
        </div>
        <div class="gf-doc">

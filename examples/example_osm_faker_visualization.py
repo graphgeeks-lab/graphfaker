@@ -59,7 +59,7 @@ def visualize_osm(
         import osmnx as ox
     except ImportError:
         raise ImportError(
-            "osmnx is required for visualize_osm. Install via `pip install osmnx`."
+            'osmnx is required for visualize_osm: pip install "graphfaker[osm]"'
         )
     # Plot base OSM network
     fig, ax = ox.plot_graph(

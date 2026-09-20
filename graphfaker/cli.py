@@ -92,15 +92,18 @@ def gen(
         if bbox:
             north, south, east, west = map(float, bbox.split(","))
             bbox_tuple = (north, south, east, west)
-        g = OSMGraphFetcher.fetch_network(
-            place=place,
-            address=address,
-            bbox=bbox_tuple,
-            network_type=network_type,
-            simplify=simplify,
-            retain_all=retain_all,
-            dist=dist,
-        )
+        try:
+            g = OSMGraphFetcher.fetch_network(
+                place=place,
+                address=address,
+                bbox=bbox_tuple,
+                network_type=network_type,
+                simplify=simplify,
+                retain_all=retain_all,
+                dist=dist,
+            )
+        except ImportError as exc:
+            raise typer.BadParameter(str(exc)) from exc
         logger.info(
             f"Fetched OSM graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
         )

@@ -1701,7 +1701,6 @@ dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "osmnx" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "polars" },
@@ -1748,11 +1747,15 @@ examples = [
     { name = "nbformat" },
     { name = "neo4j" },
     { name = "notebook" },
+    { name = "osmnx" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.9.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 neo4j = [
     { name = "neo4j" },
+]
+osm = [
+    { name = "osmnx" },
 ]
 pyg = [
     { name = "torch" },
@@ -1778,7 +1781,8 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.4.2" },
     { name = "notebook", marker = "extra == 'examples'" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "osmnx", specifier = "==2.0.2" },
+    { name = "osmnx", marker = "extra == 'examples'", specifier = "==2.0.2" },
+    { name = "osmnx", marker = "extra == 'osm'", specifier = "==2.0.2" },
     { name = "pandas", specifier = ">=2.2.2" },
     { name = "pip-audit", marker = "extra == 'dev'" },
     { name = "polars", specifier = ">=1.0" },
@@ -1799,7 +1803,7 @@ requires-dist = [
     { name = "urllib3", specifier = ">=2.0.0" },
     { name = "wikipedia", specifier = ">=1.4.0" },
 ]
-provides-extras = ["neo4j", "duckdb", "pyg", "examples", "docs", "dev"]
+provides-extras = ["osm", "neo4j", "duckdb", "pyg", "examples", "docs", "dev"]
 
 [[package]]
 name = "greenlet"

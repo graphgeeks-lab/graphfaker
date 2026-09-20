@@ -347,11 +347,9 @@ class GraphFaker:
                     )
 
         if source == "osm":
-            try:
-                import osmnx as ox
-                ox.io.save_graphml(G, filepath=abs_path)
-            except ImportError as exc:
-                raise ImportError("osmnx is required to export OSM graphs.") from exc
+            from graphfaker.fetchers.osm import _osmnx
+
+            _osmnx().io.save_graphml(G, filepath=abs_path)
         else:
             nx.write_graphml(G, abs_path)
 

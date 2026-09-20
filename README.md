@@ -22,7 +22,16 @@ The graphs people most want to test against, such as who pays whom, who knows wh
 
 ```sh
 pip install graphfaker
+pip install "graphfaker[osm]"         # the OpenStreetMap fetcher (osmnx and its geo stack, about 150 MB)
 pip install "graphfaker[examples]"    # adds matplotlib, ladybug and jupyter for the notebooks
+```
+
+The fraud pack, the social domain, schemas and every sink are in the base install. Database clients are extras too: `[neo4j]`, `[duckdb]`, `[pyg]`.
+
+Or without a Python environment, as a container ([docs](https://graphfaker.readthedocs.io/en/latest/get-started/docker.html)):
+
+```sh
+docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker fraud --scale 0.01 --seed 42 --out /data
 ```
 
 For development:
@@ -95,7 +104,7 @@ Real-world sources, loaded rather than generated:
 
 | source | what it gives you |
 |---|---|
-| `osm` | road, walking or cycling networks from OpenStreetMap, by place name, address or bounding box |
+| `osm` | road, walking or cycling networks from OpenStreetMap, by place name, address or bounding box (`pip install "graphfaker[osm]"`) |
 | `flights` | airline, airport and flight-leg networks from BTS on-time data, for a month or a date range |
 | `WikiFetcher` | Wikipedia page text, sections, links and references as JSON, for building your own graph or RAG pipeline |
 
