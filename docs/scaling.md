@@ -46,7 +46,7 @@ At `scale=0.1`, single process:
 | population index, merge | about 4% | no |
 | pattern injection | about 1% | no |
 
-Node generation used to dominate; it is now about half, and the single-threaded transaction process is the rest. That caps what workers can do, and it says where the next gain is: vectorising or streaming the transaction process, not adding processes.
+Node generation used to dominate; it is now about half, and the single-threaded transaction process is the rest. That caps what workers can do.
 
 ## Workers
 

@@ -156,14 +156,20 @@ def generate(
 
 
 def fingerprint(run: GraphRun) -> str:
-    """A digest of the generated content, for reproducibility checks."""
+    """A digest of the generated content, for reproducibility checks.
+
+    Tables are visited by name and rows sorted, so the digest depends on the
+    content only: a run read back from Parquet (where table order follows
+    the directory listing) fingerprints the same as the run that wrote it.
+    """
     import hashlib
 
     digest = hashlib.sha256()
-    for node_type, frame in run.tables.nodes.items():
+    for node_type in sorted(run.tables.nodes):
         digest.update(node_type.encode())
-        digest.update(json.dumps(frame.sort(ID).rows(), default=str).encode())
-    for rel, frame in run.tables.edges.items():
+        digest.update(json.dumps(run.tables.nodes[node_type].sort(ID).rows(), default=str).encode())
+    for rel in sorted(run.tables.edges):
+        frame = run.tables.edges[rel]
         digest.update(rel.encode())
         digest.update(json.dumps(frame.sort(frame.columns).rows(), default=str).encode())
     return digest.hexdigest()[:16]

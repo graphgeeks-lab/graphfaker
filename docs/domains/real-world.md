@@ -1,6 +1,6 @@
 # Real-world networks
 
-Sometimes the right substrate is real. GraphFaker loads three real-world sources as NetworkX graphs. They are loaded, not generated, so there is no seed and no ground truth; the plan is to use them as backbones for synthetic layers (deliveries on a real road network, passengers on a real flight network).
+Sometimes the right substrate is real. GraphFaker loads three real-world sources as NetworkX graphs. They are loaded, not generated, so there is no seed and no ground truth, and they export to the same formats as the generated datasets.
 
 ## OpenStreetMap road networks
 

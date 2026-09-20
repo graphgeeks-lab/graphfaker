@@ -50,7 +50,7 @@ Two rules keep the result sensible. Relationships marked `functional` (LIVES_IN,
 
 Edge attributes are sampled per edge from the relationship's samplers.
 
-The social model is sequential and runs on a NetworkX graph. It is the right tool up to about a million edges. Vectorised models for larger graphs (Chung-Lu, stochastic block, bipartite degree sequences) are planned as further members of the same union; see [methods.md](methods.md).
+The social model is sequential and runs on a NetworkX graph. It is the right tool up to about a million edges; [methods.md](methods.md) says what to use beyond that.
 
 ## Step 4: derived attributes
 
@@ -73,7 +73,7 @@ dir/
   manifest.json
 ```
 
-Parquet is written through pyarrow so that third-party loaders (Kùzu and LadybugDB `COPY`, Spark) read the timestamps.
+Parquet is written through pyarrow, in row groups of two million rows, so that third-party loaders (LadybugDB `COPY`, DuckDB, Spark) read the timestamps.
 
 ## Reproducibility
 

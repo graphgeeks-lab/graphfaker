@@ -114,11 +114,13 @@ def test_cli_schema_round_trip(tmp_path):
     written = GraphSchema.from_yaml(tmp_path / "g" / "schema.yaml")
     assert written.digest() == GraphSchema.from_yaml(schema_file).digest()
     from graphfaker.backends import GraphTables
+    from graphfaker.engine import GraphRun, fingerprint
 
     tables = GraphTables.read_parquet(tmp_path / "g")
     expected = generate(social.schema(60, 120), seed=9)
-    assert tables.nodes["Person"]["name"].to_list() == expected.tables.nodes["Person"]["name"].to_list()
-    assert tables.edges["FRIENDS_WITH"].height == expected.tables.edges["FRIENDS_WITH"].height
+    # The fingerprint does not depend on table order, so a run read back from
+    # Parquet compares equal to the run that wrote it.
+    assert fingerprint(GraphRun(schema=expected.schema, tables=tables, truth=expected.truth, manifest=expected.manifest)) == fingerprint(expected)
 
 
 def test_cli_schema_prints_to_stdout_and_explains_fraud():

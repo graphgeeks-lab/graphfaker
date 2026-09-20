@@ -300,10 +300,10 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 
   | scale | accounts | transactions | patterns | typical time on a laptop |
   |---|---|---|---|---|
-  | 0.001 | 10,000 | 90,000 | 22 | seconds |
-  | 0.01 | 100,000 | 900,000 | 22 | about a minute |
-  | 0.1 | 1,000,000 | 9,000,000 | 100 | tens of minutes |
-  | 1.0 | 10,000,000 | 90,000,000 | 1,000 | not yet practical single-machine; see Performance and limits |
+  | 0.001 | 10,000 | 90,000 | 22 | a second |
+  | 0.01 | 100,000 | 900,000 | 22 | a few seconds |
+  | 0.1 | 1,000,000 | 9,000,000 | 100 | under a minute |
+  | 1.0 | 10,000,000 | 90,000,000 | 1,000 | about seven minutes and 15 GB of memory; see Performance and limits |
 
 - `--hardness`: how well the injected fraud hides in normal activity. It changes the amounts, the timing, the ring sizes, whether pattern accounts also have ordinary activity, and whether look-alike legitimate structures (decoys) are added.
 

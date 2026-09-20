@@ -1,6 +1,6 @@
 # Ways to generate synthetic graph data
 
-There are several families of methods for making synthetic graphs. They differ in what they can produce (structure only, or attributes and time as well), whether they can attach ground truth, and how far they scale. This page lists them, says which ones GraphFaker uses today and where, and which are planned. It is meant to help you judge whether GraphFaker's output is appropriate for what you are testing, and to guide anyone adding a domain.
+There are several families of methods for making synthetic graphs. They differ in what they can produce (structure only, or attributes and time as well), whether they can attach ground truth, and how far they scale. This page lists them and says which ones GraphFaker uses and where. It is meant to help you judge whether GraphFaker's output is appropriate for what you are testing, and to guide anyone adding a domain.
 
 ## 1. Random graph models
 
@@ -46,22 +46,22 @@ GraphRNN, GraphVAE, NetGAN, GRAN and graph diffusion models learn to generate gr
 
 Language models belong here too. They are good at producing plausible text and attribute values and at drafting a schema from a description, and poor at producing consistent structure at scale.
 
-**In GraphFaker.** Not for topology. Planned uses of language models are schema authoring from a description, text attributes (merchant names, memos, bios) generated once per category and sampled, corpus generation for GraphRAG evaluation (already present in `graphfaker.corpus`), and judges for text realism.
+**In GraphFaker.** Not for topology. `graphfaker.corpus` writes documents about generated entities for GraphRAG evaluation; text attributes such as names and memos come from Faker's vocabularies, not from a model.
 
 ## 6. Perturbation
 
 Take a clean graph and corrupt it in known ways: duplicate an entity under a variant name, introduce typos, drop attributes, split a node's edges. Record-linkage benchmarks are built this way. The corruption is the ground truth.
 
-**In GraphFaker.** `graphfaker.corpus` writes documents that mention graph entities under aliases and records the gold clusters, for measuring how many nodes a knowledge-graph builder creates per real entity. `graphfaker.resolve` is the matching side. A general noise layer in the schema (duplicate rate, corruption model, missing values, shared-attribute collisions) is planned; the fraud pack's synthetic identities are a first instance of shared-attribute collisions.
+**In GraphFaker.** `graphfaker.corpus` writes documents that mention graph entities under aliases and records the gold clusters, for measuring how many nodes a knowledge-graph builder creates per real entity. `graphfaker.resolve` is the matching side. The fraud pack's synthetic identities are the same idea inside a domain: a customer whose phone, street and city are copied from a template customer, labelled in the truth.
 
 ## Real-world sources
 
-Sometimes the right substrate is real. GraphFaker loads OpenStreetMap road networks, BTS flight networks and Wikipedia pages. The plan is to use these as backbones for synthetic layers (deliveries on a real road network, passengers on a real flight network) rather than only as standalone datasets.
+Sometimes the right substrate is real. GraphFaker loads OpenStreetMap road networks, BTS flight networks and Wikipedia pages as datasets in their own right, exported to the same formats as the generated ones.
 
 ## Choosing
 
-- You need structure only, fast, at scale: a random graph model. Use `social` for realism up to a million edges; use the planned vectorised models beyond that.
+- You need structure only, fast, at scale: a random graph model. Use `social` for realism up to a million edges; beyond that, NetworkX's own generators or a dedicated tool such as LFR or R-MAT.
 - You need attributes that make sense together and agree with structure: a schema with latent factors.
 - You need events over time with labelled patterns to detect: a process simulation. Use the fraud pack, or write a domain.
-- You need to mimic a specific real dataset: fitting, which is planned; today, write the schema from what you know about the data.
+- You need to mimic a specific real dataset: write the schema from what you know about the data and check it with the realism report.
 - You need text: a language model for the text, a schema for everything else.

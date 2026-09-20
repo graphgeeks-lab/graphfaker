@@ -1,9 +1,9 @@
 """Sphinx configuration for the GraphFaker documentation site.
 
 Theme: pydata-sphinx-theme, restyled in ``_static/custom.css`` to match the
-site design (warm off-white ground, Manrope and JetBrains Mono, one teal
-accent; the site is light only, code blocks are dark). The header carries the six sections, the left
-sidebar the full page tree, the right sidebar the page outline. Markdown
+site design (white ground, GraphGeeks navy and pink, Manrope and JetBrains
+Mono; the site is light only, code blocks are navy). The header carries the six
+sections, the left sidebar the full page tree, the right sidebar the page outline. Markdown
 pages and executed notebooks come in through MyST-NB.
 """
 

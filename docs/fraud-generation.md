@@ -100,7 +100,7 @@ Mule accounts are made "fresh" (opened days before the pattern) with probability
 
 ## Step 5: assembly (`generate.py`)
 
-Legitimate and injected transactions are concatenated, sorted by timestamp, and given sequential ids `tx_0, tx_1, ...`. Ids therefore increase with time like a real ledger and do not reveal which rows were injected. The rows are then split back into the `PAYS`, `TRANSFERS` and `WIRES` tables. Those tables carry no labels.
+Legitimate and injected transactions are numbered in time order across all three channels, `tx_0, tx_1, ...`, so ids increase with time like a real ledger and do not reveal which rows were injected. The rows themselves stay in generation order (a block of accounts at a time, then the injected rows), so sort by `timestamp` when you want time order. The `PAYS`, `TRANSFERS` and `WIRES` tables carry no labels.
 
 Pattern side effects are applied to the entity tables: fresh opening dates, shared devices added to `USES`, and synthetic identities copying phone, street and city from their template customer.
 

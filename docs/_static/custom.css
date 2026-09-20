@@ -1,7 +1,8 @@
 /* GraphFaker docs: the site design on top of pydata-sphinx-theme.
-   Warm off-white ground, Manrope + JetBrains Mono, one teal accent. The site
-   is light only (conf.py sets default_mode and drops the switcher); code
-   blocks are dark. The theme's own variables are redefined first; the rest
+   GraphGeeks brand: white ground, navy #141846 for text and code blocks,
+   pink #D81B5A as the one accent, pale cyan #E2F3F7 as the tint. Manrope +
+   JetBrains Mono. The site is light only (conf.py sets default_mode and drops
+   the switcher). The theme's own variables are redefined first; the rest
    restyles the header, the two sidebars and the article, then adds the
    landing page. */
 
@@ -24,37 +25,41 @@ html {
 }
 
 html, html[data-theme="light"], html[data-theme="dark"] {
-  --pst-color-primary: #0f766e;
-  --pst-color-primary-bg: #e6f2f0;
-  --pst-color-primary-highlight: #0b5c56;
-  --pst-color-secondary: #0f766e;
-  --pst-color-accent: #0f766e;
-  --pst-color-accent-bg: #e6f2f0;
-  --pst-color-background: #fbfaf7;
-  --pst-color-on-background: #fbfaf7;
+  --gf-navy: #141846;
+  --gf-pink: #d81b5a;
+  --gf-pink-deep: #b0144a;
+  --gf-tint: #e2f3f7;
+  --pst-color-primary: var(--gf-pink);
+  --pst-color-primary-bg: var(--gf-tint);
+  --pst-color-primary-highlight: var(--gf-pink-deep);
+  --pst-color-secondary: var(--gf-navy);
+  --pst-color-accent: var(--gf-pink);
+  --pst-color-accent-bg: var(--gf-tint);
+  --pst-color-background: #ffffff;
+  --pst-color-on-background: #ffffff;
   --pst-color-surface: #ffffff;
-  --pst-color-on-surface: #1a1917;
-  --pst-color-border: #e6e2da;
-  --pst-color-border-muted: #eeebe4;
-  --pst-color-text-base: #1a1917;
-  --pst-color-text-muted: #6b675f;
-  --pst-color-heading: #1a1917;
-  --pst-color-link: #0f766e;
-  --pst-color-link-hover: #0b5c56;
-  --pst-color-inline-code: #0f766e;
-  --pst-color-inline-code-links: #0b5c56;
-  --pst-color-shadow: rgba(26, 25, 23, 0.06);
-  --pst-color-target: #e6f2f0;
-  --pst-color-info: #0f766e;
-  --pst-color-info-bg: #ffffff;
-  --pst-color-table-row-zebra-low-bg: #fbfaf7;
-  --pst-color-table-row-zebra-high-bg: #f5f3ee;
+  --pst-color-on-surface: var(--gf-navy);
+  --pst-color-border: #dfe2ec;
+  --pst-color-border-muted: #eceef4;
+  --pst-color-text-base: var(--gf-navy);
+  --pst-color-text-muted: #5d6180;
+  --pst-color-heading: var(--gf-navy);
+  --pst-color-link: var(--gf-pink);
+  --pst-color-link-hover: var(--gf-pink-deep);
+  --pst-color-inline-code: var(--gf-navy);
+  --pst-color-inline-code-links: var(--gf-pink-deep);
+  --pst-color-shadow: rgba(20, 24, 70, 0.08);
+  --pst-color-target: var(--gf-tint);
+  --pst-color-info: var(--gf-navy);
+  --pst-color-info-bg: var(--gf-tint);
+  --pst-color-table-row-zebra-low-bg: #ffffff;
+  --pst-color-table-row-zebra-high-bg: #f4fafc;
   --gf-card: #ffffff;
-  --gf-code-bg: #16181d;
-  --gf-code-line: #2a2c31;
-  --gf-code-fg: #e4e4e0;
-  --gf-code-dim: #8b8e96;
-  --gf-accent-on-dark: #5ccbbd;
+  --gf-code-bg: var(--gf-navy);
+  --gf-code-line: #262b5e;
+  --gf-code-fg: #eef1fa;
+  --gf-code-dim: #9096bd;
+  --gf-accent-on-dark: #ff7fa9;
   --gf-on-accent: #ffffff;
 }
 
@@ -167,7 +172,7 @@ table.table th { font-weight: 700; }
 .gf-sidebar li.toctree-l2 > a:hover { background: var(--pst-color-border-muted); text-decoration: none; color: var(--pst-color-text-base); }
 .gf-sidebar li.toctree-l2.current > a, .gf-sidebar li.toctree-l2 > a.current {
   background: var(--pst-color-primary-bg);
-  color: var(--pst-color-primary);
+  color: var(--gf-navy);
   font-weight: 700;
 }
 .gf-sidebar li.toctree-l2 > details > summary { display: none; }
