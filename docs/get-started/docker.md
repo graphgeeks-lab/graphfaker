@@ -6,7 +6,7 @@ The image is for the cases where `pip install graphfaker` is the wrong first ste
 docker pull ghcr.io/graphgeeks-lab/graphfaker:latest
 ```
 
-Tags follow the release: `1.0.0`, `1.0`, `1` and `latest`. Pin the one you want to reproduce.
+Tags follow the release: `1.0.0`, `1.0`, `1` and `latest`. Pin the one you want to reproduce. `main` is the current development build, pushed after the same smoke test; use it to try something before it is released, not to reproduce a dataset.
 
 ## Run
 

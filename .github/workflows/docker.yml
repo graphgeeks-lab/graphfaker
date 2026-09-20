@@ -1,7 +1,9 @@
 # Build the image, prove it works, then publish it.
 #
-# Every push builds and smoke-tests; only a v* tag publishes. The smoke test is
-# the JOSS reviewer's path, a generate, a load and a verify, run against the
+# Every push and pull request builds and smoke-tests. A push to main publishes
+# the `main` and `sha-...` tags (an edge image, already smoke-tested); a v* tag
+# publishes the version tags and `latest`, so `latest` is always a release.
+# The smoke test is the JOSS reviewer's path, a generate, a load and a verify, run against the
 # exact image that would be published. The version inside the image is the
 # checkout's, and python-publish.yml already refuses a tag whose version does
 # not match pyproject.toml, so the image and the PyPI release cannot drift.
@@ -18,7 +20,7 @@ env:
 
 jobs:
   build:
-    name: Build, smoke-test, and publish on a tag
+    name: Build, smoke-test, and publish on a push
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -101,7 +103,7 @@ jobs:
             || { echo "::error::generate --schema wrote nothing."; ls -laR social; exit 1; }
 
       - name: Log in to ghcr.io
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -109,7 +111,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v6
         with:
           context: .
