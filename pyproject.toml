@@ -77,6 +77,9 @@ osm = [
 neo4j = [
     "neo4j>=5.26",  # driver for `graphfaker load neo4j` / `graphfaker verify neo4j`
 ]
+ladybug = [
+    "ladybug>=0.20",  # LadybugDB, for `graphfaker load ladybug` / `--sink ladybug`
+]
 duckdb = [
     # DuckPGQ is a community extension built per DuckDB release; this is the newest
     # release it exists for. Check https://community-extensions.duckdb.org/extensions/duckpgq.html before bumping.
@@ -112,6 +115,18 @@ dev = [
     "ruff",  # linting
     "pip-audit",  # dependency vulnerability check
 ]
+
+# For uv-managed environments (development and CI) torch on Linux comes from
+# the CPU index: the PyPI wheel drags several gigabytes of CUDA libraries that
+# the PyG export and its tests do not use. `pip install graphfaker[pyg]` is not
+# affected; it resolves from PyPI as usual.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [project.scripts]
 graphfaker = "graphfaker.cli:app"

@@ -65,10 +65,11 @@ jobs:
       - name: The CLI is there and knows its domains
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint python graphfaker:ci -c "import graphfaker; print(graphfaker.__version__)" > /tmp/version.txt
+          docker run --rm graphfaker:ci --version > /tmp/version.txt
+          docker run --rm graphfaker:ci info
           docker run --rm graphfaker:ci domains > /tmp/domains.txt
           VERSION=$(grep -E '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
-          grep -qx "$VERSION" /tmp/version.txt \
+          grep -qx "graphfaker $VERSION" /tmp/version.txt \
             || { echo "::error::The image reports a different version from pyproject.toml."; cat /tmp/version.txt; exit 1; }
           grep -q fraud /tmp/domains.txt \
             || { echo "::error::The fraud domain did not ship in the image."; exit 1; }

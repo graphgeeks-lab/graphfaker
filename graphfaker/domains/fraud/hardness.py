@@ -151,6 +151,15 @@ class HardnessReport:
         ])
         return both.drop_nans("auc").sort("auc", descending=True).head(n)
 
+    def as_dict(self) -> dict:
+        """The report as plain data: the headline AUC and every (typology,
+        feature) row at both levels, for ``--json`` and for saving with a run."""
+        return {
+            "max_auc": self.max_auc,
+            "accounts": self.accounts.to_dicts(),
+            "transactions": self.transactions.to_dicts(),
+        }
+
     def summary(self) -> str:
         lines = [f"hardness report: max single-feature AUC {self.max_auc:.3f}", ""]
         lines.append(f"{'level':<12}{'typology':<20}{'feature':<22}{'auc':>7}")

@@ -20,6 +20,60 @@ from graphfaker.utils import parse_date_range
 app = typer.Typer(no_args_is_help=True, help="GraphFaker: synthetic and real-world graph datasets.")
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from graphfaker import __version__
+
+        typer.echo(f"graphfaker {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        False, "--version", "-V", help="Print the version and exit.", callback=_version_callback, is_eager=True
+    ),
+) -> None:
+    """GraphFaker: synthetic and real-world graph datasets."""
+
+
+#: Optional extras and the module that proves each one is installed.
+_EXTRAS = {
+    "neo4j": ("neo4j", "graphfaker load neo4j, verify neo4j"),
+    "duckdb": ("duckdb", "graphfaker load duckdb, verify duckdb, --sink duckdb"),
+    "ladybug": ("ladybug", "graphfaker load ladybug, verify ladybug, --sink ladybug"),
+    "pyg": ("torch_geometric", "--sink pyg"),
+    "osm": ("osmnx", "graphfaker gen --fetcher osm"),
+}
+
+
+@app.command(short_help="Versions of GraphFaker and its dependencies, and which extras are installed.")
+def info():
+    """What this installation can do: the versions that decide whether two
+    machines produce the same bytes, and the optional extras that are present."""
+    import platform
+    from importlib.metadata import PackageNotFoundError, version
+
+    from graphfaker import __version__
+    from graphfaker.engine.run import ENGINE_VERSION
+
+    typer.echo(f"graphfaker {__version__} (engine {ENGINE_VERSION})")
+    typer.echo(f"python {platform.python_version()} on {platform.system().lower()} {platform.machine()}")
+    for dist in ("polars", "numpy", "pyarrow", "faker", "networkx"):
+        try:
+            typer.echo(f"  {dist} {version(dist)}")
+        except PackageNotFoundError:
+            typer.echo(f"  {dist} missing")
+    typer.echo("extras:")
+    for extra, (module, enables) in _EXTRAS.items():
+        try:
+            installed = version(module)
+        except PackageNotFoundError:
+            typer.echo(f"  [ ] {extra}: pip install \"graphfaker[{extra}]\" for {enables}")
+        else:
+            typer.echo(f"  [x] {extra} ({module} {installed}): {enables}")
+
+
 @app.command(short_help="Generate a social graph, or load an OSM / flight network.")
 def gen(
     fetcher: FetcherType = typer.Option(FetcherType.FAKER, help="Fetcher type to use."),
@@ -157,6 +211,20 @@ def gen(
     )
 
 
+def _quiet(quiet: bool) -> None:
+    """``--quiet``: progress logging off, warnings and errors still shown."""
+    if quiet:
+        import logging
+
+        logger.setLevel(logging.WARNING)
+
+
+def _dump(data: dict) -> None:
+    """``--json``: one document on stdout. Logging is already on stderr, so a
+    pipeline can read stdout and still see progress."""
+    typer.echo(json.dumps(data, indent=2, default=str))
+
+
 def _write_sink(run, out: str, sink: str, blind: bool = False) -> None:
     """Write the run as Parquet, then whatever extra layout ``sink`` asks for.
 
@@ -278,6 +346,8 @@ def generate(
     workers: int = typer.Option(1, help="Processes for node sampling. Does not change the result."),
     sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | duckdb | pyg | gen-fraud-graph."),
     blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="No progress logging; warnings and errors only."),
+    as_json: bool = typer.Option(False, "--json", help="Print the manifest as JSON on stdout when done."),
 ):
     """Examples:
 
@@ -285,6 +355,7 @@ def generate(
 
       graphfaker generate --schema my_graph.yaml --seed 1 --out ./my_graph
     """
+    _quiet(quiet)
     extra = list(ctx.args)
     if schema is not None:
         if domain is not None:
@@ -297,6 +368,8 @@ def generate(
         loaded = _load_schema(schema)
         run = _generate(loaded, seed=seed, shard_size=shard_size or DEFAULT_SHARD_SIZE, workers=workers)
         _write_sink(run, out, sink, blind)
+        if as_json:
+            _dump(run.manifest.model_dump())
         return
     if domain is None:
         raise typer.BadParameter("give a domain name (see `graphfaker domains`) or --schema FILE")
@@ -314,6 +387,72 @@ def generate(
         problems = "; ".join(f"--{'.'.join(str(p) for p in e['loc']).replace('_', '-')}: {e['msg']}" for e in exc.errors())
         raise typer.BadParameter(f"{problems}. Run `graphfaker domains` to see the options.") from exc
     _write_sink(run, out, sink, blind)
+    if as_json:
+        _dump(run.manifest.model_dump())
+
+
+@app.command(short_help="Check schema YAML files without generating anything.")
+def validate(
+    files: list[str] = typer.Argument(..., help="Schema YAML files, as written by `graphfaker schema` or by hand."),
+):
+    """Parse and validate each file with the same checks `generate --schema`
+    applies, and say what it describes. Exits non-zero if any file fails.
+
+      graphfaker validate my_graph.yaml other.yaml
+    """
+    failed = False
+    for path in files:
+        try:
+            loaded = _load_schema(path)
+        except typer.BadParameter as exc:
+            typer.echo(exc.message, err=True)
+            failed = True
+            continue
+        typer.echo(
+            f"{path}: ok, schema {loaded.name!r}, {len(loaded.nodes)} node types, {len(loaded.relationships())} relationship types, "
+            f"{loaded.total_nodes:,} nodes and {loaded.total_edges:,} edges, digest {loaded.digest()}"
+        )
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command(short_help="What a dataset directory contains: manifest, counts, truth, versions.")
+def inspect(
+    data: str = typer.Argument(..., help="Directory written by `graphfaker generate` or `graphfaker fraud`."),
+    as_json: bool = typer.Option(False, "--json", help="Print it as JSON instead of text."),
+):
+    """Read `manifest.json` and the file layout, without loading any table.
+
+      graphfaker inspect ./bank
+    """
+    from graphfaker.engine.run import Manifest
+
+    root = Path(data)
+    manifest_path = root / "manifest.json"
+    if not manifest_path.is_file():
+        raise typer.BadParameter(f"no manifest.json in {data}; is it a dataset directory?")
+    manifest = Manifest.read(manifest_path)
+    truth = sorted(p.stem for p in (root / "truth").glob("*.parquet")) if (root / "truth").is_dir() else []
+    files = {
+        "nodes": sorted(p.name for p in (root / "nodes").glob("*.parquet")),
+        "edges": sorted(p.name for p in (root / "edges").glob("*.parquet")),
+    }
+    size = sum(p.stat().st_size for p in root.rglob("*.parquet"))
+    extras = sorted(p.name for p in root.iterdir() if p.name not in {"nodes", "edges", "truth", "schema.yaml", "manifest.json"})
+    if as_json:
+        _dump({**manifest.model_dump(), "truth": truth, "files": files, "parquet_bytes": size, "extras": extras})
+        return
+    typer.echo(f"{root}: schema {manifest.schema_name!r} (digest {manifest.schema_digest}), seed {manifest.seed}, shard size {manifest.shard_size}")
+    typer.echo(f"  written by graphfaker {manifest.graphfaker_version} (engine {manifest.engine_version}) at {manifest.created_at}")
+    typer.echo(f"  nodes  {sum(manifest.node_counts.values()):>12,}  " + ", ".join(f"{k}={v:,}" for k, v in manifest.node_counts.items()))
+    typer.echo(f"  edges  {sum(manifest.edge_counts.values()):>12,}  " + ", ".join(f"{k}={v:,}" for k, v in manifest.edge_counts.items()))
+    typer.echo(f"  truth  {', '.join(truth) if truth else 'none'}")
+    typer.echo(f"  parquet {size / 1e6:,.1f} MB" + (f"; also {', '.join(extras)}" if extras else ""))
+    for name, config in manifest.extra.items():
+        if isinstance(config, dict):
+            typer.echo(f"  {name}: " + ", ".join(f"{k}={v}" for k, v in config.items()))
+        else:
+            typer.echo(f"  {name}: {config}")
 
 
 @app.command(
@@ -373,14 +512,23 @@ def fraud(
     workers: int = typer.Option(1, help="Processes for entity sampling. Does not change the result."),
     report: bool = typer.Option(True, help="Print the hardness and realism reports."),
     blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="No progress logging; warnings and errors only."),
+    as_json: bool = typer.Option(False, "--json", help="Print the manifest and the reports as one JSON document on stdout."),
 ):
     """Shortcut for `graphfaker generate fraud ...` that also prints the reports."""
     from graphfaker.domains import get
     from graphfaker.domains.fraud.hardness import hardness_report, realism_report
 
+    _quiet(quiet)
     run = get("fraud").run(seed=seed, workers=workers, scale=scale, hardness=hardness, period_days=period_days)
     _write_sink(run, out, sink, blind)
-    if report:
+    if as_json:
+        _dump({
+            "manifest": run.manifest.model_dump(),
+            "hardness": hardness_report(run).as_dict() if report else None,
+            "realism": realism_report(run) if report else None,
+        })
+    elif report:
         typer.echo(hardness_report(run).summary())
         typer.echo("")
         typer.echo("realism: " + ", ".join(f"{k}={v:.3f}" for k, v in realism_report(run).items()))
@@ -392,6 +540,7 @@ def evaluate(
     accounts: str = typer.Option(None, help="File with one flagged account id per line."),
     transactions: str = typer.Option(None, help="File with one flagged transaction id per line."),
     ring_threshold: float = typer.Option(1.0, help="Fraction of a pattern's accounts that must be flagged to count it as found."),
+    as_json: bool = typer.Option(False, "--json", help="Print the scores as JSON instead of text."),
 ):
     from graphfaker.domains.fraud.evaluate import evaluate as _evaluate
 
@@ -402,7 +551,10 @@ def evaluate(
             return [line.strip() for line in fh if line.strip()]
 
     result = _evaluate(data, read(accounts), read(transactions), ring_threshold=ring_threshold)
-    typer.echo(result.summary())
+    if as_json:
+        _dump(result.as_dict())
+    else:
+        typer.echo(result.summary())
 
 
 load_app = typer.Typer(no_args_is_help=True, help="Load a generated dataset into a live database.")

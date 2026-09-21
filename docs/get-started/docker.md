@@ -3,18 +3,19 @@
 The image is for the cases where `pip install graphfaker` is the wrong first step: a CI job that needs a fixture in Neo4j, a data engineer who wants a bank in a volume and no Python on the host, a workshop where thirty laptops need the same thing, or a reviewer who wants to run the three commands without making an environment. It is published to the GitHub Container Registry on every release, for `linux/amd64` and `linux/arm64`, and it contains the CLI with the DuckDB and Neo4j clients. It does not contain PyTorch or the OpenStreetMap fetcher's geo libraries; the [PyG export](../pyg.md) and `--fetcher osm` want a Python environment with the `pyg` or `osm` extra.
 
 ```sh
-docker pull ghcr.io/graphgeeks-lab/graphfaker:latest
+docker pull ghcr.io/graphgeeks-lab/graphfaker:main
+docker run --rm ghcr.io/graphgeeks-lab/graphfaker:main info
 ```
 
-Tags follow the release: `1.0.0`, `1.0`, `1` and `latest`. Pin the one you want to reproduce. `main` is the current development build, pushed after the same smoke test; use it to try something before it is released, not to reproduce a dataset.
+Tags: `main` is the current development build, pushed after every change to `main` once it has passed the smoke test. Releases publish `1.0.0`, `1.0`, `1` and `latest`; pin one of those to reproduce a dataset, since `main` moves. Until the first release with an image is tagged, `latest` does not exist and `docker pull` of it says `manifest unknown`. `info` prints the version inside the image and which extras it carries.
 
 ## Run
 
 `graphfaker` is the entrypoint, so every subcommand works as an argument, and `/data` is the working directory inside the container. Mount a host directory there and write to it:
 
 ```sh
-docker run --rm ghcr.io/graphgeeks-lab/graphfaker domains
-docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker fraud --scale 0.01 --seed 42 --out /data
+docker run --rm ghcr.io/graphgeeks-lab/graphfaker:main domains
+docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker:main fraud --scale 0.01 --seed 42 --out /data
 ```
 
 `bank/` on the host now holds `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json`, the same layout `pip`-installed GraphFaker writes, and the same bytes for the same seed. On PowerShell use `${PWD}` in place of `$PWD`.
@@ -24,8 +25,8 @@ The container runs as an unprivileged user (uid 10001). If the mounted directory
 Load the bank into DuckDB and check the load against the Parquet:
 
 ```sh
-docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker load duckdb /data
-docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker verify duckdb /data
+docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker:main load duckdb /data
+docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker:main verify duckdb /data
 ```
 
 The first `load duckdb` fetches the DuckPGQ extension into the container's home directory; the container is discarded afterwards, so each run fetches it again (a few megabytes). To keep it, mount a volume at `/home/graphfaker/.duckdb`.
@@ -33,8 +34,8 @@ The first `load duckdb` fetches the DuckPGQ extension into the container's home 
 A schema of your own works the same way, from and to the volume:
 
 ```sh
-docker run --rm -v "$PWD/work:/data" ghcr.io/graphgeeks-lab/graphfaker schema fraud --scale 0.05 --out /data/bank.yaml
-docker run --rm -v "$PWD/work:/data" ghcr.io/graphgeeks-lab/graphfaker generate --schema /data/bank.yaml --seed 7 --out /data/bank
+docker run --rm -v "$PWD/work:/data" ghcr.io/graphgeeks-lab/graphfaker:main schema fraud --scale 0.05 --out /data/bank.yaml
+docker run --rm -v "$PWD/work:/data" ghcr.io/graphgeeks-lab/graphfaker:main generate --schema /data/bank.yaml --seed 7 --out /data/bank
 ```
 
 ## Memory and CPUs
@@ -42,7 +43,7 @@ docker run --rm -v "$PWD/work:/data" ghcr.io/graphgeeks-lab/graphfaker generate 
 A fraud run peaks at about twice the size of its tables: 2.5 GB at `scale=0.1`, 5 GB at `0.3`, 15 GB at `1.0` ([the measurements](../scaling.md)). Docker Desktop's virtual machine is often set smaller than the machine it runs on, and a container that runs out of memory is killed without a Python traceback, so raise the VM's limit in Docker Desktop's settings before a large scale, or make the limit explicit and let the failure be legible:
 
 ```sh
-docker run --rm --memory 20g --cpus 4 -v "$PWD/big:/data" ghcr.io/graphgeeks-lab/graphfaker fraud --scale 1.0 --seed 42 --workers 4 --out /data
+docker run --rm --memory 20g --cpus 4 -v "$PWD/big:/data" ghcr.io/graphgeeks-lab/graphfaker:main fraud --scale 1.0 --seed 42 --workers 4 --out /data
 ```
 
 `--workers` works inside the container; give it as many CPUs as workers, and expect about 1.5x from four of them from `scale=0.1` upward.
@@ -64,12 +65,12 @@ services:
       retries: 20
 
   generate:
-    image: ghcr.io/graphgeeks-lab/graphfaker
+    image: ghcr.io/graphgeeks-lab/graphfaker:main
     command: fraud --scale 0.01 --seed 42 --out /data
     volumes: ["bank:/data"]
 
   load:
-    image: ghcr.io/graphgeeks-lab/graphfaker
+    image: ghcr.io/graphgeeks-lab/graphfaker:main
     command: load neo4j /data --wipe
     environment:
       NEO4J_URI: neo4j://neo4j:7687

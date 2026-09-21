@@ -41,6 +41,27 @@ jobs:
       - name: Test
         run: uv run pytest -q -m "not network"
 
+  pyg:
+    # The HeteroData path: the export, its labels and splits, and the baseline
+    # script, on CPU torch (see [tool.uv.sources] in pyproject.toml).
+    name: PyTorch Geometric export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install
+        run: uv sync --locked --extra dev --extra pyg
+      - name: Test the export
+        run: uv run pytest -q tests/test_pyg.py
+      - name: Export from the CLI and train the baseline
+        run: |
+          uv run graphfaker fraud --scale 0.001 --seed 42 --out ./bank --sink pyg --no-report --quiet
+          test -f bank/graph.pt
+          uv run python examples/pyg_baseline.py --scale 0.001 --epochs 5
+
   audit:
     name: dependency audit
     runs-on: ubuntu-latest

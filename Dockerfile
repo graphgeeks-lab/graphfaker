@@ -6,6 +6,7 @@
 # package and its dependencies.
 #
 #   docker build -t graphfaker .
+#   docker run --rm graphfaker info
 #   docker run --rm graphfaker domains
 #   docker run --rm -v "$PWD/bank:/data" graphfaker fraud --scale 0.01 --seed 42 --out /data
 #   docker run --rm -v "$PWD/bank:/data" graphfaker load duckdb /data

@@ -26,12 +26,12 @@ pip install "graphfaker[osm]"         # the OpenStreetMap fetcher (osmnx and its
 pip install "graphfaker[examples]"    # adds matplotlib, ladybug and jupyter for the notebooks
 ```
 
-The fraud pack, the social domain, schemas and every sink are in the base install. Database clients are extras too: `[neo4j]`, `[duckdb]`, `[pyg]`.
+The fraud pack, the social domain, schemas and every sink are in the base install. Database clients and the PyG export are extras: `[neo4j]`, `[ladybug]`, `[duckdb]`, `[pyg]`. `graphfaker info` shows which are installed.
 
 Or without a Python environment, as a container ([docs](https://graphfaker.readthedocs.io/en/latest/get-started/docker.html)):
 
 ```sh
-docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker fraud --scale 0.01 --seed 42 --out /data
+docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker:main fraud --scale 0.01 --seed 42 --out /data
 ```
 
 For development:
@@ -61,7 +61,7 @@ graphfaker generate fraud --scale 0.01 --hardness medium --seed 42 --out ./bank
 Load it into an embedded graph database and ask it a question in Cypher:
 
 ```sh
-pip install ladybug
+pip install "graphfaker[ladybug]"
 graphfaker generate fraud --scale 0.01 --seed 42 --out ./bank --sink ladybug
 ```
 
@@ -273,7 +273,7 @@ graphfaker schema social --total-nodes 500 --out my_graph.yaml     # a domain's 
 graphfaker generate --schema my_graph.yaml --seed 42 --out ./my_graph
 ```
 
-The file is the same `schema.yaml` every run writes next to its data, so a dataset can be regenerated, or varied, from the file it came with. `graphfaker schema fraud` prints the bank's entity schema with a note that its transactions and patterns come from code; `graphfaker generate fraud` is the way to get the bank.
+The file is the same `schema.yaml` every run writes next to its data, so a dataset can be regenerated, or varied, from the file it came with; `graphfaker validate` checks an edited file before a run. `graphfaker schema fraud` prints the bank's entity schema with a note that its transactions and patterns come from code; `graphfaker generate fraud` is the way to get the bank.
 
 Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json` under `--out`. Options shared by every domain:
 
@@ -284,6 +284,10 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 | `--schema FILE` | generate from a schema YAML instead of a named domain (`--shard-size N` sets the rows per shard, default 10000, and is part of what the seed reproduces) |
 | `--workers N` | processes for node sampling; faster, does not change the result |
 | `--sink parquet\|neo4j\|neo4j-admin\|ladybug\|duckdb\|pyg\|gen-fraud-graph` | also load a live database, or write a loader layout (Parquet is always written) |
+| `--quiet`, `-q` | no progress logging; warnings and errors only |
+| `--json` | when done, print the manifest (and for `fraud`, the hardness and realism reports) as one JSON document on stdout. Logging goes to stderr, so a pipeline can read stdout |
+
+Three commands look at datasets and schema files without generating anything. `graphfaker inspect ./bank` reads the manifest and the file layout and prints what a directory contains (schema, seed, versions, counts, which truth tables are there, the domain options), with `--json` for scripts. `graphfaker validate my_graph.yaml other.yaml` checks schema files with the same rules `generate --schema` applies and exits non-zero if any fails. `graphfaker evaluate ./bank --accounts flagged.txt --json` scores a detector's output as JSON.
 
 ### What the options mean
 
@@ -374,7 +378,7 @@ graphfaker gen --fetcher flights --country "United States" --year 2024 --month 1
 graphfaker gen --fetcher faker --total-nodes 500 --total-edges 2500 --format cypher --export social.cypher
 ```
 
-`graphfaker --help` and `graphfaker <command> --help` list every option.
+`graphfaker --help` and `graphfaker <command> --help` list every option. `graphfaker --version` prints the version; `graphfaker info` prints it with the versions of the libraries that decide reproducibility (polars, numpy, pyarrow, faker, networkx) and which extras are installed, which is the first thing to paste into a bug report or to check inside a container.
 
 ## Entity resolution
 

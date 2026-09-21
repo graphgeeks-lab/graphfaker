@@ -198,7 +198,7 @@ write_duckdb(run.tables, "bank", db_path="bank/graph.duckdb", truth=run.truth, g
 
 | | DuckDB | LadybugDB | Neo4j |
 |---|---|---|---|
-| setup | `pip install "graphfaker[duckdb]"`, nothing to run | `pip install ladybug`, nothing to run | a server or Aura |
+| setup | `pip install "graphfaker[duckdb]"`, nothing to run | `pip install "graphfaker[ladybug]"`, nothing to run | a server or Aura |
 | query language | SQL, with SQL/PGQ for patterns | Cypher | Cypher |
 | load at scale 0.01 | 5 s, reads the Parquet directly | 11 s, from Arrow | minutes over Bolt, or the offline importer |
 | path queries | pattern matching yes; path finding slow at this size | yes | yes, plus GDS |

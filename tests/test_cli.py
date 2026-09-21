@@ -1,3 +1,4 @@
+import json
 import sys
 from unittest.mock import patch
 
@@ -203,3 +204,53 @@ def test_flight_mode_with_date_range(mock_fetch_flights, tmp_path):
         assert result.exit_code == 0
         mock_fetch_flights.assert_called_once()
         assert (tmp_path / "range.graphml").exists()
+
+
+def test_version_and_info():
+    from graphfaker import __version__
+
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0 and result.output.strip() == f"graphfaker {__version__}"
+    assert runner.invoke(app, ["-V"]).output == result.output
+
+    result = runner.invoke(app, ["info"])
+    assert result.exit_code == 0
+    assert result.output.startswith(f"graphfaker {__version__} (engine ")
+    for extra in ("neo4j", "duckdb", "ladybug", "pyg", "osm"):
+        assert f"] {extra}" in result.output  # present or not, every extra is listed
+
+
+def test_validate_reports_every_file_and_fails_on_any(tmp_path):
+    good = tmp_path / "social.yaml"
+    assert runner.invoke(app, ["schema", "social", "--total-nodes", "40", "--out", str(good)]).exit_code == 0
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("name: x\nnodes: []\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["validate", str(good)])
+    assert result.exit_code == 0 and "ok, schema 'social'" in result.output and "40 nodes" in result.output
+
+    result = runner.invoke(app, ["validate", str(good), str(bad), str(tmp_path / "missing.yaml")])
+    assert result.exit_code == 1
+    assert "ok, schema 'social'" in result.output
+    assert "not a valid schema" in result.output and "not found" in result.output
+
+
+def test_inspect_and_json_outputs(tmp_path):
+    out = tmp_path / "bank"
+    result = runner.invoke(app, ["fraud", "--scale", "0.001", "--seed", "3", "--out", str(out), "--quiet", "--json"])
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.output)
+    assert doc["manifest"]["seed"] == 3 and doc["manifest"]["node_counts"]["Account"] == 10000
+    assert 0 <= doc["hardness"]["max_auc"] <= 1 and "recurring_share" in doc["realism"]
+
+    result = runner.invoke(app, ["inspect", str(out)])
+    assert result.exit_code == 0
+    assert "schema 'fraud'" in result.output and "seed 3" in result.output and "truth  accounts, patterns" in result.output
+    result = runner.invoke(app, ["inspect", str(out), "--json"])
+    assert json.loads(result.output)["truth"] == ["accounts", "patterns", "region", "transactions"]
+
+    result = runner.invoke(app, ["inspect", str(tmp_path)])
+    assert result.exit_code != 0 and "manifest.json" in result.output
+
+    result = runner.invoke(app, ["evaluate", str(out), "--json"])
+    assert result.exit_code == 0 and json.loads(result.output)["account"]["fn"] > 0

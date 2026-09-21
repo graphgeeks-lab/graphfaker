@@ -17,7 +17,7 @@ GraphFaker
      </div>
      <div class="gf-terminal">
        <div class="gf-terminal-bar"><i></i><i></i><i></i><span>terminal</span></div>
-       <pre><span class="dim">$</span> pip install graphfaker ladybug
+       <pre><span class="dim">$</span> pip install "graphfaker[ladybug]"
    <span class="dim">$</span> graphfaker generate fraud --scale 0.01 --hardness high \
        --seed 42 --out ./bank --sink ladybug
 
