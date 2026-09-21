@@ -88,6 +88,7 @@ duckdb = [
 pyg = [
     "torch>=2.2",
     "torch_geometric>=2.5",
+    "scikit-learn>=1.4",  # the features-only baseline and the AUC/AP scoring in examples/pyg_baseline.py
 ]
 examples = [
     "matplotlib>=3.8",

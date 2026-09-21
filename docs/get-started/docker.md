@@ -96,7 +96,7 @@ The `Dockerfile` at the root of the repository builds the wheel in one stage and
 
 ```sh
 docker build -t graphfaker .
-docker run --rm graphfaker domains
+docker run --rm graphfaker info
 ```
 
-The release workflow (`.github/workflows/docker.yml`) builds the same file on every push, runs a generate, a load and a verify against the built image, and publishes it only from a `v*` tag.
+The workflow (`.github/workflows/docker.yml`) builds the same file on every push and pull request and runs a generate, a load and a verify against the built image. A push to `main` publishes the `main` tag; a `v*` tag publishes the version tags and `latest`.

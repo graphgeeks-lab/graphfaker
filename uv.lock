@@ -1697,6 +1697,8 @@ osm = [
     { name = "osmnx" },
 ]
 pyg = [
+    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scikit-learn", version = "1.9.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "torch", version = "2.14.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux'" },
     { name = "torch-geometric" },
@@ -1735,6 +1737,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.3" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "scikit-learn", marker = "extra == 'examples'", specifier = ">=1.4" },
+    { name = "scikit-learn", marker = "extra == 'pyg'", specifier = ">=1.4" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=8.0" },
     { name = "sphinx-reredirects", marker = "extra == 'docs'", specifier = ">=0.1.6" },
     { name = "torch", marker = "sys_platform == 'linux' and extra == 'pyg'", specifier = ">=2.2", index = "https://download.pytorch.org/whl/cpu" },
