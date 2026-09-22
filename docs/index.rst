@@ -16,8 +16,25 @@ GraphFaker
        <p class="gf-position">Data Designer generates the tables. <strong>GraphFaker generates the connections.</strong></p>
      </div>
      <div class="gf-terminal">
-       <div class="gf-terminal-bar"><i></i><i></i><i></i><span>terminal</span></div>
-       <pre><span class="dim">$</span> pip install "graphfaker[ladybug]"
+       <div class="gf-terminal-bar">
+         <i></i><i></i><i></i>
+         <div class="gf-terminal-tabs" role="tablist" aria-label="Database sink">
+           <button type="button" role="tab" data-sink-tab aria-selected="true">duckdb</button>
+           <button type="button" role="tab" data-sink-tab aria-selected="false">ladybug</button>
+           <button type="button" role="tab" data-sink-tab aria-selected="false">neo4j</button>
+         </div>
+       </div>
+       <div class="gf-terminal-panels">
+       <pre data-sink-panel role="tabpanel" class="current"><span class="dim">$</span> pip install "graphfaker[duckdb]"
+   <span class="dim">$</span> graphfaker generate fraud --scale 0.01 --hardness high \
+       --seed 42 --out ./bank --sink duckdb
+
+   <span class="dim">loaded into database 'bank/graph.duckdb' in 5.2s</span>
+   <span class="dim">  nodes    255,772  Account=100000, Customer=71429, ...</span>
+   <span class="dim">  edges  1,088,552  PAYS=619689, TRANSFERS=247336, ...</span>
+   <span class="dim">  truth        492  Pattern=33, IN_PATTERN=205, ...</span>
+   <span class="ok">PASS: 154/154 checks on bank/graph.duckdb</span></pre>
+       <pre data-sink-panel role="tabpanel" aria-hidden="true"><span class="dim">$</span> pip install "graphfaker[ladybug]"
    <span class="dim">$</span> graphfaker generate fraud --scale 0.01 --hardness high \
        --seed 42 --out ./bank --sink ladybug
 
@@ -26,6 +43,16 @@ GraphFaker
    <span class="dim">  edges  1,088,552  PAYS=619689, TRANSFERS=247336, ...</span>
    <span class="dim">  truth        492  Pattern=33, IN_PATTERN=205, ...</span>
    <span class="ok">PASS: 154/154 checks on bank/graph.lbdb</span></pre>
+       <pre data-sink-panel role="tabpanel" aria-hidden="true"><span class="dim">$</span> pip install "graphfaker[neo4j]"
+   <span class="dim">$</span> graphfaker generate fraud --scale 0.01 --hardness high \
+       --seed 42 --out ./bank --sink neo4j
+
+   <span class="dim">loaded into database 'fraud' in 81.4s</span>
+   <span class="dim">  nodes    255,772  Account=100000, Customer=71429, ...</span>
+   <span class="dim">  edges  1,088,552  PAYS=619689, TRANSFERS=247336, ...</span>
+   <span class="dim">  truth        622  Pattern=33, IN_PATTERN=205, ...</span>
+   <span class="ok">PASS: 154/154 checks on database 'fraud'</span></pre>
+       </div>
      </div>
    </section>
 

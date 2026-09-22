@@ -238,6 +238,16 @@ ul.bd-breadcrumbs li.breadcrumb-item.active { color: var(--pst-color-text-muted)
 .gf-terminal-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--gf-code-line); }
 .gf-terminal-bar i { width: 10px; height: 10px; border-radius: 50%; background: #45464b; display: inline-block; }
 .gf-terminal-bar span { margin-left: 8px; font-family: var(--pst-font-family-monospace); font-size: 0.75rem; color: var(--gf-code-dim); }
+.gf-terminal-tabs { display: flex; gap: 4px; margin-left: 8px; }
+.gf-terminal-tabs button { font-family: var(--pst-font-family-monospace); font-size: 0.75rem; color: var(--gf-code-dim); background: transparent; border: 0; border-radius: 5px; padding: 3px 9px; cursor: pointer; transition: color 0.2s, background 0.2s; }
+.gf-terminal-tabs button:hover { color: var(--gf-code-fg); }
+.gf-terminal-tabs button.current { color: var(--gf-code-fg); background: rgba(255, 255, 255, 0.09); }
+/* The panels share one grid cell, so the box is as tall as the tallest and
+   nothing moves when the sink changes. */
+.gf-terminal-panels { display: grid; }
+.gf-terminal-panels > pre { grid-area: 1 / 1; opacity: 0; visibility: hidden; transition: opacity 0.35s ease; }
+.gf-terminal-panels > pre.current { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .gf-terminal-panels > pre { transition: none; } }
 .gf-terminal pre { margin: 0; padding: 22px 24px; font-size: 0.875rem; line-height: 1.75; color: var(--gf-code-fg); background: transparent; border: 0; white-space: pre-wrap; }
 .gf-terminal .dim { color: var(--gf-code-dim); }
 .gf-terminal .ok { color: var(--gf-accent-on-dark); }

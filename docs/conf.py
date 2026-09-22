@@ -85,6 +85,8 @@ html_css_files = [
     "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap",
     "custom.css",
 ]
+# Rotates the landing page terminal through the database sinks.
+html_js_files = ["landing.js"]
 html_show_sourcelink = False
 
 html_theme_options = {
