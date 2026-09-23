@@ -3,8 +3,11 @@ Python API
 
 The public surface, by layer. Everything below is importable from the module named in each heading; the most used names are also exported from ``graphfaker`` itself (``GraphFaker``, ``GraphSchema``, ``GraphTables``, ``GraphRun``, ``Manifest``, ``generate``).
 
-Entry point
------------
+Entry points
+------------
+
+There are two, and they are for different things. :func:`graphfaker.engine.generate` (below) runs a schema and returns a :class:`~graphfaker.engine.run.GraphRun`: tables, ground truth and a manifest, which is what every sink, the verifier and the metrics take. :class:`~graphfaker.core.GraphFaker` is the NetworkX-facing path: the real-world
+loaders (OpenStreetMap, flights, Wikipedia), a quick in-memory social graph, and the single-file exports. Both are stable for 1.x.
 
 .. automodule:: graphfaker.core
    :members: GraphFaker

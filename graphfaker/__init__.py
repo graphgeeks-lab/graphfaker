@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 __author__ = """Dennis Irorere"""
 __email__ = "denironyx@gmail.com"
-__version__ = "0.6.1"
+__version__ = "1.0.0"
 
 #: public name -> the module it lives in
 _EXPORTS = {

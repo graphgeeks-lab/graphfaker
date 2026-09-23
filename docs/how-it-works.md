@@ -79,6 +79,8 @@ Parquet is written through pyarrow, in row groups of two million rows, so that t
 
 A run is a function of the schema, the seed and the shard size. Nothing else affects the bytes: not the number of workers, not the machine, not `PYTHONHASHSEED`.
 
+The contract is per version. A release may change what a seed produces, because drawing a column faster or modelling a process better changes the draws; 0.6.0 and 1.0.0 both did, and each release that does says so in the changelog. `manifest.json` records `graphfaker_version` and `engine_version` next to the seed and the shard size, so a dataset always carries what is needed to make it again.
+
 Randomness comes from one `numpy.random.SeedSequence` rooted at the seed. Stages and shards spawn children from it in a fixed order (latent factors, then one child per node type, then one for edges; within a node type, one child per shard). Each child feeds a numpy generator, a `random.Random` and a Faker instance, so every consumer of randomness in a stage draws from the same lineage.
 
 The engine avoids Python sets where iteration order matters, because set order for strings depends on the process hash seed. A test runs the same seed in two subprocesses with different hash seeds and checks the output is identical.

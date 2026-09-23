@@ -74,7 +74,7 @@ def info():
             typer.echo(f"  [x] {extra} ({module} {installed}): {enables}")
 
 
-@app.command(short_help="Generate a social graph, or load an OSM / flight network.")
+@app.command(short_help="Load a real-world network, or a quick social graph, and export one file.")
 def gen(
     fetcher: FetcherType = typer.Option(FetcherType.FAKER, help="Fetcher type to use."),
     # for FetcherType.FAKER source
@@ -126,7 +126,13 @@ def gen(
         help="Output format: graphml | csv | neo4j-csv | cypher | opencypher | gql.",
     ),
 ):
-    """Generate a graph using GraphFaker."""
+    """Load an OpenStreetMap or flight network, or build a quick social graph, as
+    NetworkX, and export it as a single file.
+
+    This is the NetworkX-facing entry point. For datasets with ground truth and a
+    manifest, written as tables and loadable into a database, use `graphfaker
+    generate <domain>` or `graphfaker fraud`.
+    """
     gf = GraphFaker(seed=seed)
 
     if fetcher == FetcherType.FAKER:

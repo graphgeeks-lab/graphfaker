@@ -228,6 +228,13 @@ On the command line, `--sink parquet|neo4j|neo4j-admin|ladybug|duckdb|pyg|gen-fr
 
 A run is a function of the schema (or domain options), the seed and the shard size. The number of workers, the machine and the process hash seed do not change the bytes. The same seed gives the same graph in any process.
 
+That holds within a version. Across releases the bytes may change, because a faster or more realistic generator draws differently: 0.6.0 changed them and so did 1.0.0, and `HISTORY.rst` says so each time. `manifest.json` records the version that wrote a dataset, so pin the version next to the seed when a dataset has to come back exactly, in a paper or a benchmark:
+
+```sh
+pip install graphfaker==1.0.0
+graphfaker fraud --scale 0.01 --seed 42 --out ./bank
+```
+
 ```python
 GraphFaker(seed=42).generate_graph(source="faker", total_nodes=100)
 fraud.generate(scale=0.001, seed=42)
@@ -280,7 +287,7 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 | option | meaning |
 |---|---|
 | `--out DIR` | where to write (default `graphfaker_out`) |
-| `--seed N` | reproducible output; the same seed gives the same bytes on any machine |
+| `--seed N` | reproducible output; the same seed gives the same bytes on any machine, with the same version of GraphFaker |
 | `--schema FILE` | generate from a schema YAML instead of a named domain (`--shard-size N` sets the rows per shard, default 10000, and is part of what the seed reproduces) |
 | `--workers N` | processes for node sampling; faster, does not change the result |
 | `--sink parquet\|neo4j\|neo4j-admin\|ladybug\|duckdb\|pyg\|gen-fraud-graph` | also load a live database, or write a loader layout (Parquet is always written) |
@@ -370,7 +377,7 @@ Score a detector's flagged accounts (one id per line) against the truth of a run
 graphfaker evaluate ./bank --accounts flagged.txt --ring-threshold 0.5
 ```
 
-The real-world networks are loaded with `graphfaker gen` and exported to a single file (`--format graphml|csv|neo4j-csv|cypher|opencypher|gql`):
+`graphfaker gen` is the other entry point, and the two do different jobs. `generate` and `fraud` run the schema engine and write tables, ground truth and a manifest. `gen` loads a real-world network or builds a quick in-memory social graph and exports it as a single file (`--format graphml|csv|neo4j-csv|cypher|opencypher|gql`). Both are supported in 1.x; use the engine for datasets you will load into a database or train on, and `gen` for a real-world network or a one-file export:
 
 ```sh
 graphfaker gen --fetcher osm --place "Berlin, Germany" --network-type drive --export berlin.graphml
