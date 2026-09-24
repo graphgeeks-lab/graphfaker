@@ -1,8 +1,10 @@
 """GraphFaker: synthetic graph data that behaves like the real thing.
 
-Generate realistic graph datasets from a schema, or pick a ready-made domain
-such as a bank with laundering patterns, and get entities, relationships and
-events whose structure, attributes and timing agree, with the ground truth
+Generate graph data that behaves the way real people and real money do:
+customers paid on payday, the same few shops and people paid again and again,
+friends who know each other's friends. Write a schema, or pick a ready-made
+domain such as a bank with laundering patterns, and get the entities, the
+relationships between them and the events over time, with the ground truth
 included.
 
 The public names are imported on first use rather than at package import.

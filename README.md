@@ -2,7 +2,7 @@
 
 **Synthetic graph data that behaves like the real thing.**
 
-GraphFaker generates synthetic graph datasets that look and behave like real ones. You describe the graph you need, or pick a ready-made domain such as a bank with laundering patterns, and GraphFaker produces the entities, the relationships between them and the events over time, with attributes, structure and timing that agree with each other, and a record of everything it planted. Use it to build and demo graph applications without touching real data, to benchmark graph databases and algorithms at any size, and to train and evaluate fraud detectors, entity resolution and knowledge-graph pipelines against a known answer.
+GraphFaker generates graph data that behaves the way real people and real money do: customers paid on payday, rent leaving on the first, the same few shops and people paid again and again, friends who know each other's friends, and not one real person in the data. You describe the graph you need, or pick a ready-made domain such as a bank with laundering patterns, and GraphFaker produces the entities, the relationships between them and the events over time, with a record of everything it planted. Use it to build and demo graph applications without touching real data, to benchmark graph databases and algorithms at any size, and to train and evaluate fraud detectors, entity resolution and knowledge-graph pipelines against a known answer.
 
 [![PyPI version](https://img.shields.io/pypi/v/graphfaker.svg)](https://pypi.python.org/pypi/graphfaker)
 [![Docs Status](https://readthedocs.org/projects/graphfaker/badge/?version=latest)](https://graphfaker.readthedocs.io/en/latest/?version=latest)
@@ -96,7 +96,7 @@ run = fraud.generate(scale=0.01, hardness="medium", seed=42)                    
 
 | domain | what it is | how |
 |---|---|---|
-| `social` | people, places, organizations, events and products; heavy-tailed degrees, clustering, communities, attributes that agree with structure | `GraphFaker.generate_graph(source="faker")` or `graphfaker generate social` |
+| `social` | people, places, organizations, events and products; a few hubs and many quiet nodes, friends who know each other's friends, communities whose members are alike, organizations as big as their headcount | `GraphFaker.generate_graph(source="faker")` or `graphfaker generate social` |
 | `fraud` | a bank: customers, accounts, merchants, devices, counterparties; a realistic transaction process; eleven labelled laundering typologies with decoys and a measured hardness | `graphfaker fraud` or `graphfaker generate fraud` |
 | your own | a `GraphSchema`, or a process with injected patterns | [docs/adding-a-domain.md](docs/adding-a-domain.md) |
 

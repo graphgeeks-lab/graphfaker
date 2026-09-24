@@ -2,6 +2,10 @@
 
 This page describes the fraud / AML domain pack step by step: what entities exist, how legitimate activity is produced, how each laundering typology is injected, what the hardness levels change, and what the truth tables contain. The code is in `graphfaker/domains/fraud/`, one module per step.
 
+## How the fraud hides, in one paragraph
+
+The fraud is drawn from the same distributions as the legitimate traffic: amounts from the channel's own amount model scaled by the account's income, timing from the same hour-of-day and weekday profile, partners recruited uniformly from ordinary accounts rather than from a marked pool. Those accounts keep behaving normally while the pattern runs, so none of them is a single-purpose account. And the dataset contains innocent accounts shaped exactly like laundering, labelled as innocent, so a rule that keys on shape alone is punished. What is left to find is structure over time, which is the point: nothing separates the fraud from the background except the thing a detector is supposed to be good at.
+
 ## Scale
 
 `scale` follows the convention of Santander's gen-fraud-graph so datasets are comparable: `scale=1.0` means about 10 million accounts and 90 million transactions. Everything else derives from it.
@@ -134,5 +138,3 @@ Measured on 20,000 accounts:
 | high | 0.62 | in_partners 0.73 |
 
 Amount and round-number signals fade as intended. Degree does not fade completely: with nine transactions per account per quarter, even a five-member ring adds partners an ordinary account does not have. Two typologies are defined by a single feature (structuring by near-threshold amounts, bust-out by spend escalation) and score high per typology at every level; the "all" row is the number to quote.
-
-Options under consideration: a density knob decoupled from the scale convention, and camouflage that adds ordinary activity to pattern accounts rather than only keeping it.

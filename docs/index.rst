@@ -8,7 +8,7 @@ GraphFaker
      <div>
        <p class="gf-kicker">Open-source Python library</p>
        <h1>Synthetic graph data that behaves like the real thing.</h1>
-       <p class="gf-lede">Generate realistic graph datasets from a schema: entities, relationships and events whose structure, attributes and timing agree, with the ground truth included.</p>
+       <p class="gf-lede">Generate graph data that behaves the way real people and real money do: paid on payday, the same few shops paid again and again, friends who know each other's friends. No real person in it, and the ground truth included.</p>
        <div class="gf-actions">
          <a class="gf-button" href="get-started/index.html">Get started</a>
          <a class="gf-button secondary" href="how-it-works.html">Read how it works</a>
@@ -60,7 +60,7 @@ GraphFaker
      <div class="gf-card">
        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"></circle><circle cx="18" cy="8" r="2"></circle><circle cx="9" cy="18" r="2"></circle><circle cx="17" cy="17" r="2"></circle><path d="M7.7 7.2l8.6 0.5M7 8l1.5 8M16.5 9.8l0.4 5.3M11 18h4"></path></svg>
        <h3>Realistic</h3>
-       <p>Attributes, structure and timing agree. Heavy-tailed degrees, communities, salary on payday, rent on the first, transfers that go to the same few people.</p>
+       <p>Salary on payday, rent on the first, transfers that go to the same few people, friends who know each other's friends. Who someone is, who they know and when they pay all come from the same model, so they never contradict each other.</p>
      </div>
      <div class="gf-card">
        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"></path><path d="M17 15l2 2 3-3"></path></svg>

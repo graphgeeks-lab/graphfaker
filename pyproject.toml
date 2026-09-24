@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "graphfaker"
 version = "1.0.0"
-description = "Generate realistic graph datasets from a schema: entities, relationships and events whose structure, attributes and timing agree."
+description = "Generate graph data that behaves like the real thing: people, the relationships between them and the events over time, with the ground truth included."
 readme = "README.md"
 authors = [
   {name = "Dennis Irorere", email = "denironyx@gmail.com"}
