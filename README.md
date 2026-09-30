@@ -26,7 +26,7 @@ pip install "graphfaker[osm]"         # the OpenStreetMap fetcher (osmnx and its
 pip install "graphfaker[examples]"    # adds matplotlib, ladybug and jupyter for the notebooks
 ```
 
-The fraud pack, the social domain, schemas and every sink are in the base install. Database clients and the PyG export are extras: `[neo4j]`, `[ladybug]`, `[duckdb]`, `[pyg]`. `graphfaker info` shows which are installed.
+The fraud pack, the coordination pack, the social domain, schemas and every sink are in the base install. Database clients and the PyG export are extras: `[neo4j]`, `[ladybug]`, `[duckdb]`, `[pyg]`. `graphfaker info` shows which are installed.
 
 Or without a Python environment, as a container ([docs](https://graphfaker.readthedocs.io/en/latest/get-started/docker.html)):
 
@@ -98,6 +98,7 @@ run = fraud.generate(scale=0.01, hardness="medium", seed=42)                    
 |---|---|---|
 | `social` | people, places, organizations, events and products; a few hubs and many quiet nodes, friends who know each other's friends, communities whose members are alike, organizations as big as their headcount | `GraphFaker.generate_graph(source="faker")` or `graphfaker generate social` |
 | `fraud` | a bank: customers, accounts, merchants, devices, counterparties; a realistic transaction process; eleven labelled laundering typologies with decoys and a measured hardness | `graphfaker fraud` or `graphfaker generate fraud` |
+| `coordination` | a social platform: accounts, topics, devices; follows, posts, reshares and replies over time; eight labelled coordination playbooks, **organic bursts that look exactly like them**, and a measured tradecraft level | `graphfaker generate coordination` |
 | your own | a `GraphSchema`, or a process with injected patterns | [docs/adding-a-domain.md](docs/adding-a-domain.md) |
 
 Real-world sources, loaded rather than generated:

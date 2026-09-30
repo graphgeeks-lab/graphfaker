@@ -110,6 +110,7 @@ GraphFaker
          <a class="gf-doc-kicker" href="domains/index.html">Domains</a>
          <a href="domains/social.html">Social</a>
          <a href="domains/fraud.html">Fraud and AML</a>
+         <a href="domains/coordination.html">Coordinated behaviour</a>
          <a href="domains/real-world.html">Real-world networks</a>
        </div>
        <div class="gf-doc">
