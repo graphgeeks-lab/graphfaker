@@ -61,7 +61,33 @@ devices rather than people, places and products.
   sharing was given a tail of its own.
 * 43 tests, including the pack's own thesis as an assertion: a co-occurrence
   detector must flag organic bursts, or the decoys are not doing their job.
-* ``docs/domains/coordination.md``.
+* A PyTorch Geometric export for the pack, via the existing ``pyg`` sink:
+  ``--sink pyg``, ``to_hetero_data`` and ``from_directory`` all work on a
+  coordination dataset. Account carries ``y`` (coordinated), ``decoy``
+  (organic) and stratified splits; ``POSTED``, ``RESHARED`` and ``REPLIED``
+  carry ``y`` and ``edge_time``; ``community`` is a latent tensor rather than a
+  feature.
+* The sink's label rules are now a convention rather than the fraud pack's
+  column names: a truth frame keyed by ``<entity>_id`` with a single boolean
+  column labels those entities. ``accounts.is_fraud`` and
+  ``accounts.is_coordinated`` both work, and a third domain following the same
+  shape gets labels without touching the module. Identifiers and foreign keys
+  are kept out of edge attributes — the coordination pack's interaction edges
+  carry the topic they are about, which one-hot encoded to 48 columns and would
+  reach thousands at scale. Matching a label frame on values alone picked
+  ``campaigns.topic``, which holds real Topic ids next to a boolean, and
+  labelled every topic; the id column now has to end in ``_id`` as well.
+* ``examples/coordination_pyg_baseline.py``: a heterogeneous GraphSAGE against
+  a logistic regression on account features alone, at all three tradecraft
+  levels. The graph helps everywhere — average precision more than doubles at
+  ``medium``, 0.101 to 0.243 — and it **flags three times as many organic
+  accounts**, 4.0% against 12.0%, because it buys its power by learning
+  "tightly connected group acting together" and a fan club is exactly that.
+  Measuring AUC alone says "graphs win", which is true and incomplete; that gap
+  is what the organic decoys exist to make visible. The baseline reports the
+  organic share at a fixed operating point, so two models with different score
+  distributions compare fairly.
+* ``docs/domains/coordination.md``; ``docs/pyg.md`` covers both packs.
 
 1.0.1 (unreleased)
 ------------------

@@ -114,6 +114,50 @@ Three things worth reading off it.
 
 **`fresh + active` scores zero at `low`** — the setting where every campaign account *is* fresh. At `low`, `activity_camouflage` is 0, so campaign accounts carry no ordinary activity and are therefore not "active". A conjunction of two signals can fail precisely where each one alone is strongest, which is the kind of thing a scored harness shows and intuition does not.
 
+## Training a GNN on it
+
+```bash
+graphfaker generate coordination --scale 0.002 --tradecraft medium --seed 42 --sink pyg --out ./platform
+python examples/coordination_pyg_baseline.py --scale 0.002
+```
+
+`--sink pyg` writes `graph.pt`: a `HeteroData` with features on every node
+type, `community` as a latent tensor, `y` and `decoy` plus stratified splits on
+Account, and `y` and `edge_time` on the three event channels. `FOLLOWS` and
+`USES` carry no labels, because the truth says nothing about them.
+
+Measured at `scale=0.002`, seed 42, two-layer heterogeneous GraphSAGE against a
+logistic regression on the account features alone:
+
+| tradecraft | model | AUC | AP | organic accounts flagged |
+|---|---|---|---|---|
+| low | features only | 0.932 | 0.536 | — (no decoys at `low`) |
+| low | features + graph | **0.964** | **0.785** | — |
+| medium | features only | 0.680 | 0.101 | 4.0% |
+| medium | features + graph | **0.791** | **0.243** | **12.0%** |
+| high | features only | 0.590 | 0.050 | 2.6% |
+| high | features + graph | **0.696** | **0.082** | **7.7%** |
+
+Three readings.
+
+**The graph helps at every level**, and helps most where it matters: average
+precision more than doubles at `medium`. A campaign is defined by who acts with
+whom, so an account's own attributes say very little — which is why the
+features-only row is the control worth having.
+
+**Tradecraft degrades it as designed.** The graph model falls from 0.964 to
+0.696 AUC, and its average precision from 0.785 to 0.082.
+
+**The graph model flags three times as many organic accounts.** At `medium` it
+goes from 4.0% to 12.0%. It buys its detection power by learning "tightly
+connected group acting together", and that is exactly what a fan club is. This
+is the finding the decoys exist to produce: measure AUC alone and the
+conclusion is "graphs win", which is true and incomplete.
+
+The organic column is computed at a fixed operating point — each model is asked
+for as many accounts as there are real campaign members — so two models with
+different score distributions are compared fairly.
+
 ## Ground truth
 
 | table | contents |

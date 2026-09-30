@@ -104,7 +104,7 @@ GraphFaker
          <a href="fraud-generation.html">How the fraud graph is generated</a>
          <a href="methods.html">Ways to generate synthetic graphs</a>
          <a href="adding-a-domain.html">Adding a domain</a>
-         <a href="pyg.html">Training a GNN on the bank</a>
+         <a href="pyg.html">Training a GNN</a>
        </div>
        <div class="gf-doc">
          <a class="gf-doc-kicker" href="domains/index.html">Domains</a>
