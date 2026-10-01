@@ -64,7 +64,12 @@ dependencies = [
   "requests>=2.32.3",
   "tqdm>=4.66.0",
   "typer",
-  "urllib3>=2.8.0",  # 2.8.0 fixes PYSEC-2026-4175/4176/4177
+  # >=2.8.0 for PYSEC-2026-4175/4176/4177 (CVE-2026-97688, CVE-2026-97689 and
+  # the redirect one): the first two are in the chunked streaming path, which
+  # is how the flights fetcher downloads the BTS zip (requests.get(...,
+  # stream=True)). One can hang on a crafted deflate response, the other
+  # buffers an unbounded chunk-size line.
+  "urllib3>=2.8.0",
   "wikipedia>=1.4.0",
 ]
 
