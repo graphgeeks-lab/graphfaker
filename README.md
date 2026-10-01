@@ -435,7 +435,7 @@ At `scale=0.1` the time splits roughly 57% node attributes, 38% the transaction 
 
 Memory: the transaction process works a block of accounts at a time and the channels are assembled without a second copy, so the peak is about twice the size of the final tables: on Windows 2.5 GB at `scale=0.1`, 5.2 GB at `scale=0.3` and 15 GB at `scale=1.0` (0.6.0 needed 32 GB). A full-size bank fits a 16 GB machine with little else running; 32 GB is comfortable. macOS reports lower peaks for the same runs because it compresses idle pages out of the resident set, so size from the Windows numbers.
 
-Two other limits are unchanged. The social topology model is sequential and suits graphs up to about a million edges. Balances are not tracked as a running ledger, so an account's balance is a starting attribute rather than the sum of its transactions.
+Two other limits are unchanged. The social topology model is sequential and suits graphs up to about a million edges, which takes about 105 s (122,000 edges in 6.8 s). Balances are not tracked as a running ledger, so an account's balance is a starting attribute rather than the sum of its transactions.
 
 Datasets changed in 0.6.0: a run is still a pure function of its seed and shard size, but the attribute values differ from 0.5.0's for the same seed, because columns now come from the shard's numpy stream rather than from Faker's call sequence, and edge counts move by about 0.15% as a consequence. Structure and distributions are unchanged.
 

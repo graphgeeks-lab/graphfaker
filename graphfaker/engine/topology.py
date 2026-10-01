@@ -120,11 +120,24 @@ class SocialEdgeBuilder:
     def _edge_attributes(self, rel: Relationship) -> dict[str, Any]:
         return {name: draw(sampler, self.ctx, 0) for name, sampler in rel.attributes.items()}
 
-    def _add(self, G: nx.DiGraph, source: Any, target: Any, rel: Relationship) -> None:
+    def _add(self, G: nx.DiGraph, source: Any, target: Any, rel: Relationship) -> int:
+        """Add the edge, and the reverse one if the relationship is
+        bidirectional, and return how many edges that actually added.
+
+        The count is the caller's budget, and it has to be the number of new
+        edges rather than the number of calls, because re-adding an existing
+        pair only updates its attributes. ``has_edge`` is a dict lookup;
+        ``number_of_edges`` sums the degree of every node, which inside this
+        loop made edge building quadratic in the graph.
+        """
         attrs = self._edge_attributes(rel)
+        added = 0 if G.has_edge(source, target) else 1
         G.add_edge(source, target, relationship=rel.name, **attrs)
         if rel.bidirectional:
+            if not G.has_edge(target, source):
+                added += 1
             G.add_edge(target, source, relationship=rel.name, **attrs)
+        return added
 
     def build(self, G: nx.DiGraph) -> None:
         schema, model = self.schema, self.model
@@ -176,7 +189,6 @@ class SocialEdgeBuilder:
             while added < num_edges and attempts < num_edges * 8 + 32:
                 attempts += 1
                 index += 1
-                before = G.number_of_edges()
                 rel = self.rand.choice(edge.relationships)
 
                 if not self.realistic:
@@ -229,8 +241,7 @@ class SocialEdgeBuilder:
                 if target is None or source == target:
                     continue
 
-                self._add(G, source, target, rel)
-                added += G.number_of_edges() - before
+                added += self._add(G, source, target, rel)
 
                 if self.realistic:
                     pools[edge.source].record(source)
@@ -272,10 +283,13 @@ class SocialEdgeBuilder:
         for edge, usable in repeatable:
             reachable_as_target.setdefault(edge.target, []).append((edge.source, usable))
 
+        edge_count = G.number_of_edges()
+
         def connect(source: Any, target: Any, rel: Relationship) -> bool:
+            nonlocal edge_count
             if source is None or target is None or source == target or G.has_edge(source, target):
                 return False
-            self._add(G, source, target, rel)
+            edge_count += self._add(G, source, target, rel)
             pools[G.nodes[source]["type"]].record(source)
             pools[G.nodes[target]["type"]].record(target)
             neighbours[source][target] = None
@@ -294,7 +308,7 @@ class SocialEdgeBuilder:
 
         weights = [edge.share for edge, _ in repeatable]
         attempts, limit = 0, max(200, 12 * total_edges)
-        while G.number_of_edges() < total_edges and attempts < limit:
+        while edge_count < total_edges and attempts < limit:
             attempts += 1
             edge, usable = self.rand.choices(repeatable, weights)[0]
             source = pools[edge.source].sample(self.rand)
@@ -309,7 +323,7 @@ class SocialEdgeBuilder:
 
         logger.debug(
             "edges: %d after top-up (%d requested, %d attempts)",
-            G.number_of_edges(),
+            edge_count,
             total_edges,
             attempts,
         )

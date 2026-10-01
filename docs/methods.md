@@ -16,7 +16,7 @@ These generate structure from a handful of parameters. They are well understood,
 | LFR benchmark | communities plus heavy-tailed degrees and community sizes | attributes, time |
 | R-MAT, Kronecker | scale-free graphs at billions of edges by recursive sampling; used by Graph500 | realistic clustering, attributes |
 
-**In GraphFaker.** The `social` topology model combines preferential attachment, triadic closure and homophily over latent groups, formed one edge at a time. It gives heavy tails, clustering and recoverable communities together, and it can look at attributes when choosing partners, which the models above cannot. The cost is that it is sequential and runs on a NetworkX graph, so it is the right tool up to about a million edges. `uniform` is Erdős–Rényi and exists for comparison.
+**In GraphFaker.** The `social` topology model combines preferential attachment, triadic closure and homophily over latent groups, formed one edge at a time. It gives heavy tails, clustering and recoverable communities together, and it can look at attributes when choosing partners, which the models above cannot. The cost is that it is sequential and runs on a NetworkX graph, so it is the right tool up to about a million edges (105 s on a 2019 laptop, 6.8 s for 122,000). `uniform` is Erdős–Rényi and exists for comparison.
 
 **Planned.** Chung-Lu, stochastic block and bipartite degree-sequence models as further topology models, implemented on integer arrays for graphs that do not fit an object graph. The realism metrics are computed from the edge table, so the two kinds of model can be compared on the same numbers.
 

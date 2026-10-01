@@ -50,7 +50,7 @@ Two rules keep the result sensible. Relationships marked `functional` (LIVES_IN,
 
 Edge attributes are sampled per edge from the relationship's samplers.
 
-The social model is sequential and runs on a NetworkX graph. It is the right tool up to about a million edges; [methods.md](methods.md) says what to use beyond that.
+The social model is sequential and runs on a NetworkX graph. It is the right tool up to about a million edges, which takes under two minutes; [methods.md](methods.md) says what to use beyond that.
 
 ## Step 4: derived attributes
 

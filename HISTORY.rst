@@ -2,6 +2,11 @@
 History
 =======
 
+1.0.1 (unreleased)
+------------------
+
+* The social topology model is 30 times faster and no longer quadratic in the graph. Edge building asked networkx for ``number_of_edges()`` twice per attempt to count its budget, and that call sums the degree of every node, so the cost grew with nodes times edges: at 2,000 nodes and 12,000 edges it was 96% of the run. The count now comes from the add itself, which is a dict lookup. ``social`` at 2,000 nodes and 12,000 edges went from 22.4 s to 0.65 s, 20,000 nodes and 122,000 edges takes 6.8 s, and a million edges is about 105 s where it was not practical before. Datasets are unchanged: same seed, same fingerprint.
+
 1.0.0 (2026-09-23)
 ------------------
 
