@@ -35,6 +35,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from graphfaker.schema.patterns import Camouflage, PatternCatalog, PatternSpec
+
 Tradecraft = Literal["low", "medium", "high"]
 
 #: Base sizes at scale 1.0. A platform sees far more events per account than a
@@ -47,71 +49,50 @@ BASE_CAMPAIGNS = 1_000
 #: coordination *shape* documented in the open literature on influence
 #: operations; none of them is a recipe for running one, and none of them
 #: generates message content beyond a template id.
-PLAYBOOKS = (
-    "copypasta",
-    "amplification_ring",
-    "reply_brigade",
-    "follow_farm",
-    "hashtag_flood",
-    "sockpuppet_cluster",
-    "astroturf_campaign",
-    "account_handover",
+#: What the pack injects: the eight inauthentic playbooks with their share of
+#: the campaign budget and their natural span in days before
+#: ``timing_jitter_hours`` stretches it, then the three organic decoys, each
+#: naming the playbook it imitates. The order is the order campaigns are
+#: allocated and injected, and a seed only reproduces a dataset because of it.
+#:
+#: Each playbook is a coordination *shape* documented in the open literature
+#: on influence operations; none of them is a recipe for running one, and none
+#: generates message content beyond a template id.
+CATALOG = PatternCatalog(
+    base=BASE_CAMPAIGNS,
+    floor=2,
+    patterns=[
+        PatternSpec(name="copypasta", share=0.16, span_days=0.05),
+        PatternSpec(name="amplification_ring", share=0.16, span_days=0.2),
+        PatternSpec(name="reply_brigade", share=0.12, span_days=0.1),
+        PatternSpec(name="follow_farm", share=0.12, span_days=2.0),
+        PatternSpec(name="hashtag_flood", share=0.14, span_days=0.3),
+        PatternSpec(name="sockpuppet_cluster", share=0.12, span_days=5.0),
+        PatternSpec(name="astroturf_campaign", share=0.10, span_days=30.0),
+        PatternSpec(name="account_handover", share=0.08, span_days=10.0),
+        # The organic twins. A fandom reacting to a release and a paid
+        # amplification ring are structurally the same thing, so a dataset
+        # whose only labelled structures are inauthentic rewards any detector
+        # that fires on synchrony, which is the detector that suspends fan
+        # clubs. Each decoy is matched to the playbook it imitates on the
+        # properties that are not the point, chiefly posting volume.
+        PatternSpec(name="fandom_burst", imitates="hashtag_flood", span_days=0.3),
+        PatternSpec(name="breaking_news", imitates="copypasta", span_days=0.15),
+        PatternSpec(name="mutual_follow_community", imitates="follow_farm", span_days=20.0),
+    ],
 )
 
-#: Legitimate structures with the same shape as a playbook. These are the
-#: point of the pack: flagging one is a false positive.
-DECOY_PLAYBOOKS = (
-    "fandom_burst",
-    "breaking_news",
-    "mutual_follow_community",
-)
-
+#: The inauthentic playbooks, in allocation order.
+PLAYBOOKS = CATALOG.injected
+#: The organic structures, which are labelled ``is_coordinated=False``.
+DECOY_PLAYBOOKS = CATALOG.decoys
 #: Which inauthentic playbook each decoy is the twin of, for the hardness
 #: report: a decoy is only doing its job if it is hard to separate from its
 #: twin.
-#:
-#: Paired on volume, which is the property that is *not* the point. A fandom
-#: posting five times each against a copypasta ring posting once each is
-#: separable by post count alone, and post count is not the distinction a
-#: detector should have to get right. So the repeated-posting decoy is paired
-#: with the repeated-posting playbook and the post-once decoy with the
-#: post-once playbook, leaving text, timing and structure as the real question.
-DECOY_TWIN = {
-    "fandom_burst": "hashtag_flood",
-    "breaking_news": "copypasta",
-    "mutual_follow_community": "follow_farm",
-}
-
-#: Relative frequency of each playbook when counts come from scale.
-PLAYBOOK_MIX = {
-    "copypasta": 0.16,
-    "amplification_ring": 0.16,
-    "reply_brigade": 0.12,
-    "follow_farm": 0.12,
-    "hashtag_flood": 0.14,
-    "sockpuppet_cluster": 0.12,
-    "astroturf_campaign": 0.10,
-    "account_handover": 0.08,
-}
-
-#: Natural span in days at ``timing_jitter_hours`` = 1. A copypasta burst is
-#: minutes; an astroturf campaign runs for weeks.
-NATURAL_SPAN = {
-    "copypasta": 0.05,
-    "amplification_ring": 0.2,
-    "reply_brigade": 0.1,
-    "follow_farm": 2.0,
-    "hashtag_flood": 0.3,
-    "sockpuppet_cluster": 5.0,
-    "astroturf_campaign": 30.0,
-    "account_handover": 10.0,
-    "fandom_burst": 0.3,
-    "breaking_news": 0.15,
-    "mutual_follow_community": 20.0,
-}
+DECOY_TWIN = CATALOG.twins
 
 
-class TradecraftProfile(BaseModel):
+class TradecraftProfile(Camouflage):
     """What a tradecraft level does to injected campaigns.
 
     ``text_blend``: 0 leaves every account in a burst posting the same template
@@ -148,21 +129,26 @@ class TradecraftProfile(BaseModel):
         lever that keeps cluster size from being a giveaway.
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    text_blend: float = Field(ge=0.0, le=1.0)
-    timing_jitter_hours: float = Field(gt=0.0)
-    activity_camouflage: float = Field(ge=0.0, le=1.0)
-    overlap: float = Field(ge=0.0, le=1.0)
-    decoy_ratio: float = Field(ge=0.0)
+    #: How aged the campaign's accounts are. This dial is the platform's
+    #: own: a bloc of same-day signups has no equivalent in a bank.
     account_age_blend: float = Field(ge=0.0, le=1.0)
-    size_scale: float = Field(default=1.0, gt=0.0, le=1.0)
+
+    #: The shared dials are :class:`~graphfaker.schema.patterns.Camouflage`;
+    #: these names are what a platform reader calls them. On a platform the
+    #: signature is the text, so ``text_blend`` is the signature blend.
+    @property
+    def text_blend(self) -> float:
+        return self.signature_blend
+
+    @property
+    def timing_jitter_hours(self) -> float:
+        return self.timing_spread
 
 
 TRADECRAFT_PROFILES: dict[str, TradecraftProfile] = {
     "low": TradecraftProfile(
-        text_blend=0.0,
-        timing_jitter_hours=0.05,
+        signature_blend=0.0,
+        timing_spread=0.05,
         activity_camouflage=0.0,
         overlap=0.0,
         decoy_ratio=0.0,
@@ -170,8 +156,8 @@ TRADECRAFT_PROFILES: dict[str, TradecraftProfile] = {
         size_scale=1.0,
     ),
     "medium": TradecraftProfile(
-        text_blend=0.5,
-        timing_jitter_hours=6.0,
+        signature_blend=0.5,
+        timing_spread=6.0,
         activity_camouflage=0.6,
         overlap=0.2,
         decoy_ratio=0.5,
@@ -179,8 +165,8 @@ TRADECRAFT_PROFILES: dict[str, TradecraftProfile] = {
         size_scale=0.75,
     ),
     "high": TradecraftProfile(
-        text_blend=0.9,
-        timing_jitter_hours=72.0,
+        signature_blend=0.9,
+        timing_spread=72.0,
         activity_camouflage=1.0,
         overlap=0.4,
         decoy_ratio=1.0,
@@ -189,21 +175,6 @@ TRADECRAFT_PROFILES: dict[str, TradecraftProfile] = {
     ),
 }
 
-
-def _largest_remainder(total: int, mix: dict[str, float], floor: int) -> dict[str, int]:
-    """Allocate ``total`` across ``mix`` proportionally, every key at least
-    ``floor``, remainders to the largest fractional parts."""
-    counts = dict.fromkeys(mix, floor)
-    remaining = total - floor * len(mix)
-    if remaining <= 0:
-        return counts
-    exact = {name: remaining * share for name, share in mix.items()}
-    for name, value in exact.items():
-        counts[name] += int(value)
-    leftover = remaining - sum(int(v) for v in exact.values())
-    for name in sorted(exact, key=lambda n: exact[n] - int(exact[n]), reverse=True)[:leftover]:
-        counts[name] += 1
-    return counts
 
 
 class CoordinationConfig(BaseModel):
@@ -261,13 +232,13 @@ class CoordinationConfig(BaseModel):
             return sum(self.campaigns.values())
         # At least two of every playbook, so a small dataset still covers the
         # catalogue.
-        return max(2 * len(PLAYBOOKS), int(BASE_CAMPAIGNS * self.scale))
+        return CATALOG.total(self.scale)
 
     @property
     def campaign_counts(self) -> dict[str, int]:
         if self.campaigns is not None:
             return {name: self.campaigns.get(name, 0) for name in PLAYBOOKS}
-        return _largest_remainder(self.num_campaigns, PLAYBOOK_MIX, floor=2)
+        return CATALOG.counts(self.num_campaigns)
 
     @property
     def profile(self) -> TradecraftProfile:

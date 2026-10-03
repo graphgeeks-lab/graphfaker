@@ -6,7 +6,23 @@ History
 ------------------
 
 The coordination domain pack: a social platform, and the coordinated behaviour
-inside it.
+inside it. And the machinery both packs inject patterns with, lifted out of
+them into the schema and the engine.
+
+* ``Pattern`` and the injection driver moved into the engine, and a domain's
+  pattern catalogue into the schema. ``graphfaker.schema.PatternCatalog`` and
+  ``PatternSpec`` declare what a pack injects: every shape with its share of
+  the budget, its natural span, and, for a decoy, the shape it imitates.
+  ``Camouflage`` is the set of dials every pack has (signature blend, timing
+  spread, overlap, decoy ratio, activity camouflage, size scale), which
+  ``HardnessProfile`` and ``TradecraftProfile`` now subclass and rename to
+  their own vocabulary. ``graphfaker.engine.injection`` holds the shared
+  bookkeeping: the pattern record, the recruitment ledger, the budget
+  allocator, the decoy orders and the driver loop that runs a catalogue. The
+  fraud and coordination packs keep their own drawing and lose about 200 lines
+  of duplicated machinery between them, including two byte-identical copies of
+  the budget allocator. Datasets are unchanged: the same seed gives the same
+  fingerprint in both packs at every hardness and tradecraft level.
 
 The social domain has been a ``GraphSchema`` preset since 0.5 and nothing more:
 entities and a topology, one latent factor as its only ground truth, and no

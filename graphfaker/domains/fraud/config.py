@@ -17,6 +17,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from graphfaker.schema.patterns import Camouflage, PatternCatalog, PatternSpec
+
 Hardness = Literal["low", "medium", "high"]
 
 #: Base sizes at scale 1.0.
@@ -24,38 +26,45 @@ BASE_ACCOUNTS = 10_000_000
 BASE_TRANSACTIONS = 90_000_000
 BASE_PATTERNS = 1_000
 
-#: Every typology the pack can inject, in the order patterns are allocated.
-TYPOLOGIES = (
-    "fan_in",
-    "fan_out",
-    "gather_scatter",
-    "scatter_gather",
-    "cycle",
-    "stack",
-    "bipartite",
-    "structuring",
-    "mule_network",
-    "bust_out",
-    "synthetic_identity",
+#: What the pack injects: every typology with its share of the budget and its
+#: natural span in days before ``timing_spread_days`` stretches it, then the
+#: three decoys, each naming the typology it imitates. The order is the order
+#: patterns are allocated and injected, and it is part of what a seed
+#: reproduces.
+#:
+#: The catalogue is the AMLworld set (fan-in, fan-out, gather-scatter,
+#: scatter-gather, cycle, stack, bipartite) plus the behaviours banks file
+#: suspicious activity reports on.
+CATALOG = PatternCatalog(
+    base=BASE_PATTERNS,
+    floor=2,
+    patterns=[
+        PatternSpec(name="fan_in", share=0.14, span_days=2.0),
+        PatternSpec(name="fan_out", share=0.12, span_days=1.0),
+        PatternSpec(name="gather_scatter", share=0.10, span_days=3.0),
+        PatternSpec(name="scatter_gather", share=0.10, span_days=3.0),
+        PatternSpec(name="cycle", share=0.10, span_days=2.0),
+        PatternSpec(name="stack", share=0.08, span_days=2.0),
+        PatternSpec(name="bipartite", share=0.06, span_days=3.0),
+        PatternSpec(name="structuring", share=0.10, span_days=10.0),
+        PatternSpec(name="mule_network", share=0.08, span_days=1.0),
+        PatternSpec(name="bust_out", share=0.06, span_days=60.0),
+        PatternSpec(name="synthetic_identity", share=0.06, span_days=20.0),
+        # Legitimate structures with the same shape, labelled as such. Money
+        # does move in circles between honest people, and groups of friends
+        # do all pay one person.
+        PatternSpec(name="decoy_fan_in", imitates="fan_in", span_days=2.0),
+        PatternSpec(name="decoy_fan_out", imitates="fan_out", span_days=1.0),
+        PatternSpec(name="decoy_cycle", imitates="cycle", span_days=2.0),
+    ],
 )
 
-#: Relative frequency of each typology when counts are derived from scale.
-TYPOLOGY_MIX = {
-    "fan_in": 0.14,
-    "fan_out": 0.12,
-    "gather_scatter": 0.10,
-    "scatter_gather": 0.10,
-    "cycle": 0.10,
-    "stack": 0.08,
-    "bipartite": 0.06,
-    "structuring": 0.10,
-    "mule_network": 0.08,
-    "bust_out": 0.06,
-    "synthetic_identity": 0.06,
-}
+#: The injectable typologies, in allocation order. Kept as a name because it
+#: reads better than ``CATALOG.injected`` at the call sites that loop over it.
+TYPOLOGIES = CATALOG.injected
 
 
-class HardnessProfile(BaseModel):
+class HardnessProfile(Camouflage):
     """What a hardness level does to injected patterns.
 
     ``amount_blend``: 0 keeps a typology's signature amounts (round, near a
@@ -85,58 +94,48 @@ class HardnessProfile(BaseModel):
     under the radar, and how ``high`` keeps degree from being a giveaway.
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    #: The dials are :class:`~graphfaker.schema.patterns.Camouflage`; these
+    #: names are what a fraud reader calls them. ``amount_blend`` is the
+    #: signature blend, because in a bank the signature is the amount.
+    @property
+    def amount_blend(self) -> float:
+        return self.signature_blend
 
-    amount_blend: float = Field(ge=0.0, le=1.0)
-    timing_spread_days: float = Field(gt=0.0)
-    ring_overlap: float = Field(ge=0.0, le=1.0)
-    decoy_ratio: float = Field(ge=0.0)
-    activity_camouflage: float = Field(ge=0.0, le=1.0)
-    size_scale: float = Field(default=1.0, gt=0.0, le=1.0)
+    @property
+    def timing_spread_days(self) -> float:
+        return self.timing_spread
+
+    @property
+    def ring_overlap(self) -> float:
+        return self.overlap
 
 
 HARDNESS_PROFILES: dict[str, HardnessProfile] = {
     "low": HardnessProfile(
-        amount_blend=0.0,
-        timing_spread_days=0.1,
-        ring_overlap=0.0,
+        signature_blend=0.0,
+        timing_spread=0.1,
+        overlap=0.0,
         decoy_ratio=0.0,
         activity_camouflage=0.0,
         size_scale=1.0,
     ),
     "medium": HardnessProfile(
-        amount_blend=0.5,
-        timing_spread_days=3.0,
-        ring_overlap=0.2,
+        signature_blend=0.5,
+        timing_spread=3.0,
+        overlap=0.2,
         decoy_ratio=0.5,
         activity_camouflage=0.6,
         size_scale=0.75,
     ),
     "high": HardnessProfile(
-        amount_blend=0.9,
-        timing_spread_days=14.0,
-        ring_overlap=0.4,
+        signature_blend=0.9,
+        timing_spread=14.0,
+        overlap=0.4,
         decoy_ratio=1.0,
         activity_camouflage=1.0,
         size_scale=0.5,
     ),
 }
-
-
-def _largest_remainder(total: int, mix: dict[str, float], floor: int) -> dict[str, int]:
-    """Allocate ``total`` across ``mix`` proportionally, every key at least
-    ``floor``, remainders to the largest fractional parts."""
-    counts = dict.fromkeys(mix, floor)
-    remaining = total - floor * len(mix)
-    if remaining <= 0:
-        return counts
-    exact = {name: remaining * share for name, share in mix.items()}
-    for name, value in exact.items():
-        counts[name] += int(value)
-    leftover = remaining - sum(int(v) for v in exact.values())
-    for name in sorted(exact, key=lambda n: exact[n] - int(exact[n]), reverse=True)[:leftover]:
-        counts[name] += 1
-    return counts
 
 
 class FraudConfig(BaseModel):
@@ -153,7 +152,7 @@ class FraudConfig(BaseModel):
     #: Reporting threshold structuring stays under (USD CTR threshold).
     reporting_threshold: float = 10_000.0
     #: Override the number of patterns per typology. ``None`` derives them
-    #: from scale with :data:`TYPOLOGY_MIX`.
+    #: from scale with the shares in :data:`CATALOG`.
     patterns: dict[str, int] | None = None
     #: Latent regions; attributes and partner choice are conditioned on them.
     regions: int = Field(default=8, ge=1)
@@ -195,13 +194,13 @@ class FraudConfig(BaseModel):
             return sum(self.patterns.values())
         # At least two of every typology, so small datasets still cover the
         # catalog; gen-fraud-graph's floor of 10 would leave most at zero.
-        return max(2 * len(TYPOLOGIES), int(BASE_PATTERNS * self.scale))
+        return CATALOG.total(self.scale)
 
     @property
     def pattern_counts(self) -> dict[str, int]:
         if self.patterns is not None:
             return {name: self.patterns.get(name, 0) for name in TYPOLOGIES}
-        return _largest_remainder(self.num_patterns, TYPOLOGY_MIX, floor=2)
+        return CATALOG.counts(self.num_patterns)
 
     @property
     def profile(self) -> HardnessProfile:

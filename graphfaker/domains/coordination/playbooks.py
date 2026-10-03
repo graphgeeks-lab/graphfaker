@@ -26,15 +26,13 @@ does not need.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import polars as pl
 
 from graphfaker.domains.coordination.config import (
-    DECOY_PLAYBOOKS,
-    NATURAL_SPAN,
-    PLAYBOOKS,
+    CATALOG,
     CoordinationConfig,
     TradecraftProfile,
 )
@@ -45,19 +43,52 @@ from graphfaker.domains.coordination.process import (
     TEMPLATES_PER_TOPIC,
     Population,
 )
+from graphfaker.engine.injection import (
+    InjectionContext,
+    grouped_decoys,
+    run_catalog,
+)
+from graphfaker.engine.injection import Pattern as BasePattern
 
 
 @dataclass
-class Campaign:
-    campaign_id: str
-    playbook: str
-    is_coordinated: bool
-    roles: dict[int, str] = field(default_factory=dict)  # account idx -> role
-    start: np.datetime64 | None = None
-    end: np.datetime64 | None = None
-    n_events: int = 0
-    #: The topic a campaign pushes, where it pushes one.
-    topic: int | None = None
+class Campaign(BasePattern):
+    """One injected campaign, inauthentic or organic.
+
+    The record is :class:`graphfaker.engine.injection.Pattern`; these names
+    are what a platform reader calls its fields. ``campaign_id`` is the
+    pattern id, ``playbook`` the shape, ``is_coordinated`` whether it is the
+    thing being looked for.
+    """
+
+    @property
+    def campaign_id(self) -> str:
+        return self.pattern_id
+
+    @property
+    def playbook(self) -> str:
+        return self.name
+
+    @property
+    def is_coordinated(self) -> bool:
+        return self.labelled
+
+    @property
+    def n_events(self) -> int:
+        return self.events
+
+    @n_events.setter
+    def n_events(self, value: int) -> None:
+        self.events = value
+
+    @property
+    def topic(self) -> int | None:
+        """The topic a campaign pushes, where it pushes one."""
+        return self.extra.get("topic")
+
+    @topic.setter
+    def topic(self, value: int | None) -> None:
+        self.extra["topic"] = value
 
 
 @dataclass
@@ -79,7 +110,15 @@ class Injection:
     dormant_until: dict[int, np.datetime64]
 
 
-class PlaybookContext:
+class PlaybookContext(InjectionContext):
+    """The platform's own drawing on top of the shared pattern bookkeeping.
+
+    What is inherited: the dials, the period, who is already in a campaign,
+    and whether overlap is allowed. What is here: recruiting inside an
+    interest community, template ids, and the event rows, because those are
+    the platform.
+    """
+
     def __init__(
         self,
         rng: np.random.Generator,
@@ -87,16 +126,11 @@ class PlaybookContext:
         config: CoordinationConfig,
         n_devices: int,
     ):
-        self.rng = rng
+        super().__init__(rng, config.profile, CATALOG, pop.period_start, pop.period_days)
         self.pop = pop
         self.config = config
         self.profile: TradecraftProfile = config.profile
         self.n_devices = n_devices
-        self.used: set[int] = set()
-        #: While True, ``pick`` may reuse campaign accounts (cluster overlap).
-        #: Decoys turn it off: an organic fandom must not share members with an
-        #: amplification ring, or its label would be ambiguous.
-        self.allow_overlap = True
 
         # Recruitment is uniform over accounts. Weighting it towards active
         # accounts was tried in the fraud pack as camouflage and measured to do
@@ -110,15 +144,13 @@ class PlaybookContext:
         self.fresh_accounts: dict[int, np.datetime64] = {}
         self.stripped_accounts: set[int] = set()
         self.dormant_until: dict[int, np.datetime64] = {}
-        self.period_start = pop.period_start
-        self.period_end = pop.period_end
 
     # ------------------------------------------------------------- selection
 
     def size(self, base: int, spread: int = 0) -> int:
         """A campaign size, scaled by tradecraft and never below two."""
         drawn = base + (self.rng.integers(0, spread + 1) if spread else 0)
-        return max(2, round(drawn * self.profile.size_scale))
+        return self.scaled(drawn)
 
     def pick(self, count: int, community: int | None = None) -> np.ndarray:
         """Recruit ``count`` accounts.
@@ -163,7 +195,7 @@ class PlaybookContext:
         minutes; at ``high`` it is spread over days and there is no burst left
         to find.
         """
-        span_days = NATURAL_SPAN.get(playbook, 1.0)
+        span_days = self.catalog.span_days(playbook)
         width_s = max(60.0, span_days * 86_400 * (self.profile.timing_jitter_hours / 1.0))
         total = float((self.period_end - self.period_start) / np.timedelta64(1, "s"))
         width_s = min(width_s, max(60.0, total * 0.9))
@@ -590,7 +622,7 @@ def mutual_follow_community(ctx: PlaybookContext, campaign: Campaign) -> None:
     campaign.start, campaign.end = start, start + width
 
 
-PLAYBOOK_FUNCTIONS = {
+PATTERN_FUNCTIONS = {
     "copypasta": copypasta,
     "amplification_ring": amplification_ring,
     "reply_brigade": reply_brigade,
@@ -616,35 +648,15 @@ def inject(
 ) -> Injection:
     """Run every campaign the config asks for, then the organic decoys."""
     ctx = PlaybookContext(rng, pop, config, n_devices)
-    campaigns: list[Campaign] = []
 
-    counts = config.campaign_counts
-    for playbook in PLAYBOOKS:
-        for index in range(counts.get(playbook, 0)):
-            campaign = Campaign(
-                campaign_id=f"{playbook}_{index}", playbook=playbook, is_coordinated=True
-            )
-            PLAYBOOK_FUNCTIONS[playbook](ctx, campaign)
-            if campaign.roles:
-                campaigns.append(campaign)
+    def make(playbook: str, index: int, coordinated: bool) -> Campaign:
+        return Campaign(pattern_id=f"{playbook}_{index}", name=playbook, labelled=coordinated)
 
-    # Decoys last, and without overlap: an organic structure that shared
-    # members with a campaign would have an ambiguous label, and the whole
-    # point of it is to be unambiguously legitimate.
-    ctx.allow_overlap = False
-    total_decoys = round(len(campaigns) * config.profile.decoy_ratio)
-    if total_decoys:
-        per_decoy = max(1, total_decoys // len(DECOY_PLAYBOOKS))
-        for playbook in DECOY_PLAYBOOKS:
-            for index in range(per_decoy):
-                campaign = Campaign(
-                    campaign_id=f"{playbook}_{index}",
-                    playbook=playbook,
-                    is_coordinated=False,
-                )
-                PLAYBOOK_FUNCTIONS[playbook](ctx, campaign)
-                if campaign.roles:
-                    campaigns.append(campaign)
+    # Two passes, because the decoy budget is a fraction of the campaigns that
+    # actually recruited somebody rather than of the ones that were asked for.
+    campaigns = run_catalog(ctx, config.campaign_counts, PATTERN_FUNCTIONS, make, drop_empty=True)
+    decoys = grouped_decoys(CATALOG, round(len(campaigns) * config.profile.decoy_ratio))
+    campaigns += run_catalog(ctx, {}, PATTERN_FUNCTIONS, make, decoys, drop_empty=True)
 
     events: dict[str, pl.DataFrame] = {}
     for channel, rows in ctx.rows.items():

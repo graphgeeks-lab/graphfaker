@@ -1,5 +1,6 @@
 """Declarative graph schemas: node types, samplers, latent factors, edge
-families and topology models. See ``docs/design/synthetic-at-scale.md``."""
+families, topology models, and the catalogue of patterns a domain injects.
+See ``docs/design/synthetic-at-scale.md``."""
 
 from graphfaker.schema.graph import (
     DegreeDerived,
@@ -9,6 +10,11 @@ from graphfaker.schema.graph import (
     NodeType,
     RealismTargets,
     Relationship,
+)
+from graphfaker.schema.patterns import (
+    Camouflage,
+    PatternCatalog,
+    PatternSpec,
 )
 from graphfaker.schema.samplers import (
     BernoulliSampler,
@@ -36,6 +42,7 @@ from graphfaker.schema.topology import (
 
 __all__ = [
     "BernoulliSampler",
+    "Camouflage",
     "CategorySampler",
     "ConstantSampler",
     "DegreeDerived",
@@ -51,6 +58,8 @@ __all__ = [
     "MixtureSampler",
     "NodeType",
     "NumericAffinity",
+    "PatternCatalog",
+    "PatternSpec",
     "PoissonSampler",
     "RealismTargets",
     "ReferenceSampler",
