@@ -32,6 +32,7 @@ TRAILERS = {
 
 social
 fraud
+coordination
 real-world
 ```
 """,
