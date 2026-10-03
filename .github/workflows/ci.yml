@@ -61,6 +61,14 @@ jobs:
           uv run graphfaker fraud --scale 0.001 --seed 42 --out ./bank --sink pyg --no-report --quiet
           test -f bank/graph.pt
           uv run python examples/pyg_baseline.py --scale 0.001 --epochs 5
+      - name: The same, for the coordination pack
+        # Its truth uses different column names (is_coordinated, event_id), so
+        # the label rules being a convention rather than the fraud pack's
+        # schema is the thing this checks.
+        run: |
+          uv run graphfaker generate coordination --scale 0.0004 --seed 42 --out ./platform --sink pyg --quiet
+          test -f platform/graph.pt
+          uv run python examples/coordination_pyg_baseline.py --scale 0.0006 --tradecraft medium --epochs 5
 
   audit:
     name: dependency audit

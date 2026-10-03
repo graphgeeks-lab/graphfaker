@@ -1,4 +1,4 @@
-# Training a GNN on the bank
+# Training a GNN
 
 A generated graph exports to a PyTorch Geometric `HeteroData` in one call, with features encoded, the ground truth as labels, and train, validation and test masks already drawn. This page shows the export, then a baseline that answers the question the dataset exists to ask: how much does the graph help a detector, and how fast does that help fade as the fraud gets harder?
 
@@ -38,10 +38,10 @@ Features (`x`) are built per table from the columns a model can use: numeric col
 
 Latent factors are treated differently. `region` (and `community` in the social graph) is the hidden variable the generator drew attributes and edges from; putting it in `x` would hand a model the answer to the very correlations it is supposed to learn. It is attached as its own tensor (`data["Account"].region`) so it can serve as a label for community recovery and never as a feature.
 
-Labels come from the truth:
+Labels come from the truth, and the rule is a convention rather than one pack's column names: **a truth frame keyed by `<entity>_id` with a single boolean column labels those entities.** The fraud pack writes `accounts.is_fraud` and `transactions.is_fraud`; the coordination pack writes `accounts.is_coordinated` and `events.is_coordinated`; a third pack that follows the same shape gets labels without touching this module.
 
 - `data["Account"].y` is 1 for an account that takes part in a fraud pattern, 0 otherwise. `decoy` is 1 for an account whose only patterns are legitimate look-alikes (a business paying salaries has the shape of a fan-out); flagging it is a false positive, and the decoys are there so that a model is measured on that.
-- Every relationship with a `tx_id` carries `y` (1 for an injected fraud transaction) and `edge_time` in seconds, so edge-level and temporal experiments have what they need.
+- A relationship carrying an `*_id` column that a truth frame also carries gets `y` from that frame (1 for an injected fraud transaction, or a coordinated post, reshare or reply), and `edge_time` in seconds wherever there is a timestamp, so edge-level and temporal experiments have what they need. Structural relationships the truth says nothing about — `OWNS`, `USES`, `FOLLOWS` — carry no labels.
 - `train_mask`, `val_mask` and `test_mask` split the labelled node type 60/20/20, stratified so the rare positive class is present in every part, from the `seed` you pass. The same seed gives the same split on any machine.
 
 `--blind` (or `truth=None`) produces the same tensors without `y`, `decoy` or the masks, for a dataset that is handed to someone else to score.
@@ -67,6 +67,30 @@ At scale 0.002 (20,000 accounts), seed 42, 60 epochs on a laptop CPU:
 Three things to read off this table. Account attributes on their own say nothing about who launders money (AUC at chance), which is by construction: the fraud pack recruits ordinary accounts, so the signal is in what they do, not who they are. The graph carries that signal, and at low hardness a plain GraphSAGE finds nearly all of it from structure alone. And hardness does what it is meant to: the same model, the same size, the same seed, goes from a near-perfect detector to one that is barely better than chance as ring sizes shrink, amounts blend into the legitimate tail and timing spreads out. Average precision falls faster than AUC, which is the number that matters at a 0.4% base rate.
 
 The `high` row is also a reminder to read small numbers carefully: 71 positive accounts leaves 14 in the test split, and the validation AUC during training sat near 0.77, so a single run at that size says "hard", not "0.56". For a paper, repeat over seeds and report the spread; the generator makes that cheap.
+
+## The coordination pack
+
+The same export, the same call, a different graph:
+
+```bash
+graphfaker generate coordination --scale 0.002 --tradecraft medium --seed 42 --out ./platform --sink pyg
+python examples/coordination_pyg_baseline.py --scale 0.002
+```
+
+Coordination is a better fit for a GNN than fraud is, because a campaign is *defined* by who acts with whom: an account's own attributes barely say anything, so the features-only control is genuinely weak and the graph has more to add.
+
+Measured at `scale=0.002`, seed 42:
+
+| tradecraft | model | AUC | AP | organic accounts flagged |
+|---|---|---|---|---|
+| low | features only | 0.932 | 0.536 | — |
+| low | features + graph | 0.964 | 0.785 | — |
+| medium | features only | 0.680 | 0.101 | 4.0% |
+| medium | features + graph | 0.791 | 0.243 | 12.0% |
+| high | features only | 0.590 | 0.050 | 2.6% |
+| high | features + graph | 0.696 | 0.082 | 7.7% |
+
+The graph helps at every level and average precision more than doubles at `medium`. It also **flags three times as many organic accounts**: the model buys its power by learning "tightly connected group acting together", and a fan club is exactly that. Measuring AUC alone gives "graphs win", which is true and incomplete — and that gap is what the coordination pack's organic decoys exist to make visible. [The coordination domain](domains/coordination.md) has the detail.
 
 ## What to try next
 

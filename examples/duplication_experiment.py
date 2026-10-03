@@ -341,7 +341,7 @@ def main() -> None:
     for name, adapter in ADAPTERS.items():
         try:
             graph = adapter(corpus)
-        except Exception as error:  # noqa: BLE001 - one bad adapter must not end the run
+        except Exception as error:
             print(f"  {name}: FAILED ({type(error).__name__}: {error})")
             skipped.append(f"{name} (error: {type(error).__name__})")
             continue

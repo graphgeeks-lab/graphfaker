@@ -159,3 +159,108 @@ def test_hetero_data_round_trip(run, tmp_path):
     run.write(tmp_path / "bank")
     again = from_directory(tmp_path / "bank", seed=1)
     assert torch.equal(again["Account"].y, data["Account"].y)
+
+
+# ------------------------------------------------------- other domain packs
+#
+# The label rules are a convention, not fraud's column names: a truth frame
+# keyed by ``<entity>_id`` with one boolean column labels those entities. These
+# assert the convention holds for a second pack, because the alternative is
+# discovering it does not when someone adds a third.
+
+
+@pytest.fixture(scope="module")
+def coordination_run():
+    from graphfaker.domains import coordination
+
+    return coordination.generate(scale=0.0006, tradecraft="medium", seed=3)
+
+
+@pytest.fixture(scope="module")
+def coordination_built(coordination_run):
+    return arrays(coordination_run.tables, coordination_run.truth, seed=3)
+
+
+def test_coordination_node_labels_come_from_is_coordinated(
+    coordination_run, coordination_built
+):
+    account = coordination_built.nodes["Account"]
+    assert account.y is not None, "no node labels were written"
+    truth = coordination_run.truth["accounts"]
+    expected = set(truth.filter(pl.col("is_coordinated"))["account_id"].to_list())
+    flagged = {v for v, label in zip(account.ids.tolist(), account.y) if label}
+    assert flagged == expected
+
+
+def test_coordination_decoys_are_marked_not_positive(
+    coordination_run, coordination_built
+):
+    """An organic account is ``decoy=1`` and ``y=0``: legitimate, and labelled."""
+    account = coordination_built.nodes["Account"]
+    assert account.decoy is not None
+    assert int(account.decoy.sum()) > 0
+    assert int((account.y & account.decoy).sum()) == 0
+
+
+def test_coordination_labels_the_event_channels(coordination_built):
+    labelled = {
+        rel for (_, rel, _), edge in coordination_built.edges.items() if edge.y is not None
+    }
+    assert {"POSTED", "RESHARED", "REPLIED"} <= labelled
+    # FOLLOWS and USES are structure; the truth says nothing about them.
+    assert "FOLLOWS" not in labelled
+
+
+def test_coordination_topics_are_not_mistaken_for_the_labelled_type(
+    coordination_built,
+):
+    """Regression: the ``campaigns`` frame holds real Topic ids next to a
+    boolean, so matching on values alone labelled every topic."""
+    assert coordination_built.nodes["Topic"].y is None
+    assert coordination_built.nodes["Device"].y is None
+
+
+def test_coordination_community_is_a_latent_factor_not_a_feature(coordination_built):
+    account = coordination_built.nodes["Account"]
+    assert "community" in account.latent
+    assert not any(name.startswith("community") for name in account.feature_names)
+
+
+def test_identifiers_stay_out_of_edge_attributes(coordination_built):
+    """``event_id`` and ``template_id`` are identifiers; a standardised id is a
+    meaningless axis. ``topic`` on an interaction edge is a foreign key, and
+    one-hot encoding it added 48 columns that would reach thousands at scale."""
+    for (_, rel, _), edge in coordination_built.edges.items():
+        assert not any(
+            name.endswith("_id") or name.startswith("topic=")
+            for name in edge.feature_names
+        ), (rel, edge.feature_names)
+
+
+def test_coordination_edge_times_are_present(coordination_built):
+    for (_, rel, _), edge in coordination_built.edges.items():
+        if rel in {"POSTED", "RESHARED", "REPLIED"}:
+            assert edge.edge_time is not None, rel
+
+
+def test_a_truth_frame_with_two_booleans_is_not_guessed_at():
+    """The convention fails loudly rather than picking a column."""
+    from graphfaker.sinks.pyg import _single_boolean
+
+    frame = pl.DataFrame({"a_id": ["x"], "one": [True], "two": [False]})
+    assert _single_boolean(frame) is None
+
+
+def test_coordination_hetero_data_round_trip(coordination_run, tmp_path):
+    pytest.importorskip("torch_geometric")
+    from graphfaker.sinks.pyg import from_directory, write_pyg
+
+    coordination_run.write(tmp_path / "platform")
+    written = write_pyg(
+        coordination_run.tables, tmp_path / "platform" / "graph.pt", coordination_run.truth
+    )
+    assert written.exists()
+    data = from_directory(tmp_path / "platform")
+    assert data["Account"].num_nodes == coordination_run.tables.nodes["Account"].height
+    assert int(data["Account"].y.sum()) > 0
+    assert hasattr(data["Account"], "train_mask")

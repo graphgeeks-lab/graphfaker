@@ -21,14 +21,20 @@ a frame for) are the hidden variables the generator used, so they are kept
 out of ``x`` and attached as their own tensor (``data["Person"].community``)
 for use as a label, not a feature.
 
-Labels, when ``truth`` is given:
+Labels, when ``truth`` is given. Rather than naming one domain's columns,
+these follow the convention every domain pack already writes: a truth frame
+keyed by ``<entity>_id`` with a single boolean column labels those entities.
+The fraud pack writes ``accounts.is_fraud`` and ``transactions.is_fraud``; the
+coordination pack writes ``accounts.is_coordinated`` and
+``events.is_coordinated``; a third pack gets labels for free.
 
-* the node type the truth's ``accounts`` frame refers to gets ``y`` (1 for a
-  node in a fraud pattern, 0 otherwise), ``decoy`` (1 for a node that is in
-  a legitimate look-alike pattern only), and stratified ``train_mask``,
-  ``val_mask`` and ``test_mask``;
-* every relationship with a ``tx_id`` gets ``y`` (1 for an injected fraud
-  transaction) and ``edge_time`` in seconds, for temporal splits.
+* the node type a truth frame's ``*_id`` column refers to gets ``y`` (1 where
+  the boolean is true), ``decoy`` (1 for an entity that appears *only* in
+  rows where it is false — a legitimate look-alike), and stratified
+  ``train_mask``, ``val_mask`` and ``test_mask``;
+* a relationship carrying an ``*_id`` column that a truth frame also carries
+  gets ``y`` from that frame, and ``edge_time`` in seconds wherever there is a
+  timestamp, for temporal splits.
 
 Feature names are kept in ``data[type].feature_names`` so a column can be
 found again after training, and the standardisation statistics in
@@ -171,19 +177,86 @@ def encode_features(
     return np.stack(columns, axis=1), names, stats
 
 
+def _single_boolean(frame: pl.DataFrame) -> str | None:
+    """The frame's one boolean column, or None if there is not exactly one.
+
+    A label frame carries a single flag. Requiring exactly one avoids guessing
+    between two, which is the point at which a convention should fail loudly
+    rather than pick.
+    """
+    booleans = [c for c, t in frame.schema.items() if t == pl.Boolean]
+    return booleans[0] if len(booleans) == 1 else None
+
+
 def _latent_names(truth: dict[str, pl.DataFrame] | None) -> set[str]:
+    """Truth frames that describe a latent factor rather than label anything.
+
+    A latent frame is keyed by ``group`` and carries that group's generation
+    parameters. Naming the label frames to exclude instead (``patterns``,
+    ``accounts``, ``transactions``) only worked for the fraud pack; a frame with
+    an ``*_id`` column is labelling entities, whatever it is called.
+    """
     if not truth:
         return set()
-    return {name for name, frame in truth.items() if name not in ("patterns", "accounts", "transactions") and "group" in frame.columns}
+    return {
+        name
+        for name, frame in truth.items()
+        if "group" in frame.columns
+        and not any(c.endswith("_id") for c in frame.columns)
+    }
 
 
-def _labelled_node_type(tables: GraphTables, members: pl.DataFrame) -> str | None:
-    """Which node table the truth's ``accounts`` frame refers to."""
-    wanted = set(members["account_id"].to_list()[:100])
-    for name, frame in tables.nodes.items():
-        if wanted and wanted <= set(frame[ID].to_list()):
-            return name
+def _node_label_frame(
+    tables: GraphTables, truth: dict[str, pl.DataFrame]
+) -> tuple[str, str, pl.DataFrame, str] | None:
+    """``(node_type, id_column, frame, label_column)`` for the frame that
+    labels nodes, or None.
+
+    The id column has to *end in* ``_id`` as well as match a node table's ids.
+    Matching on values alone picked the coordination pack's
+    ``campaigns.topic`` column — which holds real Topic ids next to a boolean —
+    and cheerfully labelled every topic.
+    """
+    for frame in truth.values():
+        label = _single_boolean(frame)
+        if label is None:
+            continue
+        for column, dtype in frame.schema.items():
+            if not column.endswith("_id") or dtype not in (pl.String, pl.Utf8):
+                continue
+            sample = set(frame[column].drop_nulls().to_list()[:200])
+            if not sample:
+                continue
+            for node_type, node_frame in tables.nodes.items():
+                if sample <= set(node_frame[ID].to_list()):
+                    return node_type, column, frame, label
     return None
+
+
+def _edge_label_ids(
+    tables: GraphTables, truth: dict[str, pl.DataFrame]
+) -> dict[str, tuple[str, pl.Series]]:
+    """``relationship -> (id_column, positive ids)`` for labelled edges."""
+    found: dict[str, tuple[str, pl.Series]] = {}
+    for rel, frame in tables.edges.items():
+        candidates = [
+            c for c in frame.columns if c.endswith("_id") and c not in (SOURCE, TARGET)
+        ]
+        for column in candidates:
+            for truth_frame in truth.values():
+                if column not in truth_frame.columns:
+                    continue
+                label = _single_boolean(truth_frame)
+                if label is None:
+                    continue
+                found[rel] = (
+                    column,
+                    truth_frame.filter(pl.col(label))[column].unique(),
+                )
+                break
+            if rel in found:
+                break
+    return found
 
 
 def _split_masks(y: np.ndarray, split: tuple[float, float, float], seed: int) -> dict[str, np.ndarray]:
@@ -243,7 +316,7 @@ def arrays(
         nodes[name] = node
 
     edges: dict[tuple[str, str, str], EdgeArrays] = {}
-    tx_truth = truth.get("transactions") if truth else None
+    edge_labels = _edge_label_ids(tables, truth) if truth else {}
     for rel, frame in tables.edges.items():
         if rel not in endpoints or frame.height == 0:
             continue
@@ -255,30 +328,60 @@ def arrays(
                 np.fromiter((dst_pos[v] for v in frame[TARGET].to_list()), dtype=np.int64, count=frame.height),
             ]
         )
-        skip = {SOURCE, TARGET, "tx_id", *exclude.get(rel, [])}
+        # Identifiers are not features: a standardised ``tx_id`` or
+        # ``template_id`` is a meaningless axis, and the information it stands
+        # for is in the structure.
+        skip = {
+            SOURCE,
+            TARGET,
+            *(c for c in frame.columns if c.endswith("_id")),
+            *exclude.get(rel, []),
+        }
         attrs = frame.drop([c for c in (SOURCE, TARGET) if c in frame.columns])
+        # A foreign key on an edge is structure too. The coordination pack's
+        # interaction edges carry the topic they are about, which one-hot
+        # encoded to 48 columns here and would reach thousands at scale.
+        skip |= {
+            c
+            for c, t in attrs.schema.items()
+            if t in (pl.String, pl.Utf8) and _is_foreign_key(attrs[c], all_ids)
+        }
         x, names, _ = encode_features(attrs, exclude=skip, max_categories=max_categories, standardize=standardize)
         edge = EdgeArrays(src_type=src, dst_type=dst, edge_index=edge_index, edge_attr=x if names != ["constant"] else None, feature_names=names if names != ["constant"] else [])
         if "timestamp" in frame.columns:
             edge.edge_time = frame["timestamp"].cast(pl.Datetime("us")).dt.epoch("s").to_numpy().astype(np.int64)
-        if tx_truth is not None and "tx_id" in frame.columns:
-            fraud_ids = tx_truth.filter(pl.col("is_fraud"))["tx_id"].unique()
-            edge.y = frame["tx_id"].is_in(fraud_ids.implode()).to_numpy().astype(np.int64)
+        if rel in edge_labels:
+            column, positive = edge_labels[rel]
+            edge.y = frame[column].is_in(positive.implode()).to_numpy().astype(np.int64)
         edges[(src, rel, dst)] = edge
 
-    members = truth.get("accounts") if truth else None
-    if members is not None and members.height:
-        label_type = _labelled_node_type(tables, members)
-        if label_type is None:
-            logger.warning("pyg: the truth's accounts match no node table; no node labels written")
-        else:
-            node = nodes[label_type]
-            fraud_ids = set(members.filter(pl.col("is_fraud"))["account_id"].to_list())
-            decoy_ids = set(members.filter(~pl.col("is_fraud"))["account_id"].to_list()) - fraud_ids
-            ids = node.ids.tolist()
-            node.y = np.fromiter((1 if v in fraud_ids else 0 for v in ids), dtype=np.int64, count=len(ids))
-            node.decoy = np.fromiter((1 if v in decoy_ids else 0 for v in ids), dtype=np.int64, count=len(ids))
-            node.masks = _split_masks(node.y, split, seed)
+    labelled = _node_label_frame(tables, truth) if truth else None
+    if truth and labelled is None:
+        logger.warning(
+            "pyg: no truth frame has an *_id column matching a node table; "
+            "no node labels written"
+        )
+    elif labelled is not None:
+        label_type, id_column, members, label_column = labelled
+        node = nodes[label_type]
+        positive_ids = set(members.filter(pl.col(label_column))[id_column].to_list())
+        # A decoy is an entity that appears only in rows where the flag is
+        # false: a legitimate structure that looks like the real thing.
+        decoy_ids = (
+            set(members.filter(~pl.col(label_column))[id_column].to_list()) - positive_ids
+        )
+        ids = node.ids.tolist()
+        node.y = np.fromiter((1 if v in positive_ids else 0 for v in ids), dtype=np.int64, count=len(ids))
+        node.decoy = np.fromiter((1 if v in decoy_ids else 0 for v in ids), dtype=np.int64, count=len(ids))
+        node.masks = _split_masks(node.y, split, seed)
+        logger.debug(
+            "pyg: labelled %s from %s.%s (%d positive, %d decoy)",
+            label_type,
+            id_column,
+            label_column,
+            int(node.y.sum()),
+            int(node.decoy.sum()),
+        )
 
     return GraphArrays(nodes=nodes, edges=edges)
 

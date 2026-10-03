@@ -21,13 +21,14 @@ creates; the truth tables are built from those records.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from itertools import count
 from typing import Any
 
 import numpy as np
 import polars as pl
 
-from graphfaker.domains.fraud.config import TYPOLOGIES, FraudConfig, HardnessProfile
+from graphfaker.domains.fraud.config import CATALOG, FraudConfig, HardnessProfile
 from graphfaker.domains.fraud.process import (
     BUSINESS_HOURS,
     HOUR_PROFILE,
@@ -40,34 +41,38 @@ from graphfaker.domains.fraud.process import (
     merchant_amounts,
     transfer_amounts,
 )
+from graphfaker.engine.injection import (
+    InjectionContext,
+    round_robin_decoys,
+    run_catalog,
+    stripped_members,
+)
+from graphfaker.engine.injection import Pattern as BasePattern
 
-#: Natural span, in days at ``timing_spread_days = 1``, of each typology.
-NATURAL_SPAN = {
-    "fan_in": 2.0,
-    "fan_out": 1.0,
-    "gather_scatter": 3.0,
-    "scatter_gather": 3.0,
-    "cycle": 2.0,
-    "stack": 2.0,
-    "bipartite": 3.0,
-    "structuring": 10.0,
-    "mule_network": 1.0,
-    "bust_out": 60.0,
-    "synthetic_identity": 20.0,
-}
-#: Shapes that have a legitimate twin.
-DECOY_TYPOLOGIES = ("fan_in", "fan_out", "cycle")
+#: Shapes that have a legitimate twin, named by the decoy that imitates each.
+DECOY_TYPOLOGIES = tuple(CATALOG.twins[name] for name in CATALOG.decoys)
 
 
 @dataclass
-class Pattern:
-    pattern_id: str
-    typology: str
-    is_fraud: bool
-    roles: dict[int, str] = field(default_factory=dict)  # account idx -> role
-    start: np.datetime64 | None = None
-    end: np.datetime64 | None = None
-    n_transactions: int = 0
+class Pattern(BasePattern):
+    """An injected laundering structure.
+
+    The record is :class:`graphfaker.engine.injection.Pattern`; these three
+    names are what a fraud reader calls its fields, and what the truth tables
+    and every metric in the pack already use.
+    """
+
+    @property
+    def typology(self) -> str:
+        return self.name
+
+    @property
+    def is_fraud(self) -> bool:
+        return self.labelled
+
+    @property
+    def n_transactions(self) -> int:
+        return self.events
 
 
 @dataclass
@@ -86,7 +91,15 @@ class Injection:
     stripped_accounts: set[int]
 
 
-class TypologyContext:
+class TypologyContext(InjectionContext):
+    """The bank's own drawing on top of the shared pattern bookkeeping.
+
+    What is inherited: the dials, the period, who is already in a pattern,
+    and whether overlap is allowed. What is here: recruitment from eligible
+    accounts, amounts drawn against the legitimate distribution, and the
+    transaction rows themselves, because those are the bank.
+    """
+
     def __init__(
         self,
         rng: np.random.Generator,
@@ -96,18 +109,13 @@ class TypologyContext:
         n_customers: int,
         n_devices: int,
     ):
-        self.rng = rng
+        super().__init__(rng, config.profile, CATALOG, pop.period_start, pop.period_days)
         self.pop = pop
         self.config = config
         self.profile: HardnessProfile = config.profile
         self.merchants = merchants
         self.n_customers = n_customers
         self.n_devices = n_devices
-        self.used: set[int] = set()
-        #: While True, ``pick`` may reuse pattern accounts (ring overlap).
-        #: Decoys turn it off: a legitimate payroll must not share members
-        #: with a mule ring, or its label would be ambiguous.
-        self.allow_overlap = True
         usable = np.isin(pop.account_type, ["checking", "business", "savings"]) & (pop.account_status != "closed")
         self.eligible = np.flatnonzero(usable)
         # Recruitment is uniform over eligible accounts. Weighting it towards
@@ -127,7 +135,6 @@ class TypologyContext:
         self.shared_devices: list[tuple[int, int]] = []
         self.customer_overrides: dict[int, dict[str, Any]] = {}
         self.fresh_accounts: dict[int, np.datetime64] = {}
-        self.period_end = pop.period_start + np.timedelta64(pop.period_days * 86_400, "s")
 
     # ---------------------------------------------------------------- picks
 
@@ -172,14 +179,13 @@ class TypologyContext:
                 chosen.append(candidate)
             if len(pool) <= k and len(chosen) == len(set(pool.tolist())):
                 break  # tiny populations: accept what there is
-        self.used.update(chosen)
+        self.claim(chosen)
         return np.array(chosen, dtype=np.int64)
 
     def size(self, lo: int, hi: int, floor: int = 3) -> int:
         """A pattern size in ``[lo, hi]`` scaled down by hardness, never
         below ``floor``."""
-        scale = self.profile.size_scale
-        lo, hi = max(floor, round(lo * scale)), max(floor + 1, round(hi * scale))
+        lo, hi = self.scaled(lo, floor), self.scaled(hi, floor + 1)
         return int(self.rng.integers(lo, hi + 1))
 
     def bystanders(self, k: int) -> np.ndarray:
@@ -196,7 +202,7 @@ class TypologyContext:
     # --------------------------------------------------------------- timing
 
     def span_seconds(self, typology: str) -> int:
-        days = NATURAL_SPAN[typology] * self.profile.timing_spread_days
+        days = self.catalog.span_days(typology) * self.profile.timing_spread_days
         days = min(days, self.pop.period_days - 1)
         return max(3_600, int(days * 86_400))
 
@@ -248,9 +254,7 @@ class TypologyContext:
         else:
             target = self.pop.account_ids[dst]
         self.rows[channel].append((source, target, round(float(amount), 2), ts, memo, pattern.pattern_id))
-        pattern.n_transactions += 1
-        pattern.start = ts if pattern.start is None or ts < pattern.start else pattern.start
-        pattern.end = ts if pattern.end is None or ts > pattern.end else pattern.end
+        pattern.touch(ts)
 
     def frames(self) -> dict[str, pl.DataFrame]:
         out = {}
@@ -527,7 +531,7 @@ def decoy_cycle(ctx: TypologyContext, pattern: Pattern) -> None:
         ctx.tx(TRANSFERS, src, dst, ctx.legit_amount(TRANSFERS, src) * 8, ts, pattern, "invoice")
 
 
-TYPOLOGY_FUNCTIONS = {
+PATTERN_FUNCTIONS = {
     "fan_in": fan_in,
     "fan_out": fan_out,
     "gather_scatter": gather_scatter,
@@ -540,7 +544,9 @@ TYPOLOGY_FUNCTIONS = {
     "bust_out": bust_out,
     "synthetic_identity": synthetic_identity,
 }
-DECOY_FUNCTIONS = {"fan_in": decoy_fan_in, "fan_out": decoy_fan_out, "cycle": decoy_cycle}
+PATTERN_FUNCTIONS.update(
+    {"decoy_fan_in": decoy_fan_in, "decoy_fan_out": decoy_fan_out, "decoy_cycle": decoy_cycle}
+)
 
 
 def inject(
@@ -552,27 +558,26 @@ def inject(
     n_devices: int,
 ) -> Injection:
     ctx = TypologyContext(rng, pop, config, merchants, n_customers, n_devices)
-    patterns: list[Pattern] = []
-    counter = 0
-    for typology in TYPOLOGIES:
-        for _ in range(config.pattern_counts.get(typology, 0)):
-            pattern = Pattern(pattern_id=f"pat_{counter}", typology=typology, is_fraud=True)
-            TYPOLOGY_FUNCTIONS[typology](ctx, pattern)
-            patterns.append(pattern)
-            counter += 1
+    counter = count(0)
 
-    n_decoys = round(config.profile.decoy_ratio * config.num_patterns)
-    ctx.allow_overlap = False
-    for i in range(n_decoys):
-        typology = DECOY_TYPOLOGIES[i % len(DECOY_TYPOLOGIES)]
-        pattern = Pattern(pattern_id=f"pat_{counter}", typology=typology, is_fraud=False)
-        DECOY_FUNCTIONS[typology](ctx, pattern)
-        patterns.append(pattern)
-        counter += 1
+    def make(name: str, _index: int, labelled: bool) -> Pattern:
+        # Patterns are numbered in injection order rather than per shape, and
+        # a decoy reports the typology it imitates: the truth says what the
+        # structure looks like, and ``is_fraud`` says whether it is one.
+        return Pattern(
+            pattern_id=f"pat_{next(counter)}",
+            name=CATALOG.twins.get(name, name),
+            labelled=labelled,
+        )
 
-    fraud_accounts = {acc for p in patterns if p.is_fraud for acc in p.roles}
-    keep = config.profile.activity_camouflage
-    stripped = {acc for acc in fraud_accounts if rng.random() >= keep}
+    patterns = run_catalog(
+        ctx,
+        config.pattern_counts,
+        PATTERN_FUNCTIONS,
+        make,
+        round_robin_decoys(CATALOG, round(config.profile.decoy_ratio * config.num_patterns)),
+    )
+    stripped = stripped_members(rng, patterns, config.profile.activity_camouflage)
 
     return Injection(
         patterns=patterns,
