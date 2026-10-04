@@ -33,6 +33,7 @@ There are two paths into Neo4j and they are for different situations.
 | speed | ~16k rows/s | millions of rows/s |
 | good up to | a few tens of millions of rows | anything |
 | verifies itself | yes | no |
+| loads the ground truth | yes | no: add it over Bolt afterwards, or load the whole dataset over Bolt |
 
 Use Bolt for everything you would actually explore by hand. Use admin import when you are loading `--scale 1.0` (10M accounts, 90M transactions) and can afford to stop the database:
 

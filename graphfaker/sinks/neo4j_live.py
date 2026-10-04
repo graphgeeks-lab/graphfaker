@@ -39,6 +39,7 @@ import polars as pl
 from graphfaker.backends.tables import ID, SOURCE, TARGET, GraphTables
 from graphfaker.logger import logger
 from graphfaker.sinks.neo4j import infer_endpoints
+from graphfaker.sinks.truth import layout as truth_layout
 from graphfaker.sinks.verify import MEMBER_REL, PATTERN_LABEL
 
 if TYPE_CHECKING:  # pragma: no cover - import cost, driver is optional
@@ -234,16 +235,18 @@ def ensure_constraints(driver: Driver, database: str, tables: GraphTables, truth
         )
         names.append(name)
     for rel, frame in tables.edges.items():
-        if "tx_id" not in frame.columns:
-            continue
-        name = f"gf_{rel}_tx_id"
-        _run(
-            driver,
-            database,
-            f"CREATE INDEX {_quote(name)} IF NOT EXISTS "
-            f"FOR ()-[r:{_quote(rel)}]-() ON (r.tx_id)",
-        )
-        names.append(name)
+        # The index is on the id the truth pass looks edges up by, which is
+        # the domain's: ``tx_id`` in a bank, ``event_id`` on a platform.
+        event_ids = [c for c in frame.columns if c.endswith("_id") and c not in (SOURCE, TARGET)]
+        for column in event_ids:
+            name = f"gf_{rel}_{column}"
+            _run(
+                driver,
+                database,
+                f"CREATE INDEX {_quote(name)} IF NOT EXISTS "
+                f"FOR ()-[r:{_quote(rel)}]-() ON (r.{_quote(column)})",
+            )
+            names.append(name)
     _run(driver, database, "CALL db.awaitIndexes(600)")
     logger.info("neo4j: %d constraints and indexes online", len(names))
     return names
@@ -305,24 +308,25 @@ def _load_truth(
     matching node property (``a.region = r.group``).
     """
     counts: dict[str, int] = {}
+    lay = truth_layout(truth, tables)
 
-    patterns = truth.get("patterns")
+    patterns = lay.frame("patterns")
     if patterns is not None and patterns.height:
         # accounts/roles are the denormalised form of IN_PATTERN; drop them.
         keep = [c for c in patterns.columns if c not in ("accounts", "roles")]
-        frame = patterns.select(keep).rename({"pattern_id": ID})
+        frame = patterns.select(keep).rename({lay.pattern_id: ID})
         cypher = f"UNWIND $rows AS row CREATE (p:{_quote(PATTERN_LABEL)}) SET p = row"
         counts[PATTERN_LABEL] = _write_batches(
             driver, database, cypher, frame, size, f"(:{PATTERN_LABEL})"
         )
 
-    members = truth.get("accounts")
+    members = lay.frame("members")
     if members is not None and members.height:
-        renamed = members.rename({"account_id": SOURCE, "pattern_id": TARGET})
+        renamed = members.rename({lay.member_id: SOURCE, lay.pattern_id: TARGET})
         frame, has_props = _edge_rows(renamed)
         cypher = (
             "UNWIND $rows AS row "
-            f"MATCH (a:Account {{{ID}: row.{SOURCE}}}) "
+            f"MATCH (a:{_quote(lay.member_label)} {{{ID}: row.{SOURCE}}}) "
             f"MATCH (p:{_quote(PATTERN_LABEL)} {{{ID}: row.{TARGET}}}) "
             f"CREATE (a)-[r:{_quote(MEMBER_REL)}]->(p)" + (" SET r = row.props" if has_props else "")
         )
@@ -330,31 +334,30 @@ def _load_truth(
             driver, database, cypher, frame, size, f"[:{MEMBER_REL}]"
         )
 
-    transactions = truth.get("transactions")
-    if transactions is not None and transactions.height:
+    events = lay.frame("events")
+    if events is not None and events.height:
+        key = lay.event_id
         # Partition by relationship type so each update is index-backed and
         # the counts are attributable per type.
         for rel, edges in tables.edges.items():
-            if "tx_id" not in edges.columns:
+            if key not in edges.columns:
                 continue
-            labelled = transactions.join(edges.select("tx_id"), on="tx_id", how="semi")
+            labelled = events.join(edges.select(key), on=key, how="semi")
             if not labelled.height:
                 continue
-            attrs = [c for c in labelled.columns if c != "tx_id"]
-            frame = labelled.select(["tx_id", pl.struct(attrs).alias("props")])
+            attrs = [c for c in labelled.columns if c != key]
+            frame = labelled.select([key, pl.struct(attrs).alias("props")])
             cypher = (
                 "UNWIND $rows AS row "
-                f"MATCH ()-[r:{_quote(rel)}]->() WHERE r.tx_id = row.tx_id "
+                f"MATCH ()-[r:{_quote(rel)}]->() WHERE r.{_quote(key)} = row.{_quote(key)} "
                 "SET r += row.props"
             )
-            counts[f"{rel}.is_fraud"] = _write_batches(
+            counts[f"{rel}.{lay.label or 'truth'}"] = _write_batches(
                 driver, database, cypher, frame, size, f"[:{rel}] truth"
             )
 
-    for name, frame in truth.items():
-        if name in ("patterns", "accounts", "transactions") or "group" not in frame.columns:
-            continue
-        label = name.title()
+    for label, frame in lay.latent.items():
+        name = label.lower()
         _run(
             driver,
             database,

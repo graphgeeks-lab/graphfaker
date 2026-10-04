@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphfaker"
-version = "1.0.0"
+version = "1.1.0"
 description = "Generate graph data that behaves like the real thing: people, the relationships between them and the events over time, with the ground truth included."
 readme = "README.md"
 authors = [

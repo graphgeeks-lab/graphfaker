@@ -43,9 +43,11 @@ import polars as pl
 
 from graphfaker.backends.tables import ID, SOURCE, TARGET, GraphTables
 from graphfaker.sinks.neo4j import infer_endpoints
+from graphfaker.sinks.truth import MEMBER_REL, PATTERN_LABEL
+from graphfaker.sinks.truth import layout as truth_layout
 
-PATTERN_LABEL = "Pattern"
-MEMBER_REL = "IN_PATTERN"
+#: Re-exported: the truth subgraph uses the same two names in every domain,
+#: and :mod:`graphfaker.sinks.truth` is where they are defined.
 
 #: Rows per label fetched back for the round-trip check.
 DEFAULT_SAMPLE = 25
@@ -94,29 +96,32 @@ class Backend(Protocol):
 
     def edge_aggregates(self, rel: str, schema: dict[str, pl.DataType]) -> dict[str, Any]: ...
 
-    def duplicate_tx_ids(self, rel: str) -> int:
-        """``tx_id`` values carried by more than one relationship of type ``rel``."""
+    def duplicate_event_ids(self, rel: str, column: str) -> int:
+        """Values of ``column`` carried by more than one relationship of type
+        ``rel``. The column is the domain's event id: ``tx_id`` in a bank,
+        ``event_id`` on a platform."""
         ...
 
     def endpoint_mismatches(self, rel: str, src: str, dst: str) -> int:
         """Relationships of type ``rel`` not joining ``src`` to ``dst``."""
         ...
 
-    def membership(self) -> tuple[int, int]:
-        """(``IN_PATTERN`` relationships, distinct accounts carrying one)."""
+    def membership(self, label: str) -> tuple[int, int]:
+        """(``IN_PATTERN`` relationships, distinct members carrying one), for
+        members of node label ``label``."""
         ...
 
-    def accounts_without_membership(self, ids: list[Any]) -> int:
-        """How many of the accounts with these ids have no ``IN_PATTERN``."""
+    def members_without_membership(self, ids: list[Any], label: str) -> int:
+        """How many nodes of ``label`` with these ids have no ``IN_PATTERN``."""
         ...
 
     def fetch_nodes(self, label: str, ids: list[Any]) -> dict[Any, dict[str, Any]]:
         """Property maps of the nodes with these ids, keyed by id."""
         ...
 
-    def fetch_edges(self, rel: str, tx_ids: list[Any]) -> dict[Any, dict[str, Any]]:
-        """Property maps of the edges with these ``tx_id``s, keyed by ``tx_id``,
-        each including ``source`` and ``target`` ids."""
+    def fetch_edges(self, rel: str, ids: list[Any], column: str) -> dict[Any, dict[str, Any]]:
+        """Property maps of the edges whose ``column`` is one of ``ids``,
+        keyed by that value, each including ``source`` and ``target`` ids."""
         ...
 
 
@@ -157,22 +162,24 @@ class CypherBackend:
         clauses = ", ".join(["count(r) AS total", *self._clauses("r", schema)])
         return self.run(f"MATCH ()-[r:{self.quote(rel)}]->() RETURN {clauses}")[0]
 
-    def duplicate_tx_ids(self, rel: str) -> int:
+    def duplicate_event_ids(self, rel: str, column: str) -> int:
         return self.run(
-            f"MATCH ()-[r:{self.quote(rel)}]->() WITH r.tx_id AS k, count(*) AS c WHERE c > 1 RETURN count(*) AS n"
+            f"MATCH ()-[r:{self.quote(rel)}]->() WITH r.{self.quote(column)} AS k, count(*) AS c "
+            f"WHERE c > 1 RETURN count(*) AS n"
         )[0]["n"]
 
-    def membership(self) -> tuple[int, int]:
+    def membership(self, label: str) -> tuple[int, int]:
         q = self.quote
         row = self.run(
-            f"MATCH (a:Account)-[r:{q(MEMBER_REL)}]->(p:{q(PATTERN_LABEL)}) RETURN count(r) AS rels, count(DISTINCT a) AS accounts"
+            f"MATCH (a:{q(label)})-[r:{q(MEMBER_REL)}]->(p:{q(PATTERN_LABEL)}) "
+            f"RETURN count(r) AS rels, count(DISTINCT a) AS members"
         )[0]
-        return row["rels"], row["accounts"]
+        return row["rels"], row["members"]
 
-    def accounts_without_membership(self, ids: list[Any]) -> int:
+    def members_without_membership(self, ids: list[Any], label: str) -> int:
         q = self.quote
         return self.run(
-            f"UNWIND $ids AS id MATCH (a:Account {{id: id}}) "
+            f"UNWIND $ids AS id MATCH (a:{q(label)} {{id: id}}) "
             f"WHERE NOT EXISTS {{ MATCH (a)-[:{q(MEMBER_REL)}]->() }} RETURN count(a) AS n",
             ids=ids,
         )[0]["n"]
@@ -298,14 +305,11 @@ def _ask(v: Verification, name: str, question, *args: Any) -> Any:
 
 def truth_labels(truth: dict[str, pl.DataFrame] | None) -> set[str]:
     """Labels the truth subgraph adds: ``Pattern``, plus one per latent
-    factor frame (``truth/region.parquet`` -> ``Region``)."""
-    if not truth:
-        return set()
-    labels = {PATTERN_LABEL} if truth.get("patterns") is not None else set()
-    for name, frame in truth.items():
-        if name not in ("patterns", "accounts", "transactions") and "group" in frame.columns:
-            labels.add(name.title())
-    return labels
+    factor frame (``truth/region.parquet`` -> ``Region``,
+    ``truth/community.parquet`` -> ``Community``)."""
+    lay = truth_layout(truth)
+    labels = {PATTERN_LABEL} if lay.patterns is not None else set()
+    return labels | set(lay.latent)
 
 
 # ------------------------------------------------------------------- checks
@@ -322,7 +326,7 @@ def check_structure(backend: Backend, tables: GraphTables, v: Verification, trut
     v.add("structure/labels", sorted(set(tables.nodes) | extra), sorted(backend.labels_in_use()), "no labels beyond the schema")
 
     expected_types = {rel for rel, frame in tables.edges.items() if frame.height}
-    if truth and truth.get("accounts") is not None:
+    if truth_layout(truth).members is not None:
         expected_types.add(MEMBER_REL)
     v.add("structure/relationship_types", sorted(expected_types), sorted(backend.types_in_use()))
 
@@ -338,7 +342,9 @@ def check_nodes(backend: Backend, tables: GraphTables, v: Verification) -> None:
             v.add(f"content/{label}.{key.replace('__', ':')}", expected, _native(row[key]))
 
 
-def check_edges(backend: Backend, tables: GraphTables, v: Verification) -> None:
+def check_edges(
+    backend: Backend, tables: GraphTables, v: Verification, event_id: str | None = None
+) -> None:
     endpoints = infer_endpoints(tables)
     for rel, frame in tables.edges.items():
         if frame.height == 0:
@@ -354,47 +360,70 @@ def check_edges(backend: Backend, tables: GraphTables, v: Verification) -> None:
 
         v.add(f"structure/{rel}.endpoints", 0, backend.endpoint_mismatches(rel, src, dst), f"every edge is ({src})->({dst})")
 
-        if "tx_id" in attrs:
-            name = f"structure/{rel}.unique_tx_id"
-            dupes = _ask(v, name, backend.duplicate_tx_ids, rel)
+        if event_id and event_id in attrs:
+            name = f"structure/{rel}.unique_{event_id}"
+            dupes = _ask(v, name, backend.duplicate_event_ids, rel, event_id)
             if dupes is not None:
-                v.add(name, 0, dupes, "no transaction loaded twice")
+                v.add(name, 0, dupes, "no event loaded twice")
 
 
 def check_truth(backend: Backend, tables: GraphTables, truth: dict[str, pl.DataFrame], v: Verification) -> None:
-    patterns = truth.get("patterns")
-    if patterns is not None and patterns.height:
+    """The truth subgraph, checked in the domain's own vocabulary.
+
+    The shape is the same everywhere (``Pattern`` nodes, ``IN_PATTERN``
+    memberships, a label on the events) and the column names are not, so the
+    layout is resolved once and every check reads from it.
+    """
+    lay = truth_layout(truth, tables)
+    if lay.has_patterns:
+        patterns = lay.frame("patterns")
         v.add(f"truth/{PATTERN_LABEL}.count", patterns.height, backend.count_nodes(PATTERN_LABEL))
-        fraud = backend.count_nodes(PATTERN_LABEL, flag="is_fraud")
-        v.add(f"truth/{PATTERN_LABEL}.is_fraud", patterns.filter(pl.col("is_fraud")).height, fraud, "decoy patterns stay unflagged")
+        if lay.label:
+            flagged = backend.count_nodes(PATTERN_LABEL, flag=lay.label)
+            v.add(
+                f"truth/{PATTERN_LABEL}.{lay.label}",
+                patterns.filter(pl.col(lay.label)).height,
+                flagged,
+                "decoy patterns stay unflagged",
+            )
 
-    members = truth.get("accounts")
-    if members is not None and members.height:
-        rels, accounts = backend.membership()
+    if lay.has_members:
+        members = lay.frame("members")
+        rels, found = backend.membership(lay.member_label)
         v.add(f"truth/{MEMBER_REL}.count", members.height, rels, "one per membership")
-        v.add(f"truth/{MEMBER_REL}.accounts", members["account_id"].n_unique(), accounts, "accounts can be in several patterns")
-        # The membership must reach the account the truth names, not just any.
-        missing = backend.accounts_without_membership(members["account_id"].unique().to_list())
-        v.add(f"truth/{MEMBER_REL}.reachable", 0, missing, "every truth account has a membership")
+        v.add(
+            f"truth/{MEMBER_REL}.{lay.member_label.lower()}s",
+            members[lay.member_id].n_unique(),
+            found,
+            "a member can be in several patterns",
+        )
+        # The membership must reach the member the truth names, not just any.
+        missing = backend.members_without_membership(
+            members[lay.member_id].unique().to_list(), lay.member_label
+        )
+        v.add(f"truth/{MEMBER_REL}.reachable", 0, missing, "every truth member has a membership")
 
-    transactions = truth.get("transactions")
-    if transactions is not None and transactions.height:
+    if lay.has_events:
+        events = lay.frame("events")
         for rel, edges in tables.edges.items():
-            if "tx_id" not in edges.columns:
+            if lay.event_id not in edges.columns:
                 continue
-            expected = transactions.join(edges.select("tx_id"), on="tx_id", how="semi")
-            v.add(f"truth/{rel}.labelled", expected.height, backend.count_edges(rel, present="pattern_id"))
-            if expected.height:
-                v.add(f"truth/{rel}.is_fraud", expected.filter(pl.col("is_fraud")).height, backend.count_edges(rel, flag="is_fraud"))
+            expected = events.join(edges.select(lay.event_id), on=lay.event_id, how="semi")
+            v.add(f"truth/{rel}.labelled", expected.height, backend.count_edges(rel, present=lay.pattern_id))
+            if expected.height and lay.label:
+                v.add(
+                    f"truth/{rel}.{lay.label}",
+                    expected.filter(pl.col(lay.label)).height,
+                    backend.count_edges(rel, flag=lay.label),
+                )
 
-    for name, frame in truth.items():
-        if name in ("patterns", "accounts", "transactions") or "group" not in frame.columns:
-            continue
-        label = name.title()
+    for label, frame in lay.latent.items():
         v.add(f"truth/{label}.count", frame.height, backend.count_nodes(label))
 
 
-def check_round_trip(backend: Backend, tables: GraphTables, v: Verification, sample: int) -> None:
+def check_round_trip(
+    backend: Backend, tables: GraphTables, v: Verification, sample: int, event_id: str | None = None
+) -> None:
     """Fetch rows back and compare every property, which is the only check
     that would notice a value being replaced by a different value of the
     same type."""
@@ -417,27 +446,45 @@ def check_round_trip(backend: Backend, tables: GraphTables, v: Verification, sam
                     mismatches.append(f"{expected[ID]}.{column}={_native(actual.get(column))!r} != {value!r}")
         v.add(f"roundtrip/{label}", 0, len(mismatches), f"{wanted.height} sampled" + (f"; {mismatches[:3]}" if mismatches else ""))
 
+    if event_id is None:
+        return
     for rel, frame in tables.edges.items():
-        if frame.height == 0 or "tx_id" not in frame.columns:
+        if frame.height == 0 or event_id not in frame.columns:
             continue
         step = max(1, frame.height // sample)
         wanted = frame.gather(range(0, frame.height, step)[:sample])
-        got = backend.fetch_edges(rel, wanted["tx_id"].to_list())
+        got = backend.fetch_edges(rel, wanted[event_id].to_list(), event_id)
         mismatches = []
         for expected in wanted.to_dicts():
-            actual = got.get(expected["tx_id"])
+            actual = got.get(expected[event_id])
             if actual is None:
-                mismatches.append(f"{expected['tx_id']} missing")
+                mismatches.append(f"{expected[event_id]} missing")
                 continue
             for column, value in expected.items():
                 if value is None:
                     continue
                 if not _equal(value, _native(actual.get(column))):
-                    mismatches.append(f"{expected['tx_id']}.{column}={_native(actual.get(column))!r} != {value!r}")
+                    mismatches.append(f"{expected[event_id]}.{column}={_native(actual.get(column))!r} != {value!r}")
         v.add(f"roundtrip/{rel}", 0, len(mismatches), f"{wanted.height} sampled" + (f"; {mismatches[:3]}" if mismatches else ""))
 
 
 # -------------------------------------------------------------------- entry
+
+
+def _edge_key(tables: GraphTables, lay) -> str | None:
+    """The column the round trip identifies an edge by.
+
+    An edge table that carries an event id has one; a structural table such
+    as ``FOLLOWS`` or ``OWNS`` does not, and is covered by the counts and the
+    aggregates instead.
+    """
+    if lay.has_events:
+        return lay.event_id
+    for frame in tables.edges.values():
+        for column in frame.columns:
+            if column.endswith("_id") and column not in (SOURCE, TARGET):
+                return column
+    return None
 
 
 def verify(
@@ -449,11 +496,12 @@ def verify(
 ) -> Verification:
     """Run every family of check against ``backend``."""
     v = Verification(database=backend.name)
+    lay = truth_layout(truth, tables)
     check_structure(backend, tables, v, truth)
     check_nodes(backend, tables, v)
-    check_edges(backend, tables, v)
+    check_edges(backend, tables, v, lay.event_id if lay.has_events else None)
     if truth:
         check_truth(backend, tables, truth, v)
     if sample:
-        check_round_trip(backend, tables, v, sample)
+        check_round_trip(backend, tables, v, sample, _edge_key(tables, lay))
     return v

@@ -40,6 +40,7 @@ from graphfaker.backends.tables import ID, SOURCE, TARGET, GraphTables
 from graphfaker.logger import logger
 from graphfaker.sinks.neo4j import infer_endpoints
 from graphfaker.sinks.neo4j_live import LoadReport, read_truth
+from graphfaker.sinks.truth import layout as truth_layout
 from graphfaker.sinks.verify import DEFAULT_SAMPLE, MEMBER_REL, PATTERN_LABEL, CypherBackend, Verification, verify
 
 _TYPES = {
@@ -50,8 +51,6 @@ _TYPES = {
     pl.Boolean: "BOOLEAN", pl.Date: "DATE",
 }
 
-#: Columns the truth adds to a money relationship (one carrying ``tx_id``).
-TRUTH_EDGE_COLUMNS = {"pattern_id": "STRING", "typology": "STRING", "is_fraud": "BOOLEAN"}
 
 
 def _type(dtype: pl.DataType) -> str:
@@ -77,13 +76,7 @@ def _path(root: Path, *parts: str) -> str:
 
 
 def _latent_frames(truth: dict[str, pl.DataFrame] | None) -> dict[str, pl.DataFrame]:
-    if not truth:
-        return {}
-    return {
-        name.title(): frame
-        for name, frame in truth.items()
-        if name not in ("patterns", "accounts", "transactions") and "group" in frame.columns
-    }
+    return truth_layout(truth).latent
 
 
 class _Source:
@@ -111,7 +104,7 @@ def statements(
     """
     source = _Source(Path(data_dir) if data_dir is not None else None)
     endpoints = infer_endpoints(tables)
-    has_tx_truth = bool(truth) and truth.get("transactions") is not None and truth["transactions"].height > 0
+    lay = truth_layout(truth, tables)
     out: list[tuple[str, dict[str, Any]]] = []
 
     for node_type, frame in tables.nodes.items():
@@ -123,22 +116,29 @@ def statements(
             continue
         src, dst = endpoints[rel]
         attrs = [f"{_quote(c)} {_type(t)}" for c, t in frame.schema.items() if c not in (SOURCE, TARGET)]
-        if has_tx_truth and "tx_id" in frame.columns:
-            attrs += [f"{_quote(c)} {t}" for c, t in TRUTH_EDGE_COLUMNS.items()]
+        if lay.has_events and lay.event_id in frame.columns:
+            event_schema = lay.frame("events").schema
+            attrs += [f"{_quote(c)} {_type(event_schema[c])}" for c in lay.event_columns]
         out.append((f"CREATE REL TABLE {_quote(rel)}({', '.join([f'FROM {_quote(src)} TO {_quote(dst)}', *attrs])});", {}))
 
     if truth:
-        patterns = truth.get("patterns")
+        patterns = lay.frame("patterns")
         if patterns is not None:
             columns = [f"{_quote(ID)} STRING PRIMARY KEY"]
-            columns += [f"{_quote(c)} {_type(t)}" for c, t in patterns.schema.items() if c != "pattern_id"]
+            columns += [
+                f"{_quote(c)} {_type(t)}" for c, t in patterns.schema.items() if c != lay.pattern_id
+            ]
             out.append((f"CREATE NODE TABLE {_quote(PATTERN_LABEL)}({', '.join(columns)});", {}))
-        members = truth.get("accounts")
+        members = lay.frame("members")
         if members is not None:
-            attrs = [f"{_quote(c)} {_type(t)}" for c, t in members.schema.items() if c not in ("account_id", "pattern_id")]
-            spec = ", ".join([f"FROM {_quote('Account')} TO {_quote(PATTERN_LABEL)}", *attrs])
+            attrs = [
+                f"{_quote(c)} {_type(t)}"
+                for c, t in members.schema.items()
+                if c not in (lay.member_id, lay.pattern_id)
+            ]
+            spec = ", ".join([f"FROM {_quote(lay.member_label)} TO {_quote(PATTERN_LABEL)}", *attrs])
             out.append((f"CREATE REL TABLE {_quote(MEMBER_REL)}({spec});", {}))
-        for label, frame in _latent_frames(truth).items():
+        for label, frame in lay.latent.items():
             columns = [f"{_quote(ID)} STRING PRIMARY KEY"] + [f"{_quote(c)} {_type(t)}" for c, t in frame.schema.items()]
             out.append((f"CREATE NODE TABLE {_quote(label)}({', '.join(columns)});", {}))
 
@@ -149,7 +149,7 @@ def statements(
         if rel not in endpoints:
             continue
         src_sql, params = source(frame, "edges", rel + ".parquet")
-        if has_tx_truth and "tx_id" in frame.columns:
+        if lay.has_events and lay.event_id in frame.columns:
             # The table has more columns than the data; name the property
             # columns the data fills (the first two columns are always the
             # endpoints and are not listed).
@@ -172,35 +172,38 @@ def ladybug_script(tables: GraphTables, data_dir: str | Path, truth: dict[str, p
 def _truth_statements(source: _Source, tables: GraphTables, truth: dict[str, pl.DataFrame]) -> list[tuple[str, dict[str, Any]]]:
     """``LOAD FROM`` the truth frames into the truth subgraph."""
     out: list[tuple[str, dict[str, Any]]] = []
-    patterns = truth.get("patterns")
-    if patterns is not None and patterns.height:
-        props = ", ".join(f"{_quote(ID if c == 'pattern_id' else c)}: {_quote(c)}" for c in patterns.columns)
-        src_sql, params = source(patterns, "truth", "patterns.parquet")
+    lay = truth_layout(truth, tables)
+    if lay.has_patterns:
+        patterns = lay.frame("patterns")
+        props = ", ".join(
+            f"{_quote(ID if c == lay.pattern_id else c)}: {_quote(c)}" for c in patterns.columns
+        )
+        src_sql, params = source(patterns, "truth", lay.file("patterns"))
         out.append((f"LOAD FROM {src_sql} CREATE (:{_quote(PATTERN_LABEL)} {{{props}}});", params))
-    members = truth.get("accounts")
-    if members is not None and members.height:
-        attrs = [c for c in members.columns if c not in ("account_id", "pattern_id")]
+    if lay.has_members:
+        members = lay.frame("members")
+        attrs = [c for c in members.columns if c not in (lay.member_id, lay.pattern_id)]
         props = ", ".join(f"{_quote(c)}: {_quote(c)}" for c in attrs)
-        src_sql, params = source(members, "truth", "accounts.parquet")
+        src_sql, params = source(members, "truth", lay.file("members"))
         out.append((
             f"LOAD FROM {src_sql} "
-            f"MATCH (a:{_quote('Account')} {{{_quote(ID)}: {_quote('account_id')}}}), "
-            f"(p:{_quote(PATTERN_LABEL)} {{{_quote(ID)}: {_quote('pattern_id')}}}) "
+            f"MATCH (a:{_quote(lay.member_label)} {{{_quote(ID)}: {_quote(lay.member_id)}}}), "
+            f"(p:{_quote(PATTERN_LABEL)} {{{_quote(ID)}: {_quote(lay.pattern_id)}}}) "
             f"CREATE (a)-[:{_quote(MEMBER_REL)} {{{props}}}]->(p);",
             params,
         ))
-    transactions = truth.get("transactions")
-    if transactions is not None and transactions.height:
-        sets = ", ".join(f"r.{_quote(c)} = {_quote(c)}" for c in TRUTH_EDGE_COLUMNS if c in transactions.columns)
+    if lay.has_events:
+        sets = ", ".join(f"r.{_quote(c)} = {_quote(c)}" for c in lay.event_columns)
         for rel, frame in tables.edges.items():
-            if "tx_id" not in frame.columns:
+            if lay.event_id not in frame.columns:
                 continue
-            src_sql, params = source(transactions, "truth", "transactions.parquet")
+            src_sql, params = source(lay.frame("events"), "truth", lay.file("events"))
             out.append((
-                f"LOAD FROM {src_sql} MATCH ()-[r:{_quote(rel)}]->() WHERE r.{_quote('tx_id')} = {_quote('tx_id')} SET {sets};",
+                f"LOAD FROM {src_sql} MATCH ()-[r:{_quote(rel)}]->() "
+                f"WHERE r.{_quote(lay.event_id)} = {_quote(lay.event_id)} SET {sets};",
                 params,
             ))
-    for label, frame in _latent_frames(truth).items():
+    for label, frame in lay.latent.items():
         name = label.lower()
         props = ", ".join([f"{_quote(ID)}: '{name}_' + cast({_quote('group')} AS STRING)"] + [f"{_quote(c)}: {_quote(c)}" for c in frame.columns])
         src_sql, params = source(frame, "truth", name + ".parquet")
@@ -275,14 +278,15 @@ def _table_counts(conn, tables: GraphTables, truth: dict[str, pl.DataFrame] | No
     edges = {r: backend.count_edges(r) for r in tables.edges}
     extra: dict[str, int] = {}
     if truth:
-        if truth.get("patterns") is not None:
+        lay = truth_layout(truth, tables)
+        if lay.patterns is not None:
             extra[PATTERN_LABEL] = backend.count_nodes(PATTERN_LABEL)
-        if truth.get("accounts") is not None:
+        if lay.members is not None:
             extra[MEMBER_REL] = backend.count_edges(MEMBER_REL)
-        if truth.get("transactions") is not None:
+        if lay.events is not None and lay.label:
             for rel, frame in tables.edges.items():
-                if "tx_id" in frame.columns:
-                    extra[f"{rel}.is_fraud"] = backend.count_edges(rel, flag="is_fraud")
+                if lay.event_id in frame.columns:
+                    extra[f"{rel}.{lay.label}"] = backend.count_edges(rel, flag=lay.label)
         for label in _latent_frames(truth):
             extra[label] = backend.count_nodes(label)
     return nodes, edges, extra
@@ -390,13 +394,16 @@ class LadybugBackend(CypherBackend):
         rows = self.run(f"UNWIND $ids AS id MATCH (n:{_quote(label)} {{{_quote(ID)}: id}}) RETURN n", ids=ids)
         return {row["n"][ID]: _strip_internal(row["n"]) for row in rows}
 
-    def fetch_edges(self, rel: str, tx_ids: list[Any]) -> dict[Any, dict[str, Any]]:
+    def fetch_edges(self, rel: str, ids: list[Any], column: str) -> dict[Any, dict[str, Any]]:
         rows = self.run(
-            f"UNWIND $ids AS id MATCH (a)-[r:{_quote(rel)}]->(b) WHERE r.{_quote('tx_id')} = id "
+            f"UNWIND $ids AS id MATCH (a)-[r:{_quote(rel)}]->(b) WHERE r.{_quote(column)} = id "
             f"RETURN r, a.{_quote(ID)} AS source, b.{_quote(ID)} AS target",
-            ids=tx_ids,
+            ids=ids,
         )
-        return {row["r"]["tx_id"]: {**_strip_internal(row["r"]), "source": row["source"], "target": row["target"]} for row in rows}
+        return {
+            row["r"][column]: {**_strip_internal(row["r"]), "source": row["source"], "target": row["target"]}
+            for row in rows
+        }
 
 
 def verify_tables(

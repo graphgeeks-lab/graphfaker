@@ -46,6 +46,7 @@ from graphfaker.backends.tables import ID, SOURCE, TARGET, GraphTables
 from graphfaker.logger import logger
 from graphfaker.sinks.neo4j import infer_endpoints
 from graphfaker.sinks.neo4j_live import LoadReport, read_truth
+from graphfaker.sinks.truth import layout as truth_layout
 from graphfaker.sinks.verify import (
     DEFAULT_SAMPLE,
     MEMBER_REL,
@@ -70,9 +71,6 @@ _TYPES = {
 }
 
 #: Columns the truth adds to a money relationship (one carrying ``tx_id``).
-TRUTH_EDGE_COLUMNS = {"pattern_id": "VARCHAR", "typology": "VARCHAR", "is_fraud": "BOOLEAN"}
-
-TRUTH_FRAMES = ("patterns", "accounts", "transactions")
 
 
 def _type(dtype: pl.DataType) -> str:
@@ -95,9 +93,7 @@ def _literal(text: str) -> str:
 
 
 def _latent_frames(truth: dict[str, pl.DataFrame] | None) -> dict[str, pl.DataFrame]:
-    if not truth:
-        return {}
-    return {name.title(): frame for name, frame in truth.items() if name not in TRUTH_FRAMES and "group" in frame.columns}
+    return truth_layout(truth).latent
 
 
 # --------------------------------------------------------------------- DDL
@@ -137,7 +133,7 @@ def statements(
     """
     source = _Source(Path(data_dir) if data_dir is not None else None)
     endpoints = infer_endpoints(tables)
-    has_tx_truth = bool(truth) and truth.get("transactions") is not None and truth["transactions"].height > 0
+    lay = truth_layout(truth, tables)
     out: list[tuple[str, dict[str, Any]]] = []
 
     for node_type, frame in tables.nodes.items():
@@ -147,21 +143,29 @@ def statements(
         if rel not in endpoints:
             continue
         columns = [f"{_quote(c)} {_type(t)}" for c, t in frame.schema.items()]
-        if has_tx_truth and "tx_id" in frame.columns:
-            columns += [f"{_quote(c)} {t}" for c, t in TRUTH_EDGE_COLUMNS.items()]
+        if lay.has_events and lay.event_id in frame.columns:
+            # The label columns are the domain's own: a bank's edges gain
+            # ``typology`` and ``is_fraud``, a platform's ``playbook`` and
+            # ``is_coordinated``.
+            event_schema = lay.frame("events").schema
+            columns += [f"{_quote(c)} {_type(event_schema[c])}" for c in lay.event_columns]
         out.append((_create(rel, columns), {}))
 
     if truth:
-        patterns = truth.get("patterns")
+        patterns = lay.frame("patterns")
         if patterns is not None:
-            columns = [f"{_quote(ID if c == 'pattern_id' else c)} {_type(t)}" for c, t in patterns.schema.items()]
+            columns = [f"{_quote(ID if c == lay.pattern_id else c)} {_type(t)}" for c, t in patterns.schema.items()]
             out.append((_create(PATTERN_LABEL, columns, key=ID), {}))
-        members = truth.get("accounts")
+        members = lay.frame("members")
         if members is not None:
             columns = [f"{_quote(SOURCE)} VARCHAR", f"{_quote(TARGET)} VARCHAR"]
-            columns += [f"{_quote(c)} {_type(t)}" for c, t in members.schema.items() if c not in ("account_id", "pattern_id")]
+            columns += [
+                f"{_quote(c)} {_type(t)}"
+                for c, t in members.schema.items()
+                if c not in (lay.member_id, lay.pattern_id)
+            ]
             out.append((_create(MEMBER_REL, columns), {}))
-        for label, frame in _latent_frames(truth).items():
+        for label, frame in lay.latent.items():
             columns = [f"{_quote(ID)} VARCHAR"] + [f"{_quote(c)} {_type(t)}" for c, t in frame.schema.items()]
             out.append((_create(label, columns, key=ID), {}))
 
@@ -181,34 +185,32 @@ def statements(
 
 def _truth_statements(source: _Source, tables: GraphTables, truth: dict[str, pl.DataFrame]) -> list[tuple[str, dict[str, Any]]]:
     out: list[tuple[str, dict[str, Any]]] = []
-    patterns = truth.get("patterns")
-    if patterns is not None and patterns.height:
-        src_sql, params = source(patterns, "truth", "patterns.parquet")
+    lay = truth_layout(truth, tables)
+    if lay.has_patterns:
+        src_sql, params = source(lay.frame("patterns"), "truth", lay.file("patterns"))
         out.append((
-            f"INSERT INTO {_quote(PATTERN_LABEL)} BY NAME SELECT * RENAME ({_quote('pattern_id')} AS {_quote(ID)}) FROM {src_sql};",
+            f"INSERT INTO {_quote(PATTERN_LABEL)} BY NAME SELECT * RENAME ({_quote(lay.pattern_id)} AS {_quote(ID)}) FROM {src_sql};",
             params,
         ))
-    members = truth.get("accounts")
-    if members is not None and members.height:
-        src_sql, params = source(members, "truth", "accounts.parquet")
+    if lay.has_members:
+        src_sql, params = source(lay.frame("members"), "truth", lay.file("members"))
         out.append((
             f"INSERT INTO {_quote(MEMBER_REL)} BY NAME SELECT * RENAME "
-            f"({_quote('account_id')} AS {_quote(SOURCE)}, {_quote('pattern_id')} AS {_quote(TARGET)}) FROM {src_sql};",
+            f"({_quote(lay.member_id)} AS {_quote(SOURCE)}, {_quote(lay.pattern_id)} AS {_quote(TARGET)}) FROM {src_sql};",
             params,
         ))
-    transactions = truth.get("transactions")
-    if transactions is not None and transactions.height:
-        columns = [c for c in TRUTH_EDGE_COLUMNS if c in transactions.columns]
-        sets = ", ".join(f"{_quote(c)} = t.{_quote(c)}" for c in columns)
+    if lay.has_events:
+        sets = ", ".join(f"{_quote(c)} = t.{_quote(c)}" for c in lay.event_columns)
         for rel, frame in tables.edges.items():
-            if "tx_id" not in frame.columns:
+            if lay.event_id not in frame.columns:
                 continue
-            src_sql, params = source(transactions, "truth", "transactions.parquet")
+            src_sql, params = source(lay.frame("events"), "truth", lay.file("events"))
             out.append((
-                f"UPDATE {_quote(rel)} SET {sets} FROM {src_sql} AS t WHERE {_quote(rel)}.{_quote('tx_id')} = t.{_quote('tx_id')};",
+                f"UPDATE {_quote(rel)} SET {sets} FROM {src_sql} AS t "
+                f"WHERE {_quote(rel)}.{_quote(lay.event_id)} = t.{_quote(lay.event_id)};",
                 params,
             ))
-    for label, frame in _latent_frames(truth).items():
+    for label, frame in lay.latent.items():
         name = label.lower()
         src_sql, params = source(frame, "truth", name + ".parquet")
         out.append((
@@ -225,11 +227,12 @@ def property_graph(tables: GraphTables, truth: dict[str, pl.DataFrame] | None = 
     vertices = list(tables.nodes)
     edges = [(rel, *endpoints[rel]) for rel in tables.edges if rel in endpoints]
     if truth:
-        if truth.get("patterns") is not None:
+        lay = truth_layout(truth, tables)
+        if lay.patterns is not None:
             vertices.append(PATTERN_LABEL)
-        if truth.get("accounts") is not None:
-            edges.append((MEMBER_REL, "Account", PATTERN_LABEL))
-        vertices += list(_latent_frames(truth))
+        if lay.members is not None:
+            edges.append((MEMBER_REL, lay.member_label, PATTERN_LABEL))
+        vertices += list(lay.latent)
     edge_specs = [
         f"    {_quote(rel)} SOURCE KEY ({_quote(SOURCE)}) REFERENCES {_quote(src)} ({_quote(ID)}) "
         f"DESTINATION KEY ({_quote(TARGET)}) REFERENCES {_quote(dst)} ({_quote(ID)})"
@@ -353,15 +356,16 @@ def _table_counts(conn, tables: GraphTables, truth: dict[str, pl.DataFrame] | No
     edges = {r: backend.count_edges(r) for r in tables.edges}
     extra: dict[str, Any] = {}
     if truth:
-        if truth.get("patterns") is not None:
+        lay = truth_layout(truth, tables)
+        if lay.patterns is not None:
             extra[PATTERN_LABEL] = backend.count_nodes(PATTERN_LABEL)
-        if truth.get("accounts") is not None:
+        if lay.members is not None:
             extra[MEMBER_REL] = backend.count_edges(MEMBER_REL)
-        if truth.get("transactions") is not None:
+        if lay.events is not None and lay.label:
             for rel, frame in tables.edges.items():
-                if "tx_id" in frame.columns:
-                    extra[f"{rel}.is_fraud"] = backend.count_edges(rel, flag="is_fraud")
-        for label in _latent_frames(truth):
+                if lay.event_id in frame.columns:
+                    extra[f"{rel}.{lay.label}"] = backend.count_edges(rel, flag=lay.label)
+        for label in lay.latent:
             extra[label] = backend.count_nodes(label)
     return nodes, edges, extra
 
@@ -496,9 +500,10 @@ class DuckDBBackend:
         clauses = ", ".join(["count(*) AS total", *self._clauses(schema)])
         return self.run(f"SELECT {clauses} FROM {_quote(rel)}")[0]
 
-    def duplicate_tx_ids(self, rel: str) -> int:
+    def duplicate_event_ids(self, rel: str, column: str) -> int:
         return self.run(
-            f"SELECT count(*) AS n FROM (SELECT tx_id FROM {_quote(rel)} GROUP BY tx_id HAVING count(*) > 1)"
+            f"SELECT count(*) AS n FROM (SELECT {_quote(column)} FROM {_quote(rel)} "
+            f"GROUP BY {_quote(column)} HAVING count(*) > 1)"
         )[0]["n"]
 
     def endpoint_mismatches(self, rel: str, src: str, dst: str) -> int:
@@ -509,17 +514,17 @@ class DuckDBBackend:
             f"WHERE a.{_quote(ID)} IS NULL OR b.{_quote(ID)} IS NULL"
         )[0]["n"]
 
-    def membership(self) -> tuple[int, int]:
+    def membership(self, label: str) -> tuple[int, int]:
         row = self.run(
-            f"SELECT count(*) AS rels, count(DISTINCT m.{_quote(SOURCE)}) AS accounts FROM {_quote(MEMBER_REL)} m "
-            f"JOIN {_quote('Account')} a ON m.{_quote(SOURCE)} = a.{_quote(ID)} "
+            f"SELECT count(*) AS rels, count(DISTINCT m.{_quote(SOURCE)}) AS members FROM {_quote(MEMBER_REL)} m "
+            f"JOIN {_quote(label)} a ON m.{_quote(SOURCE)} = a.{_quote(ID)} "
             f"JOIN {_quote(PATTERN_LABEL)} p ON m.{_quote(TARGET)} = p.{_quote(ID)}"
         )[0]
-        return row["rels"], row["accounts"]
+        return row["rels"], row["members"]
 
-    def accounts_without_membership(self, ids: list[Any]) -> int:
+    def members_without_membership(self, ids: list[Any], label: str) -> int:
         return self.run(
-            f"SELECT count(*) AS n FROM {_quote('Account')} a WHERE a.{_quote(ID)} IN (SELECT unnest($ids)) "
+            f"SELECT count(*) AS n FROM {_quote(label)} a WHERE a.{_quote(ID)} IN (SELECT unnest($ids)) "
             f"AND NOT EXISTS (SELECT 1 FROM {_quote(MEMBER_REL)} m WHERE m.{_quote(SOURCE)} = a.{_quote(ID)})",
             ids=ids,
         )[0]["n"]
@@ -528,9 +533,11 @@ class DuckDBBackend:
         rows = self.run(f"SELECT * FROM {_quote(label)} WHERE {_quote(ID)} IN (SELECT unnest($ids))", ids=ids)
         return {row[ID]: row for row in rows}
 
-    def fetch_edges(self, rel: str, tx_ids: list[Any]) -> dict[Any, dict[str, Any]]:
-        rows = self.run(f"SELECT * FROM {_quote(rel)} WHERE tx_id IN (SELECT unnest($ids))", ids=tx_ids)
-        return {row["tx_id"]: row for row in rows}
+    def fetch_edges(self, rel: str, ids: list[Any], column: str) -> dict[Any, dict[str, Any]]:
+        rows = self.run(
+            f"SELECT * FROM {_quote(rel)} WHERE {_quote(column)} IN (SELECT unnest($ids))", ids=ids
+        )
+        return {row[column]: row for row in rows}
 
 
 def verify_tables(

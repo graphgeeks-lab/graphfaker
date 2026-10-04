@@ -2,13 +2,52 @@
 History
 =======
 
-1.1.0 (unreleased)
+1.1.0 (2026-10-04)
 ------------------
 
 The coordination domain pack: a social platform, and the coordinated behaviour
 inside it. And the machinery both packs inject patterns with, lifted out of
 them into the schema and the engine.
 
+.. code-block:: sh
+
+   graphfaker generate coordination --scale 0.001 --tradecraft medium --seed 42 --out ./platform
+
+5,000 accounts, 50 topics, 93,000 follows, 147,000 posts, reshares and
+replies, and 22 campaigns of which 6 are organic. ``--tradecraft`` decides how
+well the inauthentic ones hide, and the hardness report says what that bought:
+
+.. code-block:: text
+
+   tradecraft: medium
+   playbook                kind               n   max AUC  best feature (family)
+   follow_farm             coordinated       29     0.898  clustering_proxy (structure)
+   amplification_ring      coordinated       23     0.898  topic_concentration (content)
+   sockpuppet_cluster      coordinated       12     0.895  device_shared_with (identity)
+   mutual_follow_community organic           30     0.892  reciprocity (structure)
+
+The fourth row is the point of the pack. ``mutual_follow_community`` is a
+group of people who genuinely know each other, labelled
+``is_coordinated=False``, and it is as hard to tell apart from a follow farm
+as the follow farm is to find. A detector that fires on tight reciprocal
+clusters scores well on this dataset and suspends a fan club on a real one.
+
+* Every database sink reads the ground truth in the domain's own words. The
+  truth layout is the same in every pack (patterns, memberships, labelled
+  events, latent factors) and each pack names it after its own subject: the
+  fraud pack writes ``patterns`` with ``pattern_id``, ``typology`` and
+  ``is_fraud``, the coordination pack writes ``campaigns`` with
+  ``campaign_id``, ``playbook`` and ``is_coordinated``. The sinks read those
+  names literally, so a coordination dataset could not be loaded into DuckDB or
+  LadybugDB at all and loaded into Neo4j with its truth silently missing.
+  ``graphfaker.sinks.truth`` now resolves the layout by shape, the way the
+  PyTorch Geometric sink already did, and the loaders, the property graph and
+  the verifier all read from it. A bank's edges still gain ``typology`` and
+  ``is_fraud``; a platform's gain ``playbook`` and ``is_coordinated``; the node
+  label and the relationship type are ``Pattern`` and ``IN_PATTERN`` in both,
+  because that is what every query in the documentation is written against. A
+  coordination dataset now passes 105 checks in DuckDB and 107 in LadybugDB,
+  and tests cover both so this cannot come back.
 * ``Pattern`` and the injection driver moved into the engine, and a domain's
   pattern catalogue into the schema. ``graphfaker.schema.PatternCatalog`` and
   ``PatternSpec`` declare what a pack injects: every shape with its share of

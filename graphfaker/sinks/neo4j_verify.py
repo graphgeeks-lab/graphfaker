@@ -97,13 +97,13 @@ class Neo4jBackend(CypherBackend):
         rows = self.run(f"UNWIND $ids AS id MATCH (n:{_quote(label)} {{{ID}: id}}) RETURN n {{.*}} AS n", ids=ids)
         return {row["n"][ID]: row["n"] for row in rows}
 
-    def fetch_edges(self, rel: str, tx_ids: list[Any]) -> dict[Any, dict[str, Any]]:
+    def fetch_edges(self, rel: str, ids: list[Any], column: str) -> dict[Any, dict[str, Any]]:
         rows = self.run(
-            f"UNWIND $ids AS id MATCH (a)-[r:{_quote(rel)}]->(b) WHERE r.tx_id = id "
+            f"UNWIND $ids AS id MATCH (a)-[r:{_quote(rel)}]->(b) WHERE r.{_quote(column)} = id "
             "RETURN r {.*} AS r, a.id AS source, b.id AS target",
-            ids=tx_ids,
+            ids=ids,
         )
-        return {row["r"]["tx_id"]: {**row["r"], "source": row["source"], "target": row["target"]} for row in rows}
+        return {row["r"][column]: {**row["r"], "source": row["source"], "target": row["target"]} for row in rows}
 
 
 def verify_tables(

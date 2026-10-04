@@ -96,9 +96,11 @@ def test_failed_check_line_states_both_sides():
 
 
 def test_truth_labels_include_latent_factors():
+    # The frames are found by shape, so the membership has to refer to the
+    # pattern the way a real one does.
     truth = {
-        "patterns": pl.DataFrame({"pattern_id": ["p"]}),
-        "accounts": pl.DataFrame({"account_id": ["a"]}),
+        "patterns": pl.DataFrame({"pattern_id": ["p"], "is_fraud": [True]}),
+        "accounts": pl.DataFrame({"account_id": ["a"], "pattern_id": ["p"], "role": ["mule"]}),
         "region": pl.DataFrame({"group": [0]}),
     }
     assert _truth_labels(truth) == {PATTERN_LABEL, "Region"}

@@ -77,7 +77,7 @@ The contract for `generate.py`:
 1. Root all randomness in one `Streams.root(seed)` and spawn children in a fixed order, one per stage. Never use the global `random` or `numpy.random`.
 2. Draw entities with the generic engine (`entities.build_nodes` calls `sample_latent` and `sample_nodes`), so they are sharded, parallel and reproducible for free.
 3. Produce edge tables as Polars frames with `source` and `target` first. Put no labels on them.
-4. Put everything the generator knows into `run.truth`: injected patterns, memberships, labels, latent parameters.
+4. Put everything the generator knows into `run.truth`: injected patterns, memberships, labels, latent parameters. Name the frames and their columns after your own subject, but keep the shape, because that is what the sinks and the verifier find them by: a patterns frame with an `<thing>_id`, a single boolean and a `roles` column; a membership frame with a `role`, the pattern id and the member's id; an event frame with its own id, the pattern id and the same boolean; and one frame per latent factor keyed by `group`. The fraud pack's `patterns`/`pattern_id`/`is_fraud` and the coordination pack's `campaigns`/`campaign_id`/`is_coordinated` are the same layout in two vocabularies, and both load into every database with their own words on the nodes.
 5. Put the options model into `manifest.extra` under the domain's name, so a run can be reproduced from the manifest alone.
 6. Return a `GraphRun`. Then `run.write`, the sinks and the CLI work unchanged.
 
