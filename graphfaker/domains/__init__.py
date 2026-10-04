@@ -5,7 +5,7 @@ so it can be listed and run by name. See ``docs/adding-a-domain.md`` for how
 to add one.
 """
 
-from graphfaker.domains import fraud, social
+from graphfaker.domains import coordination, fraud, social
 from graphfaker.domains.registry import Domain, available, get, register
 
 register(
@@ -15,6 +15,25 @@ register(
         generate=social.generate,
         options=social.SocialOptions,
         schema=social.schema,
+    )
+)
+register(
+    Domain(
+        name="coordination",
+        summary=(
+            "A social platform: accounts, topics, devices; follows, posts, reshares and replies "
+            "over time; labelled coordination campaigns with organic decoys."
+        ),
+        generate=coordination.generate,
+        options=coordination.CoordinationConfig,
+        schema=lambda **options: coordination_schema(options),
+        schema_note=(
+            "This is the entity half of the coordination domain: its node types, attribute samplers\n"
+            "and the latent interest-community factor. The follow graph, the activity stream and the\n"
+            "campaigns come from a process in code (graphfaker/domains/coordination/process.py,\n"
+            "playbooks.py), not from the schema, so generating from this file gives the entities only.\n"
+            "Use `graphfaker generate coordination` for the platform."
+        ),
     )
 )
 register(
@@ -33,4 +52,19 @@ register(
     )
 )
 
-__all__ = ["Domain", "available", "fraud", "get", "register", "social"]
+def coordination_schema(options: dict):
+    """The coordination pack's entity schema, for ``graphfaker schema``."""
+    from graphfaker.domains.coordination import entities
+
+    return entities.schema(coordination.CoordinationConfig(**options))
+
+
+__all__ = [
+    "Domain",
+    "available",
+    "coordination",
+    "fraud",
+    "get",
+    "register",
+    "social",
+]

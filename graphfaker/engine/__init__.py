@@ -16,6 +16,9 @@ _EXPORTS = {
     "fingerprint": "graphfaker.engine.run",
     "generate": "graphfaker.engine.run",
     "Streams": "graphfaker.engine.seeding",
+    "InjectionContext": "graphfaker.engine.injection",
+    "Pattern": "graphfaker.engine.injection",
+    "run_catalog": "graphfaker.engine.injection",
 }
 
 __all__ = sorted(_EXPORTS)
@@ -31,6 +34,9 @@ def __getattr__(name: str):
 
 
 if TYPE_CHECKING:  # pragma: no cover
+    from graphfaker.engine.injection import InjectionContext as InjectionContext
+    from graphfaker.engine.injection import Pattern as Pattern
+    from graphfaker.engine.injection import run_catalog as run_catalog
     from graphfaker.engine.run import GraphRun as GraphRun
     from graphfaker.engine.run import Manifest as Manifest
     from graphfaker.engine.run import fingerprint as fingerprint

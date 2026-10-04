@@ -83,6 +83,46 @@ The contract for `generate.py`:
 
 If your domain injects patterns, also provide a way to measure them. The fraud pack's `hardness_report` (single-feature AUCs against the truth) and `evaluate` (precision and recall at entity, event and pattern level) are written for that domain, but the approach transfers: list the naive rules someone would try first, and report how well each one does.
 
+### Patterns you declare, drawing you write
+
+Two packs inject patterns, and the parts they share are in the engine rather than copied between them.
+
+Declare the catalogue with [`PatternCatalog`](reference/api.rst): every shape with its share of the budget and its natural span in days, then the decoys, each naming the shape it imitates.
+
+```python
+from graphfaker.schema import PatternCatalog, PatternSpec
+
+CATALOG = PatternCatalog(
+    base=1_000,          # patterns at scale 1.0
+    floor=2,             # at least this many of every shape, so small datasets cover the catalogue
+    patterns=[
+        PatternSpec(name="fan_in", share=0.14, span_days=2.0),
+        PatternSpec(name="cycle", share=0.10, span_days=2.0),
+        PatternSpec(name="decoy_fan_in", imitates="fan_in", span_days=2.0),
+    ],
+)
+```
+
+`CATALOG.total(scale)` is how many patterns a dataset gets, `CATALOG.counts(total)` splits them across the shapes, and `CATALOG.decoys`, `CATALOG.twins` and `CATALOG.span_days(name)` are what the injector and the hardness report read.
+
+Declare the dials with `Camouflage`, or a subclass that adds your own and renames these to whatever your readers call them. The fraud pack calls `signature_blend` `amount_blend`, because in a bank the signature is the amount; the coordination pack calls it `text_blend`.
+
+Then write a context and the drawing. `InjectionContext` holds the dials, the period, who is already in a pattern and whether overlap is allowed; subclass it and add the methods that make your domain what it is.
+
+```python
+from graphfaker.engine.injection import InjectionContext, Pattern, round_robin_decoys, run_catalog
+
+class MyContext(InjectionContext):
+    def pick(self, k): ...      # recruitment, your rules
+    def emit(self, pattern, ...): ...   # a row, then pattern.touch(timestamp)
+
+patterns = run_catalog(ctx, counts, FUNCTIONS, make, round_robin_decoys(CATALOG, n_decoys))
+```
+
+`run_catalog` runs the shapes in catalogue order, numbers them, runs the decoys last with overlap off, and returns the records. What it deliberately does not do is draw anything: how many sources a fan-in has and what a copypasta posts is the part that does not generalise, and the part worth writing yourself.
+
+The order that loop walks in is part of what a seed reproduces, so changing it changes every dataset the domain has produced. Both decoy orders are available (`round_robin_decoys`, `grouped_decoys`) because the two packs chose differently before the code was shared, and changing either would have rewritten published measurements for no gain.
+
 ## Registering
 
 Built-in domains are registered in `graphfaker/domains/__init__.py`:
