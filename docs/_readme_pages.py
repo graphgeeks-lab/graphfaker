@@ -33,6 +33,7 @@ TRAILERS = {
 social
 fraud
 coordination
+supply-chain
 real-world
 ```
 """,

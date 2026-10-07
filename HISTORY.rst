@@ -2,12 +2,66 @@
 History
 =======
 
-1.1.0 (2026-10-04)
+1.2.0 (2026-10-04)
 ------------------
 
+Two new domain packs, and the machinery all three inject patterns with,
+lifted out of them into the schema and the engine.
+
+The supply chain pack: a multi-tier supplier network, the orders, shipments,
+invoices and deliveries on it, and labelled procurement patterns with
+legitimate structures that leave the same trace.
+
+* ``graphfaker generate supply_chain`` produces suppliers in three tiers,
+  plants, warehouses, customers, products and carriers; the contracts, tier
+  structure and lanes between them; and an event stream of scheduled
+  replenishment, seasonal ad hoc demand, shipments against promised lead
+  times, invoices behind the goods, inter-company movements and outbound
+  deliveries.
+* Four labelled plays, each paired with a legitimate structure that leaves
+  the same trace: ``phantom_supplier`` with ``disruption_cascade``,
+  ``invoice_kiting`` with ``consignment_loop``, ``split_orders`` with
+  ``blanket_calloffs``, ``counterfeit_injection`` with ``quality_incident``.
+  A port closure and a shell company produce the same ledger; a framework
+  agreement and a split-order scheme produce the same histogram.
+* ``hardness_report`` scores sixteen features in six families against the
+  suppliers that trade, not against the dormant tail, because a procurement
+  team ranks the suppliers it is buying from. ``evaluate`` scores at
+  supplier, event and pattern level with ``legitimate_false_positive_rate``
+  reported separately.
+* The measurement found four label leaks while the pack was being written,
+  each of which would have made a play findable by one column: legitimate
+  invoices were never round numbers, every legitimate invoice had a shipment
+  behind it, inter-company movements only ever ran down the chain, and plays
+  recruited suppliers that had no contract and therefore no ordinary
+  traffic. All four are fixed in the process rather than in the features.
+  A fifth was in the dial itself: ``activity_camouflage`` was stripping a
+  member's ordinary trading, borrowed from the fraud pack's mule accounts,
+  and a supplier with no business is not hiding. It now controls
+  displacement instead, thinning a member's ordinary traffic while its
+  pattern runs, so a scheme is done instead of part of the work rather than
+  on top of all of it. Mean best single-feature AUC across the catalogue
+  now falls 0.853 / 0.823 / 0.814 across the three levels, where before the
+  fix ``high`` was the easiest setting.
+* A threshold rule, the first thing anyone writes, finds every split-order
+  scheme, misses the other three plays completely, and flags 42% of the
+  suppliers running ordinary blanket agreements.
+* ``docs/domains/supply-chain.md``, and a notebook,
+  ``docs/notebooks/supply_chain_investigation.ipynb``, that writes the four
+  detectors a procurement team would write and scores each one against the
+  truth and against the innocent suppliers it accuses. The threshold rule
+  finds every split-order scheme and flags 36% of the legitimate blanket
+  agreements; the unmatched-invoice rule finds every phantom supplier and
+  flags 86% of the suppliers caught in a port closure; "on any cycle" flags
+  every supplier that trades, because goods legitimately move in loops; and
+  a tightened cycle query that wants the same value passed round inside
+  three weeks finds no rings at all. All four together reconstruct 8 of the
+  10 schemes and accuse 4 legitimate structures.
+
+1.1.0 (2026-10-04)
+------------------
 The coordination domain pack: a social platform, and the coordinated behaviour
-inside it. And the machinery both packs inject patterns with, lifted out of
-them into the schema and the engine.
+inside it.
 
 .. code-block:: sh
 
