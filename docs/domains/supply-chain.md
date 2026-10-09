@@ -32,10 +32,11 @@ A port closure and a shell company produce the same ledger. A framework agreemen
 
 | node type | attributes |
 |---|---|
-| Supplier | name, tier (1 to 3), country, capacity, on-time rate, quality score, payment terms, onboarded at, region, category |
+| Supplier | name (a register's legal forms), tier (1 to 3), country, **address (line, city, postcode)**, capacity, on-time rate, quality score, payment terms, onboarded at, region, category |
 | Plant | name, country, capacity, shifts, region |
 | Warehouse | name, country, capacity in pallets, automated, region |
-| Customer | name, segment, annual spend, region |
+| Customer | name, segment, **address**, annual spend, region |
+| Person | name, first, middle and last where a register would record them, home address |
 | Product | name, family, unit cost, lead time class, hazardous, category |
 | Carrier | name, mode, on-time rate, cost per km, region |
 
@@ -57,6 +58,41 @@ A port closure and a shell company produce the same ledger. A framework agreemen
 | `DELIVERS` | warehouse to customer: the outbound half of the network |
 
 Every event carries `event_id`, `timestamp`, `amount`, `quantity`, a `reference` to the event it follows, and whether it was `scheduled`. **No node or edge attribute says whether anything is part of a pattern.** That lives in `run.truth`, which `--blind` leaves out.
+
+## Addresses are not identifiers
+
+Suppliers, plants and warehouses draw from one pool of addresses, and they share it the way a register does: most addresses hold one organisation, some hold a handful, and a few hold a great many. The shape was measured on two real registers that have no records in common, and they agree: a Las Vegas file of 2,026,444 records and the 1,033,773 companies registered in Nevada inside a 330-million-record national export. The median address holds one organisation in both, the 90th percentile four, the 99th 31 and 27, the busiest 99,522 and 99,794, and the top 1% of addresses carry 53.7% and 51.0% of all rows ([`benchmarks/realism/corporate.py`](https://github.com/graphgeeks-lab/graphfaker/blob/main/benchmarks/realism/corporate.py)).
+
+That is the registered agent, and it is why address is not a blocking key: a resolver that merges on it merges a city. Generating one address per company would make deduplicating on address work perfectly, which is the opposite of the lesson. Customers draw from their own, nearly unique pool, because a retail base is not registered through agents.
+
+What is reproduced and what is not, at 200,000 organisations: the mean (4.76 against 4.76 and 4.49), the median (1) and the 90th percentile (4) match both registers, and the top 1% share lands within a few points (0.56 against 0.537 and 0.510); the tail runs hot, with a 99th percentile of about 40 against 31 and 27. One curve cannot have both ends, because the exponent that sets the mean sets the tail too: bring the 99th percentile down to the measured range and the mean falls to 3.7. A head of registered agents over a nearly unique body is the fix and is not done yet. And a small dataset cannot have the real head at all, because 1% of 160 addresses is one address.
+
+## Names are not keys either
+
+A supplier is called something like `JOYCE SANFORDSTAD LLC` or `BAKER ANGELASHIRE, INC`, and the proportions are a
+register's: LLC 53.9%, INC 20.5%, no legal form at all 11.9%, `L.L.C` 2.6%, `CORPORATION` 2.4%. Half of all names
+put a comma before the suffix and half do not, which is also measured. Faker's company provider, which this pack
+used before, offers `PLC` and `and Sons` and left 81% of companies with no suffix at all.
+
+Two different companies share a name about 1% of the time once the legal form is stripped, which is what a register
+does (1.02% there, 0.97% to 1.01% here, from 500 rows to 200,000). That number is the one worth getting right in
+both directions: Faker's thousand surnames gave one stem to 1,451 companies at 200,000 rows, which would make a
+resolution benchmark built on these names a benchmark of a vocabulary shortage.
+
+`graphfaker.engine.names.variants` writes one company's name the other ways a register writes it, for building the
+case a resolver actually faces: the same entity on several records, spelled differently.
+
+## Most companies have nobody
+
+4.5% of the companies here have a single officer or contact attached, which is what a register says: 46,201 of
+Nevada's 1,033,773 companies and 27,727 of the Las Vegas file's 631,846. Among the ones that do, the median is one
+person and the 99th percentile is 151, because the busy ones are filing agents rather than boards. A generated
+dataset that gives every company a board gets the common case and the tail wrong at once.
+
+People arrive as `Person` nodes with `CONTACT_AT` and `EXECUTIVE_AT` relationships, which is the same vocabulary the
+loader produces for a real register, so a generated graph and a loaded one answer the same query. Roughly one person
+in six is attached to more than one company, which is where "shares a director" comes from and why it is not
+evidence by itself.
 
 ## The ordinary rhythm
 

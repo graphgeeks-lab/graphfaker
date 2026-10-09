@@ -1,0 +1,188 @@
+{
+ "label": "Nevada, from the 2026-03-05 national open data export",
+ "kind": "reference",
+ "measured_at": "2026-10-08",
+ "source": "ODO_SENZING_20260305 (1).zip",
+ "licence": "CDLA-Permissive-2.0",
+ "provenance": {
+  "dataset": "OpenData.org U.S. entity dataset, 2026-03-05 (ODO_SENZING_20260305), in Senzing JSON format",
+  "publisher": "OpenData.org",
+  "publisher_terms": "https://opendata.org/terms/",
+  "licence": "CDLA-Permissive-2.0",
+  "licence_text": "https://cdla.dev/permissive-2-0/",
+  "what_this_file_is": "aggregate statistics computed from that dataset: counts, distribution summaries and frequency tables. No company, person, name or address is in it. Under CDLA-Permissive-2.0 section 3.1 computed output carries no obligations; the section 2.1 condition to pass on the agreement text applies to sharing the data itself, which this is not.",
+  "checked": "2026-10-08"
+ },
+ "scope": {
+  "aggregates": "every record read",
+  "per_entity": "ADDR_STATE in NV",
+  "records_in_scope": 3398586,
+  "companies_in_scope": 1033773
+ },
+ "records": 330553048,
+ "record_types": {
+  "ORGANIZATION": 227158903,
+  "PERSON": 103394145
+ },
+ "relationship_roles": {
+  "INDEPENDENT": 115118242,
+  "Contact": 79917737,
+  "Executive": 21579645,
+  "HEADQUARTERS": 13763061,
+  "BRANCH": 12926337,
+  "BUSINESS": 557244
+ },
+ "distributions": [
+  {
+   "metric": "organizations_per_address",
+   "keys": 604980,
+   "rows": 2713383,
+   "mean": 4.485,
+   "p50": 1,
+   "p90": 4,
+   "p99": 27,
+   "max": 99794,
+   "top1pct_share": 0.51,
+   "gini": 0.7017
+  },
+  {
+   "metric": "people_per_organization",
+   "keys": 46201,
+   "rows": 671055,
+   "mean": 14.525,
+   "p50": 1,
+   "p90": 14,
+   "p99": 151,
+   "max": 68945,
+   "top1pct_share": 0.6139,
+   "gini": 0.8756
+  },
+  {
+   "metric": "sites_per_organization",
+   "keys": 982966,
+   "rows": 1693758,
+   "mean": 1.723,
+   "p50": 1,
+   "p90": 3,
+   "p99": 5,
+   "max": 4283,
+   "top1pct_share": 0.0533,
+   "gini": 0.2685
+  },
+  {
+   "metric": "organizations_per_person_name",
+   "keys": 561166,
+   "rows": 657984,
+   "mean": 1.173,
+   "p50": 1,
+   "p90": 2,
+   "p99": 4,
+   "max": 84,
+   "top1pct_share": 0.0497,
+   "gini": 0.1346
+  }
+ ],
+ "name_collision": {
+  "distinct_names": 1153669,
+  "repeated_exact_share": 0.8506,
+  "distinct_names_without_legal_form": 1072835,
+  "repeated_without_legal_form_share": 0.9052
+ },
+ "name_collision_companies": {
+  "distinct_names": 1031665,
+  "repeated_exact_share": 0.0018,
+  "distinct_names_without_legal_form": 1019027,
+  "repeated_without_legal_form_share": 0.0137
+ },
+ "shared_names": {
+  "metric": "companies_per_name_stem",
+  "keys": 1019027,
+  "rows": 1033773,
+  "mean": 1.014,
+  "p50": 1,
+  "p90": 1,
+  "p99": 2,
+  "max": 36,
+  "top1pct_share": 0.0204,
+  "gini": 0.0141
+ },
+ "legal_form_mix": {
+  "LLC": 0.547,
+  "INC": 0.2238,
+  "(none)": 0.1266,
+  "CORP": 0.04,
+  "LTD": 0.0235,
+  "CO": 0.0122,
+  "LP": 0.0065,
+  "PLLC": 0.0055,
+  "ASSOCIATION": 0.005,
+  "FOUNDATION": 0.0048,
+  "LLP": 0.0019,
+  "PC": 0.0019
+ },
+ "legal_form_spellings": {
+  "LLC": 0.5188,
+  "INC": 0.2122,
+  "(none)": 0.1266,
+  "L.L.C": 0.0262,
+  "CORPORATION": 0.0244,
+  "LTD": 0.0199,
+  "CORP": 0.0155,
+  "COMPANY": 0.009,
+  "INCORPORATED": 0.0074,
+  "LP": 0.0065,
+  "PLLC": 0.0055,
+  "ASSOCIATION": 0.005,
+  "FOUNDATION": 0.0048,
+  "INC.": 0.0043,
+  "LIMITED": 0.0034,
+  "CO": 0.0031,
+  "LLP": 0.0019,
+  "LLC.": 0.0019,
+  "PC": 0.0019,
+  "TRUST": 0.0012
+ },
+ "common_name_tokens": {
+  "GROUP": 0.0147,
+  "S": 0.0104,
+  "SERVICES": 0.0098,
+  "PARTNERSHIP": 0.0095,
+  "NEVADA": 0.0092,
+  "ENTERPRISES": 0.009,
+  "MANAGEMENT": 0.0089,
+  "HOLDINGS": 0.008,
+  "INVESTMENTS": 0.0078,
+  "SOLUTIONS": 0.0073,
+  "VEGAS": 0.0057,
+  "PROPERTIES": 0.0055,
+  "INTERNATIONAL": 0.0054,
+  "CONSULTING": 0.0047,
+  "PROPERTY": 0.0045,
+  "CAPITAL": 0.0044,
+  "FAMILY": 0.0042,
+  "D": 0.0042,
+  "INVESTMENT": 0.0041,
+  "LAS": 0.004
+ },
+ "identifier_coverage": {
+  "GEO_LATITUDE": 0.6734,
+  "ADDR_POSTAL_CODE": 0.6194,
+  "LINKEDIN": 0.3313,
+  "PLACEKEY": 0.2919,
+  "WEBSITE_ADDRESS": 0.1467,
+  "ADDR_LINE2": 0.0282,
+  "OTHER_ID_NUMBER": 0.0191,
+  "NPI_NUMBER": 0.0038,
+  "LEI_NUMBER": 0.0006
+ },
+ "top_states": {
+  "FL": 0.1164,
+  "CA": 0.109,
+  "TX": 0.083,
+  "NY": 0.0588,
+  "GA": 0.0423,
+  "IL": 0.0326,
+  "PA": 0.031,
+  "MI": 0.0302
+ }
+}

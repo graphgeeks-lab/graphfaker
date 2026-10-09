@@ -23,6 +23,9 @@ import polars as pl
 
 from graphfaker.backends.tables import ID, SOURCE, TARGET
 from graphfaker.domains.supply_chain.config import TIER_MIX, SupplyChainConfig
+from graphfaker.engine.addresses import RETAIL, shared_addresses
+from graphfaker.engine.names import company_names
+from graphfaker.engine.people import attach
 from graphfaker.engine.run import node_pool
 from graphfaker.engine.sampling import sample_latent, sample_nodes
 from graphfaker.engine.seeding import Streams
@@ -221,6 +224,120 @@ def build_nodes(
                 executor=executor,
             )
     return {node.name: tables[node.name] for node in node_schema.nodes}, latent
+
+
+def add_addresses(
+    tables: dict[str, pl.DataFrame], streams: Streams
+) -> dict[str, pl.DataFrame]:
+    """Street addresses on the organisations, shared the way a register
+    shares them.
+
+    Suppliers, plants and warehouses draw from one pool, so a supplier can
+    sit at the same address as another supplier and occasionally at a
+    plant's. That reuse is the point: measured on a real register the median
+    address holds one organisation and the top 1% hold over half of them,
+    which is what stops address being an identifier.
+    Customers get their own pool, because a retail base is not registered
+    through agents.
+    """
+    business = [label for label in ("Supplier", "Plant", "Warehouse") if label in tables]
+    rows = sum(tables[label].height for label in business)
+    columns = shared_addresses(streams, rows)
+    at = 0
+    for label in business:
+        height = tables[label].height
+        tables[label] = tables[label].with_columns(
+            [pl.Series(name, values[at : at + height]) for name, values in columns.items()]
+        )
+        at += height
+    if "Customer" in tables:
+        retail = shared_addresses(streams, tables["Customer"].height, RETAIL)
+        tables["Customer"] = tables["Customer"].with_columns(
+            [pl.Series(name, values) for name, values in retail.items()]
+        )
+    return tables
+
+
+#: The node types that are companies, and so are named like companies. A
+#: warehouse is a site rather than a legal entity and keeps its place name.
+COMPANY_TYPES = ("Supplier", "Plant", "Customer", "Carrier")
+
+
+def add_names(tables: dict[str, pl.DataFrame], streams: Streams) -> dict[str, pl.DataFrame]:
+    """Company names with a register's legal forms and a register's reuse.
+
+    Faker's company provider is a thousand surnames with ``PLC`` and ``and
+    Sons`` on the end: at this pack's scale 81% of the names had no legal form
+    at all and 5.6% were LLCs, against a measured 11.9% and 53.9%, and at
+    200,000 rows one stem carried 1,451 companies.
+    :func:`graphfaker.engine.names.company_names` is the measured version.
+    """
+    for label in COMPANY_TYPES:
+        if label in tables:
+            tables[label] = tables[label].with_columns(
+                pl.Series("name", company_names(streams, tables[label].height))
+            )
+    return tables
+
+
+#: Relationship per register role. The same vocabulary the loader produces
+#: for a real register, so a generated graph and a loaded one can be queried
+#: the same way.
+PERSON_RELATIONSHIPS = {"Contact": "CONTACT_AT", "Executive": "EXECUTIVE_AT"}
+
+
+def add_people(
+    tables: dict[str, pl.DataFrame], streams: Streams
+) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame]]:
+    """Officers and contacts, on the companies that have any.
+
+    Most companies have nobody: 4.5% of a register's companies have a single
+    person attached, and the ones that do have a median of one and a 99th
+    percentile of 151. A generated dataset that gives every company a board
+    gets the common case wrong and the tail wrong at the same time; see
+    :mod:`graphfaker.engine.people`.
+
+    People get a home address from the retail pool, because a director lives
+    somewhere rather than being registered through an agent, and sometimes
+    that address is the company's.
+    """
+    companies = [
+        str(value)
+        for label in COMPANY_TYPES
+        if label in tables
+        for value in tables[label]["id"].to_list()
+    ]
+    people, links = attach(streams, companies)
+    if not people:
+        return tables, {}
+
+    # An explicit schema, because the first rows are the ones with no name
+    # parts recorded: inferring from them types the columns as null and the
+    # first person who does have a surname fails to append.
+    frame = pl.DataFrame(
+        people,
+        schema={
+            "id": pl.String, "name": pl.String,
+            "first": pl.String, "middle": pl.String, "last": pl.String,
+        },
+    )
+    addresses = shared_addresses(streams, frame.height, RETAIL)
+    tables["Person"] = frame.with_columns(
+        [pl.Series(name, values) for name, values in addresses.items()]
+    )
+
+    edges: dict[str, pl.DataFrame] = {}
+    for role, relationship in PERSON_RELATIONSHIPS.items():
+        rows = [link for link in links if link["role"] == role]
+        if rows:
+            edges[relationship] = pl.DataFrame(
+                {
+                    SOURCE: [str(link["person"]) for link in rows],
+                    TARGET: [str(link["company"]) for link in rows],
+                    "role": [role] * len(rows),
+                }
+            )
+    return tables, edges
 
 
 def add_onboarding_dates(

@@ -12,6 +12,7 @@ import polars as pl
 import pytest
 from typer.testing import CliRunner
 
+from graphfaker.backends.tables import GraphTables
 from graphfaker.cli import app
 from graphfaker.domains import fraud, social
 from graphfaker.engine import generate
@@ -81,6 +82,21 @@ def test_property_graph_lists_every_table_with_its_endpoints(run):
         assert f'"{node}"' in ddl
     assert '"TRANSFERS" SOURCE KEY ("source") REFERENCES "Account" ("id") DESTINATION KEY ("target") REFERENCES "Account" ("id")' in ddl
     assert '"PAYS" SOURCE KEY ("source") REFERENCES "Account" ("id") DESTINATION KEY ("target") REFERENCES "Merchant" ("id")' in ddl
+
+
+def test_a_dataset_with_no_edges_gets_a_vertex_only_property_graph(run):
+    """``EDGE TABLES ()`` is a syntax error, and a graph of nodes is a thing.
+
+    A cut of a register that happens to hold only companies has no edges at
+    all, and the load used to get through every table and then fail on the
+    property graph.
+    """
+    nodes_only = GraphTables(nodes=dict(run.tables.nodes))
+    ddl = property_graph(nodes_only, None, "register")
+    assert ddl.rstrip().endswith(");") and "EDGE TABLES" not in ddl
+    assert 'CREATE OR REPLACE PROPERTY GRAPH "register"' in ddl
+    for node in nodes_only.nodes:
+        assert f'"{node}"' in ddl
 
 
 def test_the_script_and_the_in_memory_load_produce_the_same_database(run, dataset, tmp_path):

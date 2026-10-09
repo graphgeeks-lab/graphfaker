@@ -54,18 +54,34 @@ def generate(
         **{**(config.model_dump() if config else {}), **overrides}
     )
     root = Streams.root(seed)
-    node_streams, structure_streams, pattern_streams, event_streams = root.spawn(4)
+    # Seven children, with addresses, names and people last: a stream of
+    # their own means adding them left every other draw in the run where it
+    # was. Children are taken in order, so asking for one more does not move
+    # the earlier ones.
+    (
+        node_streams,
+        structure_streams,
+        pattern_streams,
+        event_streams,
+        address_streams,
+        name_streams,
+        people_streams,
+    ) = root.spawn(7)
 
     # 1. Entities.
     tables, latent = entities.build_nodes(config, node_streams, shard_size, workers)
     rng = structure_streams.rng
+    tables = entities.add_addresses(tables, address_streams)
+    tables = entities.add_names(tables, name_streams)
+    tables, person_edges = entities.add_people(tables, people_streams)
     tables["Supplier"] = entities.add_onboarding_dates(tables["Supplier"], config, rng)
     logger.info(
-        "supply_chain: %d suppliers, %d plants, %d warehouses, %d customers",
+        "supply_chain: %d suppliers, %d plants, %d warehouses, %d customers, %d people",
         tables["Supplier"].height,
         tables["Plant"].height,
         tables["Warehouse"].height,
         tables["Customer"].height,
+        tables["Person"].height if "Person" in tables else 0,
     )
 
     # 2. The network: contracts, tiers, lanes.
@@ -136,7 +152,7 @@ def generate(
 
     # 6. Merge and number in time order.
     event_edges, event_truth = _merge_events(legitimate, injection)
-    edges = {**structure, **event_edges}
+    edges = {**structure, **person_edges, **event_edges}
 
     truth = {
         "patterns": _patterns_frame(injection, pop),
@@ -149,6 +165,7 @@ def generate(
     node_schema = entities.schema(config)
     order = (
         "SUPPLIES", "SUBCONTRACTS", "PRODUCES", "STOCKS", "SERVES", "HAULS",
+        "CONTACT_AT", "EXECUTIVE_AT",
         process.ORDERS, process.SHIPS, process.INVOICES, process.INTERCOMPANY, process.DELIVERS,
     )
     graph = GraphTables(nodes=tables, edges={k: edges[k] for k in order if k in edges})

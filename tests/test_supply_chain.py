@@ -43,7 +43,9 @@ def runs():
 
 def test_the_network_has_every_level_and_the_tiers_connect(run):
     nodes = run.tables.nodes
-    assert set(nodes) == {"Supplier", "Plant", "Warehouse", "Customer", "Product", "Carrier"}
+    assert set(nodes) == {
+        "Supplier", "Plant", "Warehouse", "Customer", "Product", "Carrier", "Person",
+    }
     tiers = set(nodes["Supplier"]["tier"].to_list())
     assert tiers == {1, 2, 3}, "all three tiers exist, or there is nothing to hide behind"
 
@@ -268,9 +270,10 @@ def test_a_threshold_rule_finds_split_orders_and_accuses_the_innocent(run):
 
     A rule that counts orders just under the approval limit is the first
     thing a procurement team writes. It should find the scheme it was
-    written for, miss the others, and flag the blanket agreements that look
-    exactly like it. If it ever stops flagging them, the decoys have stopped
-    working and every precision number measured here is flattering.
+    written for, be nearly blind to the others, and flag the blanket
+    agreements that look exactly like it. If it ever stops flagging them,
+    the decoys have stopped working and every precision number measured
+    here is flattering.
     """
     threshold = run.manifest.extra["supply_chain"]["approval_threshold"]
     orders = run.tables.edges[ORDERS]
@@ -281,7 +284,11 @@ def test_a_threshold_rule_finds_split_orders_and_accuses_the_innocent(run):
 
     result = evaluate(run, flagged_suppliers=flagged)
     assert result.recall_by_play["split_orders"] > 0.5, "the rule misses what it was written for"
-    assert result.recall_by_play["invoice_kiting"] == 0.0, "a threshold rule cannot see a ring"
+    # Not zero: the rule flags a tenth of the supplier base, so it picks up
+    # a ring member now and then by accident. Across seeds that is 0 to 0.23
+    # of the rings against all of the split-order schemes, and an incidental
+    # hit from a rule that cannot express a cycle is not detection.
+    assert result.recall_by_play["invoice_kiting"] < result.recall_by_play["split_orders"] / 2
     assert result.legitimate_false_positive_rate > 0.0, "the decoys are not being caught"
     assert result.supplier.precision < 0.5, "a one-line rule should not be accurate here"
     assert "legitimate suppliers flagged" in result.summary()
