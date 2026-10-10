@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import collections
 import json
+import re
 import zipfile
 
 import polars as pl
@@ -29,6 +30,23 @@ from graphfaker.fetchers.senzing import (
 )
 
 runner = CliRunner()
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+_BOX = re.compile(r"[\u2500-\u257f]")
+
+
+def said(result) -> str:
+    """What the CLI said, with rich's drawing taken off.
+
+    Typer renders an error through rich, which colours it, wraps it to the
+    terminal width and puts it in a box. Colour is the part that breaks a
+    substring match, because an option is styled a dash at a time:
+    ``--path`` arrives as ``\x1b[1;36m-\x1b[0m\x1b[1;36m-path\x1b[0m``, so
+    the literal string is not in the output at all. That is why these
+    assertions passed locally and failed in CI, where colour is on.
+    """
+    text = _BOX.sub(" ", _ANSI.sub("", result.output))
+    return " ".join(text.split())
 
 RECORDS = [
     # Two companies, each an anchor other records point at.
@@ -171,11 +189,11 @@ def test_the_cli_loads_a_register_and_exports_it(register, tmp_path):
 
 def test_the_cli_says_what_is_missing(tmp_path):
     result = runner.invoke(app, ["gen", "--fetcher", "senzing"])
-    assert result.exit_code != 0 and "--path" in result.output
+    assert result.exit_code != 0 and "--path" in said(result)
     result = runner.invoke(
         app, ["gen", "--fetcher", "senzing", "--path", str(tmp_path / "nope.jsonl")]
     )
-    assert result.exit_code != 0 and "no register" in result.output
+    assert result.exit_code != 0 and "no register" in said(result)
 
 
 # ------------------------------------------------------- sharded exports
@@ -294,14 +312,14 @@ def test_the_report_names_what_a_load_would_not_keep(tmp_path):
 def test_the_register_command_reports_and_can_print_json(register):
     result = runner.invoke(app, ["register", str(register)])
     assert result.exit_code == 0, result.output
-    assert "record types:" in result.output and "ORGANIZATION 4" in result.output
+    assert "record types:" in said(result) and "ORGANIZATION 4" in said(result)
 
     result = runner.invoke(app, ["register", str(register), "--json"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["counts"]["records"] == len(RECORDS)
 
     result = runner.invoke(app, ["register", str(register.parent / "nope.jsonl")])
-    assert result.exit_code != 0 and "no register" in result.output
+    assert result.exit_code != 0 and "no register" in said(result)
 
 
 # ------------------------------------------------------------- as tables
@@ -375,14 +393,14 @@ def test_the_cli_writes_a_dataset_and_reports_it(register, tmp_path):
 
     # A sink that needs an answer key is not on offer for a register.
     result = runner.invoke(app, ["register", str(register), "--out", str(tmp_path / "pyg"), "--sink", "pyg"])
-    assert result.exit_code != 0 and "--sink for a register" in result.output
+    assert result.exit_code != 0 and "--sink for a register" in said(result)
 
 
 def test_a_register_with_nothing_in_scope_is_refused_rather_than_written(register, tmp_path):
     result = runner.invoke(
         app, ["register", str(register), "--out", str(tmp_path / "empty"), "--state", "ZZ"]
     )
-    assert result.exit_code != 0 and "nothing to write" in result.output
+    assert result.exit_code != 0 and "nothing to write" in said(result)
 
 
 def test_the_parser_is_interchangeable(register):
