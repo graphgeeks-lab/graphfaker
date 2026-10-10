@@ -5,7 +5,7 @@ so it can be listed and run by name. See ``docs/adding-a-domain.md`` for how
 to add one.
 """
 
-from graphfaker.domains import coordination, fraud, social
+from graphfaker.domains import coordination, fraud, social, supply_chain
 from graphfaker.domains.registry import Domain, available, get, register
 
 register(
@@ -51,6 +51,35 @@ register(
         ),
     )
 )
+register(
+    Domain(
+        name="supply_chain",
+        summary=(
+            "A supply network: suppliers in tiers, plants, warehouses, customers, products, carriers; "
+            "orders, shipments, invoices and deliveries over time; labelled procurement patterns with "
+            "legitimate structures that imitate them."
+        ),
+        generate=supply_chain.generate,
+        options=supply_chain.SupplyChainConfig,
+        schema=lambda **options: supply_chain_schema(options),
+        schema_note=(
+            "This is the entity half of the supply chain domain: its node types, attribute samplers\n"
+            "and the latent region and category factors. The contracts between them, the event\n"
+            "stream and the injected patterns come from a process in code\n"
+            "(graphfaker/domains/supply_chain/entities.py, process.py, patterns.py), not from the\n"
+            "schema, so generating from this file gives the entities only. Use\n"
+            "`graphfaker generate supply_chain` for the network."
+        ),
+    )
+)
+
+
+def supply_chain_schema(options: dict):
+    """The supply chain pack's entity schema, for ``graphfaker schema``."""
+    from graphfaker.domains.supply_chain import entities
+
+    return entities.schema(supply_chain.SupplyChainConfig(**options))
+
 
 def coordination_schema(options: dict):
     """The coordination pack's entity schema, for ``graphfaker schema``."""

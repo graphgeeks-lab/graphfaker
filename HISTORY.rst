@@ -2,12 +2,290 @@
 History
 =======
 
-1.1.0 (2026-10-04)
+1.2.0 (2026-10-04)
 ------------------
 
+Two new domain packs, and the machinery all three inject patterns with,
+lifted out of them into the schema and the engine.
+
+The supply chain pack: a multi-tier supplier network, the orders, shipments,
+invoices and deliveries on it, and labelled procurement patterns with
+legitimate structures that leave the same trace.
+
+* ``graphfaker generate supply_chain`` produces suppliers in three tiers,
+  plants, warehouses, customers, products and carriers; the contracts, tier
+  structure and lanes between them; and an event stream of scheduled
+  replenishment, seasonal ad hoc demand, shipments against promised lead
+  times, invoices behind the goods, inter-company movements and outbound
+  deliveries.
+* Four labelled plays, each paired with a legitimate structure that leaves
+  the same trace: ``phantom_supplier`` with ``disruption_cascade``,
+  ``invoice_kiting`` with ``consignment_loop``, ``split_orders`` with
+  ``blanket_calloffs``, ``counterfeit_injection`` with ``quality_incident``.
+  A port closure and a shell company produce the same ledger; a framework
+  agreement and a split-order scheme produce the same histogram.
+* ``hardness_report`` scores sixteen features in six families against the
+  suppliers that trade, not against the dormant tail, because a procurement
+  team ranks the suppliers it is buying from. ``evaluate`` scores at
+  supplier, event and pattern level with ``legitimate_false_positive_rate``
+  reported separately.
+* The measurement found four label leaks while the pack was being written,
+  each of which would have made a play findable by one column: legitimate
+  invoices were never round numbers, every legitimate invoice had a shipment
+  behind it, inter-company movements only ever ran down the chain, and plays
+  recruited suppliers that had no contract and therefore no ordinary
+  traffic. All four are fixed in the process rather than in the features.
+  A fifth was in the dial itself: ``activity_camouflage`` was stripping a
+  member's ordinary trading, borrowed from the fraud pack's mule accounts,
+  and a supplier with no business is not hiding. It now controls
+  displacement instead, thinning a member's ordinary traffic while its
+  pattern runs, so a scheme is done instead of part of the work rather than
+  on top of all of it. Mean best single-feature AUC across the catalogue
+  now falls 0.853 / 0.823 / 0.814 across the three levels, where before the
+  fix ``high`` was the easiest setting.
+* A threshold rule, the first thing anyone writes, finds every split-order
+  scheme, misses the other three plays completely, and flags 42% of the
+  suppliers running ordinary blanket agreements.
+* ``docs/domains/supply-chain.md``, and a notebook,
+  ``docs/notebooks/supply_chain_investigation.ipynb``, that writes the four
+  detectors a procurement team would write and scores each one against the
+  truth and against the innocent suppliers it accuses. The threshold rule
+  finds every split-order scheme and flags 36% of the legitimate blanket
+  agreements; the unmatched-invoice rule finds every phantom supplier and
+  flags 86% of the suppliers caught in a port closure; "on any cycle" flags
+  every supplier that trades, because goods legitimately move in loops; and
+  a tightened cycle query that wants the same value passed round inside
+  three weeks finds no rings at all. All four together reconstruct 8 of the
+  10 schemes and accuse 4 legitimate structures.
+
+A real register, and what measuring one changed.
+
+* Organisations share addresses, in the proportions a register does.
+  ``graphfaker.engine.addresses`` allocates a pool across rows on a Zipf
+  curve calibrated against a real company register of 2,026,444 records:
+  the median address holds one organisation, the 90th percentile four, the
+  top 1% of addresses over half of everything. Giving every company its own
+  address makes deduplicating on address work perfectly, which is the
+  opposite of what a corporate dataset is for. The supply chain pack's
+  suppliers, plants and warehouses now draw from one shared pool and its
+  customers from a nearly unique one. ``REGISTER``, ``RETAIL`` and
+  ``UNIQUE`` are the three profiles, and ``alpha`` rather than the mean is
+  the dial that decides how shared an address is. Addresses draw from a
+  stream of their own, so every other draw in a run stayed where it was:
+  a supply chain dataset for a given seed is the one 1.2.0 would have
+  written with the address columns added, not a different dataset.
+* ``benchmarks/realism/corporate.py`` measures what a generator cannot
+  invent about a population of companies, streaming a register in Senzing's
+  format into aggregate statistics and scoring a GraphFaker run on the same
+  metrics. The reference files beside it are counts only. It found four
+  gaps, of which addresses are the first fixed; names that collide,
+  attribute coverage and officer density are in the plan.
+* A second reference, from a second register, because a shape measured once
+  is a property of a file and a shape measured twice is a property of the
+  world. ``corporate-nevada.json`` comes from the national open data export
+  of 2026-03-05: 330,553,048 records in 2,493 shards, one pass in 150
+  minutes at 37,000 records a second. It agrees with the Las Vegas file it
+  has no records in common with. Companies per address: median 1 against 1,
+  90th percentile 4 against 4, busiest address 99,794 against 99,522, top 1%
+  of addresses holding 51.0% of everything against 53.7%. Names already
+  taken with the legal form stripped: 90.3% against 91.8%. LLC: 52.1%
+  against 54.4%. The measurement takes ``--state`` for this, because the
+  distributions that need one counter per entity cannot be held over 330
+  million records while the category mixes can, and every output file now
+  carries a ``scope`` saying which numbers had which treatment. Two things
+  the national pass adds: identifier coverage over everything (geo 67.3%,
+  postcode 61.9%, LinkedIn 33.1%, Placekey 29.2%, website 14.7%, LEI 0.06%),
+  and the fact that only 46,201 of Nevada's 1,033,773 companies have a
+  single person attached, with a mean of 14.5 and a maximum of 68,945 among
+  those that do. Board density has a floor of zero, which a generator that
+  gives every company an officer gets wrong twice.
+* The address model is confirmed rather than retuned by that. It reproduces
+  the mean, the median and the 90th percentile of both registers and still
+  runs hot in the tail (p99 about 40 against 31 and 27), and a sweep across
+  the exponent shows why: one Zipf curve sets the mean and the tail with the
+  same number, and the exponent that fixes p99 puts the mean at 3.7. Two
+  components, a head of registered agents over a nearly unique body, is the
+  fix, and it is in the plan rather than quietly tuned.
+* ``graphfaker gen --fetcher senzing --path register.jsonl`` loads a
+  register: organisations, locations and people, with pointer roles becoming
+  ``BRANCH_OF``, ``HEADQUARTERS_OF``, ``SITE_OF``, ``EXECUTIVE_AT`` and
+  ``CONTACT_AT`` edges. Streamed, with ``--limit`` for part of a file.
+  GraphFaker ships no register; a loaded one is personal data.
+* ``--path`` takes a directory or a zip as well as a file, because a
+  register of any size arrives sharded: the national open data export is
+  2,493 JSONL files in one archive, 330,553,048 records and 158 GB
+  unpacked.
+  The company shards are read first so a pointer resolves as it arrives,
+  decided by reading one line of each shard rather than by its name: every
+  location shard in that archive is called
+  ``bq_organization_locations_...``, so a name heuristic put 1,988 pointer
+  shards ahead of the 500 company shards and resolved nothing. ``--state``
+  and ``--city`` keep the companies registered in one place together with
+  their locations and officers wherever those live, which is how an archive
+  that cannot be one graph becomes one.
+* ``graphfaker register PATH`` says what a register contains before a load
+  spends an hour on it: record types, pointer roles, the attributes on each
+  kind of record with their coverage, and a list of what a load would not
+  keep. It streams and holds nothing, and a ``--limit`` is spread across the
+  shards rather than spent on the first one, so half a million records out of
+  330 million answers the format question in half a minute. Running it
+  against the national export found three things worth fixing in the loader:
+  an attribute can appear twice on a record (552 companies in every half
+  million carry a second ``NAME_ORG``, an alias, now kept as
+  ``NAME_ORG_ALSO``), ``GEO_LATITUDE`` is a float in the location shards and
+  a string in the company shards (coerced), and a person with no name
+  carries ``NAME_FULL: null`` (dropped, so coverage counts mean what they
+  say). ``NAME_MIDDLE``, ``BQ_ID`` and the ``GROUP_ASSN_ID`` pair were
+  attributes the loader had never seen and silently dropped.
+* A register loads into a database, not only a file. ``graphfaker register
+  PATH --out DIR`` writes it as node and edge tables, one frame per record
+  type and one per relationship, with a manifest; ``--sink duckdb``,
+  ``ladybug`` or ``neo4j-admin`` does the database in the same step, and
+  every existing ``graphfaker load`` and ``graphfaker verify`` command works
+  on the directory afterwards. No ``truth/``, because nobody labelled a
+  register, and no ``schema.yaml``, because a schema says how to generate
+  something and this was read. The whole Las Vegas register becomes tables in
+  75 seconds and a DuckDB with a property graph in another 85: 1,668,368
+  organisations, 358,076 people, 1,394,598 relationships, and the top of
+  ``GROUP BY address`` is one PO box with 99,524 companies at it, with
+  ``3225 Mcleod Dr`` and ``3225 McLeod Dr Ste 100`` as separate rows a little
+  below.
+* A dataset with no edges no longer breaks the DuckDB property graph.
+  ``EDGE TABLES ()`` is a syntax error, so a cut of a register that happens
+  to contain only companies loaded every table and then failed on the last
+  statement. It gets a vertex-only property graph now.
+* The realism measurement takes ``--workers``. The shards are the unit of
+  work and every counter adds, so the pass over the national export went from
+  150 minutes in one process to 26 in twelve, and the result is identical on
+  every measured key. Three things made the single-process pass faster as
+  well: ``orjson`` when it is installed, which halves the 59% of a pass that
+  is spent parsing JSON; one zip handle for the whole archive instead of one
+  per shard, which was 64 seconds of re-reading a central directory before
+  the first record; and building an address key only for the records a filter
+  kept rather than for all 227 million organisation records. ``orjson`` is
+  optional and nothing changes without it.
+* Company names come from a register's distribution, not Faker's.
+  ``graphfaker.engine.names`` generates the measured legal forms (LLC 53.9%,
+  INC 20.5%, none 11.9%, ``L.L.C`` 2.6%, ``CORPORATION`` 2.4%) with the
+  measured comma convention, which is a coin flip, and holds name reuse at
+  the register's rate instead of letting it run away with scale. The supply
+  chain pack's suppliers, plants, customers and carriers use it; a warehouse
+  is a site rather than a legal entity and keeps its place name.
+  ``names.variants`` writes one company's name the several ways a register
+  writes it, which is what an entity resolver actually faces.
+* Officers and contacts, on the companies that have any.
+  ``graphfaker.engine.people`` attaches people to companies the way a
+  register does, and the first measured fact is that most companies have
+  nobody: 4.5% of a register's companies have a single person attached,
+  46,201 of Nevada's 1,033,773 and 27,727 of Las Vegas's 631,846. Among
+  those that do the median is one and the 99th percentile is 151, with the
+  busiest holding a tenth of every person-company link in the register on
+  its own, because the busy ones are filing agents rather than boards. Board
+  density is a distribution with a floor of zero, and a generator that gives
+  every company a board gets the common case and the tail wrong at the same
+  time.
+
+  The supply chain pack grows a ``Person`` node type with ``CONTACT_AT`` and
+  ``EXECUTIVE_AT`` relationships, the same vocabulary the loader produces for
+  a real register, so a generated graph and a loaded one answer the same
+  query. Roughly one person in six is attached to more than one company,
+  which is where "shares a director" comes from. The role mix is the
+  register's (``Contact`` 79%, ``Executive`` 21%), the name parts are
+  recorded separately on 23% of people as they are on 23% of a register's
+  person rows, and people carry a home address.
+
+  People per company uses a rank curve rather than interpolated quantiles,
+  for the same reason addresses do: it hits the measured mean exactly at
+  every scale and keeps the concentration, where interpolating between a 99th
+  percentile of 151 and a maximum of 68,945 puts so much weight on the head
+  that the mean goes with it. At the register's own 46,201 attached companies
+  the busiest holds 10.2% of every link against a measured 10.3%, and the top
+  1% hold 63% against 61%. The two remaining realism rows in
+  ``benchmarks/README.md`` are no longer "not modelled".
+* ``graphfaker generate ... --sink senzing`` writes an entity resolution
+  dataset: records in the format Senzing takes, and the answer in a second
+  file. Entity resolution has no public benchmark worth the name because the
+  data cannot provide one, a register having no answer key and a labelled
+  dataset usually being too clean to be hard. This writes
+  ``senzing/records.jsonl``, where a company appears several times under
+  several spellings and at addresses it shares with other companies, and
+  ``senzing/entities.parquet``, which says which records are one company or
+  one person.
+  Nothing in the records names the entity. ``read_gold`` turns the answer
+  into the clustering shape ``evaluate_clusters`` takes, so a resolver can be
+  scored in two lines.
+
+  Every hard part is a measured one. Names vary over a company's records at
+  the rates a register writes them; addresses are shared between companies on
+  the measured curve; a company's own records are mostly at *different*
+  addresses, because a branch being elsewhere is why a register holds a
+  record for it; and 1% of name stems really do belong to two different
+  companies. Scored with ``graphfaker.resolve`` on 4,409 records for 2,207
+  companies: the name alone gives 0.93 F1, name and address together give
+  0.955 precision at 0.119 recall, and the address alone fails in both
+  directions at 0.058 precision and 0.118 recall. A dataset of unique names
+  and unique addresses would have called all three a success.
+
+  What is written round-trips: the pointers in the records reconstruct the
+  answer key exactly through ``SenzingFetcher``, which is the test that it is
+  a Senzing dataset rather than a JSON file with the right field names. See
+  ``docs/senzing.md``. People, missing attributes and typos are not in it;
+  the first two are measured gaps with numbers in the references and the
+  third is deliberate.
+* ``docs/notebooks/register_resolution.ipynb``: the paired entity resolution
+  experiment, which is what the measuring and the generating were both for.
+  It resolves companies on a real register, where there is no answer key and
+  so no score, and on a generated dataset carrying the register's measured
+  names and addresses, where ``evaluate_clusters`` can say what the resolver
+  got. The simplest configuration wins: the name alone, blocked on its stem,
+  at 0.967 precision and 0.932 F1. Blocking on the name instead of the stem
+  does six times the comparisons for the same answer, because 54% of
+  companies end in ``LLC`` and the legal form is a token like any other.
+  Adding the address takes precision to 0.763, because companies share
+  addresses here at the rate a register says they do, and matching on address
+  alone takes it to 0.03 with one cluster of 231 records covering 86
+  companies at one door. That is the registered agent, and the reason the
+  address work exists. On 5,000 real register records the same resolver
+  returns 57 clusters and no score at all. The real-register section is
+  optional (``GRAPHFAKER_REGISTER``) and prints counts only.
+* **A correction.** The 1.1.0 notes and the benchmark README said different
+  companies share a name 86.7% of the time against our 1.4%, and concluded
+  our names were two orders of magnitude too unique. The counting was wrong:
+  a location record carries its parent's name, so a company with five sites
+  writes its name five times, and that is what the 86.7% was. Counting
+  companies only, 0.14% of names and 1.02% of stems are shared, and the
+  generator's old names were wrong in the *other* direction: 10.3% repeated
+  at 200,000 rows with one stem on 1,451 companies. The measurement now
+  reports the two separately, the comparison puts companies against
+  companies, and the generated rate holds from 500 rows to 200,000.
+* The benchmark's name normaliser never stripped ``L.L.C``. It removed
+  punctuation first, which turns the spelling into the three tokens ``L L C``,
+  so the one variant the whole exercise is about was the one that got through
+  and ``ACME, L.L.C`` counted as a different company from ``ACME LLC``. The
+  trailing form is matched before the punctuation goes now, which moved the
+  measured stem reuse from 0.97% to 1.02%, and ``tests/test_names.py`` fails
+  if the package's definition and the benchmark's stop agreeing.
+* Legal forms and name tokens are counted per company rather than per record,
+  for the same reason as the collisions above.
+* The reference files say where they came from and under what terms.
+   ``benchmarks/realism/*.json`` carry a ``provenance`` block and a
+   ``licence``, and ``corporate.py`` takes ``--licence`` to record it. Both
+   references are measured from OpenData.org's U.S. entity dataset, whose
+   terms put it under CDLA-Permissive-2.0: computed output carries no
+   obligations under section 3.1, which is what those files are, while
+   sharing the data itself carries the section 2.1 condition to pass on the
+   agreement text, which is one reason GraphFaker ships no register. A
+   licence is not a privacy basis, so the rule is unchanged: aggregate
+   statistics travel, records do not.
+* ``graphfaker gen --export`` no longer fails on a Windows console. It
+  printed a check mark when it was done, which is not in cp1252, so the
+  command wrote the file and then died with a ``UnicodeEncodeError``. The
+  Wikipedia export did the same.
+
+1.1.0 (2026-10-04)
+------------------
 The coordination domain pack: a social platform, and the coordinated behaviour
-inside it. And the machinery both packs inject patterns with, lifted out of
-them into the schema and the engine.
+inside it.
 
 .. code-block:: sh
 

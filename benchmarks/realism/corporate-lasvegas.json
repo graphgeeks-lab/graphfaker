@@ -1,0 +1,179 @@
+{
+ "label": "Las Vegas company register (Senzing open data)",
+ "kind": "reference",
+ "measured_at": "2026-10-08",
+ "source": "opendata-lasvegas.jsonl",
+ "licence": "CDLA-Permissive-2.0",
+ "scope": {
+  "aggregates": "every record read",
+  "per_entity": "every record read",
+  "records_in_scope": 2026444,
+  "companies_in_scope": null
+ },
+ "records": 2026444,
+ "record_types": {
+  "ORGANIZATION": 1668368,
+  "PERSON": 358076
+ },
+ "relationship_roles": {
+  "INDEPENDENT": 816252,
+  "Contact": 265577,
+  "HEADQUARTERS": 159221,
+  "Executive": 85331,
+  "BRANCH": 65361,
+  "BUSINESS": 2856
+ },
+ "distributions": [
+  {
+   "metric": "organizations_per_address",
+   "keys": 349058,
+   "rows": 1661108,
+   "mean": 4.759,
+   "p50": 1,
+   "p90": 4,
+   "p99": 31,
+   "max": 99522,
+   "top1pct_share": 0.5372,
+   "gini": 0.7252
+  },
+  {
+   "metric": "people_per_organization",
+   "keys": 27727,
+   "rows": 358076,
+   "mean": 12.914,
+   "p50": 1,
+   "p90": 13,
+   "p99": 139,
+   "max": 11351,
+   "top1pct_share": 0.5833,
+   "gini": 0.8644
+  },
+  {
+   "metric": "sites_per_organization",
+   "keys": 608878,
+   "rows": 1036522,
+   "mean": 1.702,
+   "p50": 1,
+   "p90": 3,
+   "p99": 5,
+   "max": 4229,
+   "top1pct_share": 0.0515,
+   "gini": 0.2609
+  },
+  {
+   "metric": "organizations_per_person_name",
+   "keys": 303535,
+   "rows": 350065,
+   "mean": 1.153,
+   "p50": 1,
+   "p90": 2,
+   "p99": 3,
+   "max": 44,
+   "top1pct_share": 0.0411,
+   "gini": 0.1211
+  }
+ ],
+ "name_collision": {
+  "distinct_names": 701005,
+  "repeated_exact_share": 0.8673,
+  "distinct_names_without_legal_form": 655856,
+  "repeated_without_legal_form_share": 0.9198
+ },
+ "name_collision_companies": {
+  "distinct_names": 630847,
+  "repeated_exact_share": 0.0014,
+  "distinct_names_without_legal_form": 625173,
+  "repeated_without_legal_form_share": 0.0102
+ },
+ "shared_names": {
+  "metric": "companies_per_name_stem",
+  "keys": 625173,
+  "rows": 631846,
+  "mean": 1.011,
+  "p50": 1,
+  "p90": 1,
+  "p99": 2,
+  "max": 18,
+  "top1pct_share": 0.0202,
+  "gini": 0.0105
+ },
+ "legal_form_mix": {
+  "LLC": 0.5677,
+  "INC": 0.2152,
+  "(none)": 0.1194,
+  "CORP": 0.0397,
+  "LTD": 0.0216,
+  "CO": 0.0109,
+  "PLLC": 0.0057,
+  "LP": 0.0054,
+  "FOUNDATION": 0.0049,
+  "ASSOCIATION": 0.0044,
+  "PC": 0.0019,
+  "LLP": 0.0018
+ },
+ "legal_form_spellings": {
+  "LLC": 0.5394,
+  "INC": 0.2051,
+  "(none)": 0.1194,
+  "L.L.C": 0.0264,
+  "CORPORATION": 0.0242,
+  "LTD": 0.0182,
+  "CORP": 0.0154,
+  "COMPANY": 0.0079,
+  "INCORPORATED": 0.0065,
+  "PLLC": 0.0057,
+  "LP": 0.0054,
+  "FOUNDATION": 0.0049,
+  "ASSOCIATION": 0.0044,
+  "INC.": 0.0035,
+  "LIMITED": 0.0031,
+  "CO": 0.0029,
+  "PC": 0.0019,
+  "LLP": 0.0018,
+  "LLC.": 0.0017,
+  "TRUST": 0.0016
+ },
+ "common_name_tokens": {
+  "GROUP": 0.0166,
+  "S": 0.0101,
+  "MANAGEMENT": 0.01,
+  "SERVICES": 0.0097,
+  "PARTNERSHIP": 0.0094,
+  "ENTERPRISES": 0.009,
+  "SOLUTIONS": 0.0087,
+  "HOLDINGS": 0.0084,
+  "VEGAS": 0.0074,
+  "NEVADA": 0.0071,
+  "INVESTMENTS": 0.0069,
+  "PROPERTY": 0.0056,
+  "PROPERTIES": 0.0055,
+  "INTERNATIONAL": 0.0054,
+  "LAS": 0.0051,
+  "CAPITAL": 0.005,
+  "CONSULTING": 0.0045,
+  "INVESTMENT": 0.0043,
+  "HOME": 0.0042,
+  "FAMILY": 0.0042
+ },
+ "identifier_coverage": {
+  "GEO_LATITUDE": 0.8268,
+  "ADDR_POSTAL_CODE": 0.818,
+  "PLACEKEY": 0.272,
+  "LINKEDIN": 0.1945,
+  "WEBSITE_ADDRESS": 0.1613,
+  "ADDR_LINE2": 0.0527,
+  "OTHER_ID_NUMBER": 0.0141,
+  "NPI_NUMBER": 0.0037,
+  "LEI_NUMBER": 0.0002
+ },
+ "top_states": {
+  "NV": 0.8873,
+  "CA": 0.025,
+  "TX": 0.0088,
+  "FL": 0.0084,
+  "NY": 0.0049,
+  "AZ": 0.0045,
+  "IL": 0.003,
+  "UT": 0.003
+ }
+}

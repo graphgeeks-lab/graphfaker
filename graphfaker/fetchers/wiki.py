@@ -81,4 +81,4 @@ class WikiFetcher:
 
         with open(abs_path, 'w', encoding='utf-8') as f:
             json.dump(page, f, ensure_ascii=False, indent=2)
-        print(f"✅ Exported Wikipedia page data to '{abs_path}'")
+        print(f"Exported Wikipedia page data to '{abs_path}'")

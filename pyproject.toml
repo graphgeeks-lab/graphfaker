@@ -121,6 +121,7 @@ dev = [
     "pytest",  # testing
     "ruff",  # linting
     "pip-audit",  # dependency vulnerability check
+    "orjson",  # optional at runtime: halves the parse cost of reading a register
 ]
 
 # For uv-managed environments (development and CI) torch on Linux comes from

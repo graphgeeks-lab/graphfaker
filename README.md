@@ -99,6 +99,7 @@ run = fraud.generate(scale=0.01, hardness="medium", seed=42)                    
 | `social` | people, places, organizations, events and products; a few hubs and many quiet nodes, friends who know each other's friends, communities whose members are alike, organizations as big as their headcount | `GraphFaker.generate_graph(source="faker")` or `graphfaker generate social` |
 | `fraud` | a bank: customers, accounts, merchants, devices, counterparties; a realistic transaction process; eleven labelled laundering typologies with decoys and a measured hardness | `graphfaker fraud` or `graphfaker generate fraud` |
 | `coordination` | a social platform: accounts, topics, devices; follows, posts, reshares and replies over time; eight labelled coordination playbooks, **organic bursts that look exactly like them**, and a measured tradecraft level | `graphfaker generate coordination` |
+| `supply_chain` | a supplier network in tiers with plants, warehouses, customers, products, carriers and the officers of the few companies that have any; orders, shipments, invoices and deliveries over time; four labelled procurement patterns, **legitimate structures that leave the same trace**, and a measured hardness level | `graphfaker generate supply_chain` |
 | your own | a `GraphSchema`, or a process with injected patterns | [docs/adding-a-domain.md](docs/adding-a-domain.md) |
 
 Real-world sources, loaded rather than generated:
@@ -108,6 +109,7 @@ Real-world sources, loaded rather than generated:
 | `osm` | road, walking or cycling networks from OpenStreetMap, by place name, address or bounding box (`pip install "graphfaker[osm]"`) |
 | `flights` | airline, airport and flight-leg networks from BTS on-time data, for a month or a date range |
 | `WikiFetcher` | Wikipedia page text, sections, links and references as JSON, for building your own graph or RAG pipeline |
+| `senzing` | a company register you supply, in Senzing's entity resolution format: organisations, their locations and their officers. One file, a directory of shards or a zip, with `--state` and `--city` to cut a national export down to a graph (`--fetcher senzing --path register.jsonl`) |
 
 List the domains and their options with `graphfaker domains`.
 
@@ -206,6 +208,7 @@ Sinks put the same tables into a database's own loader format:
 | `write_duckdb`, `graphfaker load duckdb` | the tables as DuckDB tables plus a `CREATE PROPERTY GRAPH` for SQL/PGQ pattern queries; DuckDB reads the Parquet itself | no graph database at all: SQL, with graph patterns, on the same files; see [docs/duckdb.md](docs/duckdb.md) |
 | `to_hetero_data`, `write_pyg`, `graphfaker generate ... --sink pyg` | a PyTorch Geometric `HeteroData`: features encoded, `y` and `decoy` on accounts, `y` and `edge_time` on transactions, stratified train/val/test masks | training and evaluating GNNs against a known answer; see [docs/pyg.md](docs/pyg.md) |
 | `write_neo4j_admin` | typed CSVs and the `neo4j-admin database import` command | the fastest path into Neo4j, offline, at any scale |
+| `write_senzing`, `graphfaker generate ... --sink senzing` | Senzing-format records: the same company several times under several spellings, at addresses it shares with others, plus `entities.parquet` as the answer key | running Senzing or any other resolver on data where the right answer is known; see [docs/senzing.md](docs/senzing.md) |
 | `write_gen_fraud_graph` | gen-fraud-graph's `accounts/`, `transactions/`, `fraud/` layout | pipelines built on that generator |
 | `export_csv`, `export_neo4j_csv`, `export_cypher` | from a NetworkX graph: CSV, neo4j-admin CSV, Cypher, openCypher, ISO GQL | Memgraph, Neptune, TigerGraph, any bulk loader |
 | `export_graph` | GraphML | Gephi, Cytoscape, igraph |
@@ -223,7 +226,7 @@ print(load_directory("bank", target, wipe_first=True).summary())
 assert verify_directory("bank", target).ok
 ```
 
-On the command line, `--sink parquet|neo4j|neo4j-admin|ladybug|duckdb|pyg|gen-fraud-graph` on `graphfaker fraud` and `graphfaker generate` (add `--blind` to keep the ground truth out of the database), and `graphfaker load neo4j|ladybug|duckdb` / `graphfaker verify neo4j|ladybug|duckdb` for a dataset already on disk. All three loaders put the truth in the graph the same way (`Pattern` nodes, `IN_PATTERN` memberships with roles, `is_fraud` on the money relationships) and verify the load with the same checks.
+On the command line, `--sink parquet|neo4j|neo4j-admin|ladybug|duckdb|pyg|senzing|gen-fraud-graph` on `graphfaker fraud` and `graphfaker generate` (add `--blind` to keep the ground truth out of the database), and `graphfaker load neo4j|ladybug|duckdb` / `graphfaker verify neo4j|ladybug|duckdb` for a dataset already on disk. All three loaders put the truth in the graph the same way (`Pattern` nodes, `IN_PATTERN` memberships with roles, `is_fraud` on the money relationships) and verify the load with the same checks.
 
 ## Reproducibility
 
@@ -291,7 +294,7 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 | `--seed N` | reproducible output; the same seed gives the same bytes on any machine, with the same version of GraphFaker |
 | `--schema FILE` | generate from a schema YAML instead of a named domain (`--shard-size N` sets the rows per shard, default 10000, and is part of what the seed reproduces) |
 | `--workers N` | processes for node sampling; faster, does not change the result |
-| `--sink parquet\|neo4j\|neo4j-admin\|ladybug\|duckdb\|pyg\|gen-fraud-graph` | also load a live database, or write a loader layout (Parquet is always written) |
+| `--sink parquet\|neo4j\|neo4j-admin\|ladybug\|duckdb\|pyg\|senzing\|gen-fraud-graph` | also load a live database, or write a loader layout (Parquet is always written) |
 | `--quiet`, `-q` | no progress logging; warnings and errors only |
 | `--json` | when done, print the manifest (and for `fraud`, the hardness and realism reports) as one JSON document on stdout. Logging goes to stderr, so a pipeline can read stdout |
 
@@ -384,7 +387,11 @@ graphfaker evaluate ./bank --accounts flagged.txt --ring-threshold 0.5
 graphfaker gen --fetcher osm --place "Berlin, Germany" --network-type drive --export berlin.graphml
 graphfaker gen --fetcher flights --country "United States" --year 2024 --month 1 --export flights.graphml
 graphfaker gen --fetcher faker --total-nodes 500 --total-edges 2500 --format cypher --export social.cypher
+graphfaker gen --fetcher senzing --path register.jsonl --limit 100000 --export register.graphml
+graphfaker gen --fetcher senzing --path ODO_SENZING.zip --state NV --city "Las Vegas" --export vegas.graphml
 ```
+
+`graphfaker register PATH` says what a Senzing register contains before you load it: record types, pointer roles, the attributes on each kind of record and how often they are there, and what a load would not keep. It streams and holds nothing, and `--limit` is spread across the shards of a sharded export rather than spent on the first one. With `--out DIR` it loads the register as node and edge tables instead, and `--sink duckdb|ladybug|neo4j-admin` takes it into a database in the same step; after that every `graphfaker load` and `verify` command works on the directory.
 
 `graphfaker --help` and `graphfaker <command> --help` list every option. `graphfaker --version` prints the version; `graphfaker info` prints it with the versions of the libraries that decide reproducibility (polars, numpy, pyarrow, faker, networkx) and which extras are installed, which is the first thing to paste into a bug report or to check inside a container.
 
@@ -416,6 +423,8 @@ print(report.summary())
 ```
 
 [docs/notebooks/duplication_experiment.ipynb](docs/notebooks/duplication_experiment.ipynb) runs this end to end with Cognee and repairs the result with `resolve()`.
+
+For companies rather than documents, [docs/notebooks/register_resolution.ipynb](docs/notebooks/register_resolution.ipynb) does the paired version: the same resolver on a real company register, where there is no gold and therefore no score, and on a generated one whose names and addresses carry a register's measured shape, where `evaluate_clusters` can say what it got. It is also where the address trap is visible: one registered agent's address holds 99,522 companies, so matching companies on their address takes precision to 0.03.
 
 ## Performance and limits
 
