@@ -111,6 +111,7 @@ GraphFaker
          <a href="domains/social.html">Social</a>
          <a href="domains/fraud.html">Fraud and AML</a>
          <a href="domains/coordination.html">Coordinated behaviour</a>
+         <a href="domains/supply-chain.html">Supply chain</a>
          <a href="domains/real-world.html">Real-world networks</a>
        </div>
        <div class="gf-doc">

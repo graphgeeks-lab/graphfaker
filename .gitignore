@@ -123,3 +123,6 @@ docs/get-started/python.md
 docs/domains/index.md
 docs/reference/cli.md
 docs/guides/entity-resolution.md
+
+# scripts/publish-image.sh mounts this for its smoke test
+.publish-smoke/

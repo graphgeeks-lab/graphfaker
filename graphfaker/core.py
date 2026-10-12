@@ -353,4 +353,4 @@ class GraphFaker:
         else:
             nx.write_graphml(G, abs_path)
 
-        print(f"✅ Graph exported to: {abs_path}")
+        print(f"Graph exported to: {abs_path}")

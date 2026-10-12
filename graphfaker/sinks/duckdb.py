@@ -222,7 +222,12 @@ def _truth_statements(source: _Source, tables: GraphTables, truth: dict[str, pl.
 
 def property_graph(tables: GraphTables, truth: dict[str, pl.DataFrame] | None = None, graph: str = DEFAULT_GRAPH) -> str:
     """The ``CREATE PROPERTY GRAPH`` statement: node tables as vertex tables,
-    relationship tables as edge tables keyed on ``source`` and ``target``."""
+    relationship tables as edge tables keyed on ``source`` and ``target``.
+
+    A dataset with no edges gets a vertex-only property graph: an empty
+    ``EDGE TABLES ()`` clause is a syntax error, and a cut of a register that
+    happens to contain only companies is a perfectly ordinary dataset.
+    """
     endpoints = infer_endpoints(tables)
     vertices = list(tables.nodes)
     edges = [(rel, *endpoints[rel]) for rel in tables.edges if rel in endpoints]
@@ -238,11 +243,13 @@ def property_graph(tables: GraphTables, truth: dict[str, pl.DataFrame] | None = 
         f"DESTINATION KEY ({_quote(TARGET)}) REFERENCES {_quote(dst)} ({_quote(ID)})"
         for rel, src, dst in edges
     ]
-    return (
+    statement = (
         f"CREATE OR REPLACE PROPERTY GRAPH {_quote(graph)}\n"
-        f"  VERTEX TABLES ({', '.join(_quote(v) for v in vertices)})\n"
-        f"  EDGE TABLES (\n" + ",\n".join(edge_specs) + "\n  );"
+        f"  VERTEX TABLES ({', '.join(_quote(v) for v in vertices)})"
     )
+    if not edge_specs:
+        return statement + ";"
+    return statement + "\n  EDGE TABLES (\n" + ",\n".join(edge_specs) + "\n  );"
 
 
 def duckdb_script(

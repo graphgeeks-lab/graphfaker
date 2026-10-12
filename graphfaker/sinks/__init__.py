@@ -17,9 +17,11 @@ from graphfaker.sinks.neo4j_verify import (
     verify_tables,
 )
 from graphfaker.sinks.pyg import to_hetero_data, write_pyg
+from graphfaker.sinks.senzing import SenzingExport, read_gold, write_senzing
 
 __all__ = [
     "LoadReport",
+    "SenzingExport",
     "Target",
     "Verification",
     "duckdb_script",
@@ -27,6 +29,7 @@ __all__ = [
     "ladybug_script",
     "load_directory",
     "load_tables",
+    "read_gold",
     "read_truth",
     "to_hetero_data",
     "verify_directory",
@@ -36,4 +39,5 @@ __all__ = [
     "write_ladybug",
     "write_neo4j_admin",
     "write_pyg",
+    "write_senzing",
 ]

@@ -88,6 +88,18 @@ def gen(
         None, help="OSM address (e.g., '1600 Amphitheatre Parkway, Mountain View, CA.')"
     ),
     bbox: str = typer.Option(None, help="OSM bounding box as 'north,south,east,west.'"),
+    path: str = typer.Option(
+        None,
+        "--path",
+        help="For --fetcher senzing: a register in Senzing JSONL format, a directory of shards, or a zip.",
+    ),
+    limit: int = typer.Option(None, "--limit", help="For --fetcher senzing: stop after this many records."),
+    state: list[str] = typer.Option(
+        None, "--state", help="For --fetcher senzing: keep companies in this state (repeatable)."
+    ),
+    city: list[str] = typer.Option(
+        None, "--city", help="For --fetcher senzing: keep companies in this city (repeatable)."
+    ),
     network_type: str = typer.Option(
         "drive", help="OSM network type: drive | walk | bike | all."
     ),
@@ -144,6 +156,21 @@ def gen(
         )
         logger.info(
             f"Generated random graph with {g.number_of_nodes()} nodes and {g.number_of_edges()} edges."
+        )
+
+    elif fetcher == FetcherType.SENZING:
+        from graphfaker.fetchers.senzing import SenzingFetcher
+
+        if not path:
+            raise typer.BadParameter("--fetcher senzing needs --path to a register in JSONL format")
+        try:
+            g = SenzingFetcher.fetch_graph(
+                path, limit=limit, states=tuple(state or ()), cities=tuple(city or ())
+            )
+        except FileNotFoundError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        logger.info(
+            f"Loaded register with {g.number_of_nodes()} records and {g.number_of_edges()} relationships."
         )
 
     elif fetcher == FetcherType.OSM:
@@ -259,6 +286,12 @@ def _write_sink(run, out: str, sink: str, blind: bool = False) -> None:
             write_duckdb(run.tables, out, db_path=os.path.join(out, "graph.duckdb"), truth=None if blind else run.truth, graph=run.schema.name)
         except ImportError as exc:
             typer.echo(f"wrote {out}/load.sql; database not created: {exc}", err=True)
+    elif sink == "senzing":
+        from graphfaker.sinks.senzing import write_senzing
+
+        # ``blind`` is about the databases: this sink always writes the
+        # records without an entity id and the answer in a second file.
+        write_senzing(run, os.path.join(out, "senzing"))
     elif sink == "pyg":
         from graphfaker.sinks.pyg import write_pyg
 
@@ -350,7 +383,7 @@ def generate(
     seed: int = typer.Option(None, help="Seed for a reproducible dataset."),
     shard_size: int = typer.Option(None, "--shard-size", help="Rows per shard for --schema runs. Part of reproducibility; recorded in the manifest. Default 10000."),
     workers: int = typer.Option(1, help="Processes for node sampling. Does not change the result."),
-    sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | duckdb | pyg | gen-fraud-graph."),
+    sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | duckdb | pyg | senzing | gen-fraud-graph."),
     blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="No progress logging; warnings and errors only."),
     as_json: bool = typer.Option(False, "--json", help="Print the manifest as JSON on stdout when done."),
@@ -459,6 +492,119 @@ def inspect(
             typer.echo(f"  {name}: " + ", ".join(f"{k}={v}" for k, v in config.items()))
         else:
             typer.echo(f"  {name}: {config}")
+
+
+@app.command(short_help="Report a Senzing register, or load one into tables and a database.")
+def register(
+    path: str = typer.Argument(..., help="A register: one JSONL file, a directory of shards, or a zip."),
+    out: str = typer.Option(
+        None, "--out", help="Write the register as a dataset directory (nodes/, edges/, manifest.json)."
+    ),
+    sink: str = typer.Option(
+        "parquet",
+        "--sink",
+        help="With --out: parquet | neo4j-admin | ladybug | duckdb.",
+    ),
+    state: list[str] = typer.Option(
+        None, "--state", help="Keep the companies registered in this state (repeatable)."
+    ),
+    city: list[str] = typer.Option(
+        None, "--city", help="Keep the companies registered in this city (repeatable)."
+    ),
+    limit: int = typer.Option(
+        None, "--limit", help="Stop after this many records. Leave it off to read everything."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print it as JSON instead of text."),
+):
+    """Say what a register contains, or load it.
+
+    Without `--out` it streams the register and reports its record types,
+    pointer roles and attributes, keeping nothing. That is the thing to run
+    before a load: it says whether a file is the format the loader expects,
+    and names the attributes a load would not keep.
+
+      graphfaker register ODO_SENZING.zip --limit 200000
+
+    With `--out` it loads the register into node and edge tables and writes
+    them, after which every `graphfaker load` and `graphfaker verify`
+    command works on the directory. `--sink` does the database in the same
+    step. There is no seed and no ground truth: a register was read, not
+    generated.
+
+      graphfaker register ODO_SENZING.zip --state NV --out ./nevada --sink duckdb
+    """
+    from graphfaker.fetchers.senzing import (
+        format_report,
+        read_tables,
+        write_dataset,
+    )
+    from graphfaker.fetchers.senzing import report as senzing_report
+
+    if not out:
+        try:
+            data = senzing_report(path, limit=limit)
+        except FileNotFoundError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        if as_json:
+            _dump(data)
+            return
+        typer.echo(format_report(data))
+        return
+
+    try:
+        tables = read_tables(
+            path, limit=limit, states=tuple(state or ()), cities=tuple(city or ())
+        )
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if not tables.nodes:
+        raise typer.BadParameter("no records were kept, so there is nothing to write")
+
+    counts = {name: frame.height for name, frame in tables.nodes.items()}
+    root = write_dataset(tables, out, source=path)
+    logger.info("wrote %s (%s)", root, ", ".join(f"{k}={v:,}" for k, v in counts.items()))
+    _register_sink(tables, out, sink)
+    if as_json:
+        _dump(
+            {
+                "out": str(root),
+                "sink": sink,
+                "nodes": counts,
+                "edges": {k: v.height for k, v in tables.edges.items()},
+            }
+        )
+
+
+def _register_sink(tables, out: str, sink: str) -> None:
+    """A register through the ordinary sinks, with no truth to carry.
+
+    The sinks that want labels or a seed (`pyg`, `gen-fraud-graph`) are not
+    offered: a register has no answer key, which is the whole reason to want
+    one and the reason it cannot be a training target here.
+    """
+    allowed = ("parquet", "neo4j-admin", "ladybug", "duckdb")
+    if sink not in allowed:
+        raise typer.BadParameter(f"--sink for a register is one of {', '.join(allowed)}")
+    if sink == "parquet":
+        return
+    if sink == "neo4j-admin":
+        from graphfaker.sinks import write_neo4j_admin
+
+        write_neo4j_admin(tables, os.path.join(out, "neo4j"))
+    elif sink == "ladybug":
+        from graphfaker.sinks import write_ladybug
+
+        try:
+            write_ladybug(tables, out, db_path=os.path.join(out, "graph.lbdb"), truth=None)
+        except ImportError as exc:
+            typer.echo(f"wrote {out}/load.cypher; database not created: {exc}", err=True)
+    elif sink == "duckdb":
+        from graphfaker.sinks.duckdb import write_duckdb
+
+        try:
+            write_duckdb(tables, out, db_path=os.path.join(out, "graph.duckdb"), truth=None, graph="register")
+        except ImportError as exc:
+            typer.echo(f"wrote {out}/load.sql; database not created: {exc}", err=True)
 
 
 @app.command(

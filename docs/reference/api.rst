@@ -33,6 +33,15 @@ Engine
 .. automodule:: graphfaker.engine.seeding
    :members: Streams
 
+.. automodule:: graphfaker.engine.addresses
+   :members: AddressProfile, REGISTER, RETAIL, UNIQUE, allocate, assign, shared_addresses, reuse_stats
+
+.. automodule:: graphfaker.engine.names
+   :members: NameProfile, company_names, suffixes, variants, stem, collision_stats
+
+.. automodule:: graphfaker.engine.people
+   :members: PeopleProfile, REGISTER, EVERY_COMPANY, attach, allocate, person_variants
+
 Tables
 ------
 
@@ -113,3 +122,6 @@ Real-world sources
 
 .. automodule:: graphfaker.fetchers.wiki
    :members: WikiFetcher
+
+.. automodule:: graphfaker.fetchers.senzing
+   :members: SenzingFetcher, load, read_tables, write_dataset, read_records, read_shard, sources, shard_names, report, format_report

@@ -7,7 +7,7 @@ docker pull ghcr.io/graphgeeks-lab/graphfaker:main
 docker run --rm ghcr.io/graphgeeks-lab/graphfaker:main info
 ```
 
-Tags: `main` is the current development build, pushed after every change to `main` once it has passed the smoke test. Releases publish `1.0.0`, `1.0`, `1` and `latest`; pin one of those to reproduce a dataset, since `main` moves. Until the first release with an image is tagged, `latest` does not exist and `docker pull` of it says `manifest unknown`. `info` prints the version inside the image and which extras it carries.
+Tags: `latest` is the newest release and is what you get without a tag. A release also publishes its exact version and the prefixes of it, so 1.2.0 publishes `1.2.0`, `1.2`, `1` and `latest`; pin the exact version to reproduce a dataset. `main` is the development build, pushed after every change to `main` once it has passed the smoke test, and it moves. Every tag is built for `linux/amd64` and `linux/arm64`. `info` prints the version inside the image and which extras it carries.
 
 ## Run
 
@@ -100,3 +100,20 @@ docker run --rm graphfaker info
 ```
 
 The workflow (`.github/workflows/docker.yml`) builds the same file on every push and pull request and runs a generate, a load and a verify against the built image. A push to `main` publishes the `main` tag; a `v*` tag publishes the version tags and `latest`.
+
+So publishing a release is tagging it:
+
+```bash
+git tag -a v1.2.0 -m "graphfaker 1.2.0" && git push origin v1.2.0
+```
+
+That builds both architectures, smoke-tests the exact image it is about to push, and publishes `1.2.0`, `1.2`, `1`, `latest` and a short sha. The version inside the image is the checkout's, and the PyPI workflow refuses a tag whose version does not match `pyproject.toml`, so the image and the release cannot drift.
+
+When that path is not available, `scripts/publish-image.sh` does the same thing from a laptop: same checks in the same order, both architectures, and the same five tags. It refuses a version that does not match `pyproject.toml`, and `DRY_RUN=1` runs every check and pushes nothing.
+
+```bash
+DRY_RUN=1 scripts/publish-image.sh    # build and smoke-test only
+scripts/publish-image.sh              # publish, including latest
+```
+
+It needs a token with `write:packages`, either in `GITHUB_TOKEN` or from `gh auth token`.
