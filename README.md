@@ -31,7 +31,7 @@ The fraud pack, the coordination pack, the social domain, schemas and every sink
 Or without a Python environment, as a container ([docs](https://graphfaker.readthedocs.io/en/latest/get-started/docker.html)):
 
 ```sh
-docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker:main fraud --scale 0.01 --seed 42 --out /data
+docker run --rm -v "$PWD/bank:/data" ghcr.io/graphgeeks-lab/graphfaker fraud --scale 0.01 --seed 42 --out /data
 ```
 
 For development:

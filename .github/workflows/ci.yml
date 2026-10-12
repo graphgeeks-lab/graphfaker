@@ -30,6 +30,17 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
 
+      # uv.lock records the project's own version as well as its
+      # dependencies, so bumping `version` in pyproject.toml needs a `uv lock`
+      # in the same commit. This has failed CI twice; as a named step it says
+      # which file is stale instead of reporting a resolver error from Install.
+      - name: The lockfile is current
+        run: |
+          uv lock --check || {
+            echo "::error::uv.lock does not match pyproject.toml. Run 'uv lock' and commit it."
+            exit 1
+          }
+
       # Installs the versions pinned in uv.lock into a project venv.
       # The examples extra brings the ladybug driver, so the LadybugDB sink tests run.
       - name: Install
