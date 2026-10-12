@@ -2,11 +2,18 @@
 History
 =======
 
-1.2.0 (2026-10-04)
+1.2.0 (2026-10-11)
 ------------------
 
-Two new domain packs, and the machinery all three inject patterns with,
-lifted out of them into the schema and the engine.
+A supply chain domain pack, the pattern machinery lifted out of the packs
+into the schema and the engine, and a register read in and written back out:
+real company data measured into a reference, and generated data exported as
+an entity resolution dataset with its answer key.
+
+Datasets change for a given seed in the ``supply_chain`` pack, which gained
+addresses, register-shaped names and people. The ``fraud``, ``social`` and
+``coordination`` packs are byte-identical to 1.1.0: the refactor moved code,
+not draws.
 
 The supply chain pack: a multi-tier supplier network, the orders, shipments,
 invoices and deliveries on it, and labelled procurement patterns with
@@ -422,8 +429,8 @@ devices rather than people, places and products.
   distributions compare fairly.
 * ``docs/domains/coordination.md``; ``docs/pyg.md`` covers both packs.
 
-1.0.1 (unreleased)
-------------------
+Also in this release, and recorded here rather than under a 1.0.1 that was
+never tagged:
 
 * Dependency floors raised for three advisories the audit flagged: ``urllib3>=2.8.0`` (PYSEC-2026-4175, 4176, 4177), and in the ``examples`` extra ``notebook>=7.6.3`` (PYSEC-2026-4112) and ``jupyterlab>=4.6.4`` (PYSEC-2026-4055, 4056, 4057). Nothing in GraphFaker's own code changed.
 * The social topology model is 30 times faster and no longer quadratic in the graph. Edge building asked networkx for ``number_of_edges()`` twice per attempt to count its budget, and that call sums the degree of every node, so the cost grew with nodes times edges: at 2,000 nodes and 12,000 edges it was 96% of the run. The count now comes from the add itself, which is a dict lookup. ``social`` at 2,000 nodes and 12,000 edges went from 22.4 s to 0.65 s, 20,000 nodes and 122,000 edges takes 6.8 s, and a million edges is about 105 s where it was not practical before. Datasets are unchanged: same seed, same fingerprint.
