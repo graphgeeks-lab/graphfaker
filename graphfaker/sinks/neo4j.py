@@ -22,25 +22,57 @@ _TYPE_HINTS = {
 }
 
 
+def _node_types(tables: GraphTables) -> dict[str, str]:
+    """Every node id to the type it belongs to."""
+    return {
+        node_id: name
+        for name, frame in tables.nodes.items()
+        for node_id in frame[ID].to_list()
+    }
+
+
 def infer_endpoints(tables: GraphTables) -> dict[str, tuple[str, str]]:
-    """Source and target node type of every relationship, found by looking
-    the first row's ids up in the node tables. Relationships in generated
-    graphs have one endpoint type each; a mixed one falls back to the first
-    match."""
-    id_sets = {name: set(frame[ID].to_list()) for name, frame in tables.nodes.items()}
+    """Source and target node type of every relationship, from its first row.
+
+    Relationships in generated graphs have one endpoint type each. A real
+    register does not: see :func:`infer_endpoint_pairs`, which is what a sink
+    should use if it can express more than one pair.
+    """
+    return {rel: pairs[0] for rel, pairs in infer_endpoint_pairs(tables).items()}
+
+
+def infer_endpoint_pairs(tables: GraphTables) -> dict[str, list[tuple[str, str]]]:
+    """Every pair of endpoint types each relationship actually connects.
+
+    Generated graphs give one pair per relationship, and the first is the
+    commonest. A loaded register gives more than one: in the Las Vegas open
+    data, ``SITE_OF`` runs organisation to organisation 814,029 times and
+    person to organisation 5,079 times, because a few thousand people are
+    filed as a company's location. Declaring only the first pair makes the
+    rest fail to load with "unable to find primary key value", which is how
+    this was found.
+
+    Ordered commonest first, so a sink that can only take one pair takes the
+    one that loses the least.
+    """
+    kind = _node_types(tables)
 
     def type_of(value: str) -> str:
-        for name, ids in id_sets.items():
-            if value in ids:
-                return name
-        raise KeyError(f"id {value!r} is in no node table")
+        try:
+            return kind[value]
+        except KeyError:
+            raise KeyError(f"id {value!r} is in no node table") from None
 
-    endpoints = {}
+    pairs: dict[str, list[tuple[str, str]]] = {}
     for rel, frame in tables.edges.items():
         if frame.height == 0:
             continue
-        endpoints[rel] = (type_of(frame[SOURCE][0]), type_of(frame[TARGET][0]))
-    return endpoints
+        counts: dict[tuple[str, str], int] = {}
+        for source, target in zip(frame[SOURCE].to_list(), frame[TARGET].to_list(), strict=True):
+            key = (type_of(source), type_of(target))
+            counts[key] = counts.get(key, 0) + 1
+        pairs[rel] = [pair for pair, _ in sorted(counts.items(), key=lambda kv: -kv[1])]
+    return pairs
 
 
 def _header(frame: pl.DataFrame, skip: set[str]) -> list[str]:

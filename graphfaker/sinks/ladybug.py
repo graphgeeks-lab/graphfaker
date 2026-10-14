@@ -38,7 +38,7 @@ import polars as pl
 
 from graphfaker.backends.tables import ID, SOURCE, TARGET, GraphTables
 from graphfaker.logger import logger
-from graphfaker.sinks.neo4j import infer_endpoints
+from graphfaker.sinks.neo4j import _node_types, infer_endpoint_pairs
 from graphfaker.sinks.neo4j_live import LoadReport, read_truth
 from graphfaker.sinks.truth import layout as truth_layout
 from graphfaker.sinks.verify import DEFAULT_SAMPLE, MEMBER_REL, PATTERN_LABEL, CypherBackend, Verification, verify
@@ -103,7 +103,7 @@ def statements(
     they read the frames in memory (Arrow, zero copy).
     """
     source = _Source(Path(data_dir) if data_dir is not None else None)
-    endpoints = infer_endpoints(tables)
+    endpoints = infer_endpoint_pairs(tables)
     lay = truth_layout(truth, tables)
     out: list[tuple[str, dict[str, Any]]] = []
 
@@ -114,12 +114,14 @@ def statements(
     for rel, frame in tables.edges.items():
         if rel not in endpoints:
             continue
-        src, dst = endpoints[rel]
         attrs = [f"{_quote(c)} {_type(t)}" for c, t in frame.schema.items() if c not in (SOURCE, TARGET)]
         if lay.has_events and lay.event_id in frame.columns:
             event_schema = lay.frame("events").schema
             attrs += [f"{_quote(c)} {_type(event_schema[c])}" for c in lay.event_columns]
-        out.append((f"CREATE REL TABLE {_quote(rel)}({', '.join([f'FROM {_quote(src)} TO {_quote(dst)}', *attrs])});", {}))
+        # Every pair the relationship connects, because a register's do not
+        # all run between the same two types.
+        spec = [f"FROM {_quote(src)} TO {_quote(dst)}" for src, dst in endpoints[rel]]
+        out.append((f"CREATE REL TABLE {_quote(rel)}({', '.join([*spec, *attrs])});", {}))
 
     if truth:
         patterns = lay.frame("patterns")
@@ -145,8 +147,29 @@ def statements(
     for node_type, frame in tables.nodes.items():
         src_sql, params = source(frame, "nodes", node_type + ".parquet")
         out.append((f"COPY {_quote(node_type)} FROM {src_sql};", params))
+    kind = _node_types(tables) if any(len(p) > 1 for p in endpoints.values()) else {}
     for rel, frame in tables.edges.items():
         if rel not in endpoints:
+            continue
+        if len(endpoints[rel]) > 1:
+            # A table with several FROM-TO pairs refuses an undifferentiated
+            # COPY: "a specific pair of FROM and TO options is expected". So
+            # the rows go in a group at a time, named. Always from memory,
+            # because the Parquet on disk holds every pair in one file.
+            tagged = frame.with_columns(
+                pl.Series("_src_type", [kind[v] for v in frame[SOURCE].to_list()]),
+                pl.Series("_dst_type", [kind[v] for v in frame[TARGET].to_list()]),
+            )
+            for src, dst in endpoints[rel]:
+                part = tagged.filter(
+                    (pl.col("_src_type") == src) & (pl.col("_dst_type") == dst)
+                ).drop("_src_type", "_dst_type")
+                if part.height == 0:
+                    continue
+                out.append((
+                    f"COPY {_quote(rel)} FROM $df (from='{src}', to='{dst}');",
+                    {"df": part.to_arrow()},
+                ))
             continue
         src_sql, params = source(frame, "edges", rel + ".parquet")
         if lay.has_events and lay.event_id in frame.columns:

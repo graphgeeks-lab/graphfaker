@@ -157,6 +157,20 @@ A real register, and what measuring one changed.
   ``GROUP BY address`` is one PO box with 99,524 companies at it, with
   ``3225 Mcleod Dr`` and ``3225 McLeod Dr Ste 100`` as separate rows a little
   below.
+* A real register loads into LadybugDB. A relationship in one does not
+  always run between the same two kinds of node: in the Las Vegas open data
+  ``SITE_OF`` runs organisation to organisation 814,029 times and person to
+  organisation 5,079 times, because a few thousand people are filed as a
+  company's location, and ``HEADQUARTERS_OF`` does the same 2,089 times. The
+  sink declared one pair per relationship, so the whole register wrote itself
+  to Parquet and then died on the database with "unable to find primary key
+  value". It now declares every pair a relationship actually connects and
+  copies each pair separately, which is what LadybugDB wants. The 2,026,444
+  records of that file become 1,668,368 organisations and 358,076 people in
+  36 seconds. ``infer_endpoint_pairs`` is the new shared helper, ordered
+  commonest first so a sink that can only express one pair loses the least.
+  GraphFaker's own datasets never produce this shape, which is why nothing
+  caught it until a real register went in.
 * A dataset with no edges no longer breaks the DuckDB property graph.
   ``EDGE TABLES ()`` is a syntax error, so a cut of a register that happens
   to contain only companies loaded every table and then failed on the last

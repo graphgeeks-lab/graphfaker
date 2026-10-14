@@ -115,6 +115,11 @@ cache/
 
 /docs/design/
 /bank/
+# Output directories the documented examples write to
+/chain/
+/platform/
+/records/
+/lasvegas/
 
 # pages generated from README.md by docs/_readme_pages.py at build time
 docs/get-started/install.md

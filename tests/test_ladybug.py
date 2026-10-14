@@ -191,3 +191,50 @@ def test_cli_blind_load(dataset, tmp_path):
     result = runner.invoke(app, ["load", "ladybug", str(dataset), "--db", db, "--blind"])
     assert result.exit_code == 0, result.output
     assert "truth          0" in result.output
+
+
+def test_a_relationship_with_two_kinds_of_endpoint_loads(tmp_path):
+    """The shape a real register has and a generated graph never does.
+
+    In the Las Vegas open data, ``SITE_OF`` runs organisation to organisation
+    814,029 times and person to organisation 5,079 times, because a few
+    thousand people are filed as a company's location. Declaring only the
+    commonest pair made the rest fail with "unable to find primary key
+    value", which is how this was found: the whole register loaded as
+    Parquet and then died on the database.
+    """
+    from graphfaker.backends.tables import GraphTables
+    from graphfaker.sinks.ladybug import connect, load_tables
+    from graphfaker.sinks.neo4j import infer_endpoint_pairs
+
+    tables = GraphTables(
+        nodes={
+            "Organization": pl.DataFrame({"id": ["o1", "o2", "o3"]}),
+            "Person": pl.DataFrame({"id": ["p1", "p2"]}),
+        },
+        edges={
+            "SITE_OF": pl.DataFrame({
+                "source": ["o2", "o3", "p1", "p2"],
+                "target": ["o1", "o1", "o1", "o1"],
+                "role": ["BUSINESS", "BUSINESS", "INDEPENDENT", "INDEPENDENT"],
+            })
+        },
+    )
+    # Commonest pair first, so a sink that can take only one loses the least.
+    assert infer_endpoint_pairs(tables)["SITE_OF"] == [
+        ("Organization", "Organization"),
+        ("Person", "Organization"),
+    ]
+
+    db = tmp_path / "mixed.lbdb"
+    load_tables(tables, db, None)
+    conn = connect(db)
+
+    result = conn.execute(
+        "MATCH (a)-[e:SITE_OF]->(b:Organization) RETURN label(a) AS kind, count(*) AS edges"
+    )
+    counts = {}
+    while result.has_next():
+        kind, edges = result.get_next()
+        counts[kind] = edges
+    assert counts == {"Organization": 2, "Person": 2}, counts
