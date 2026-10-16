@@ -59,8 +59,11 @@ What the register decides, and what this notebook does with it:
 | 1.02% of name stems are shared by two companies | names are nearly unique, so near-matches are mostly the same firm | name reuse held at that rate at any scale |
 | `LLC` 53.9%, `L.L.C` 2.6%, comma 50/50 | the same company is written several ways | the measured spellings, and `variants` to write them |
 
-The real register is optional. Set `GRAPHFAKER_REGISTER` to a Senzing-format file, directory or zip and the last
-section runs; without it everything else still does. Nothing from a real register is printed here beyond counts,
+Along the way it writes the dataset out in Senzing's format and loads it into LadybugDB, because handing it to a
+resolver that is not this one is the other half of the point.
+
+The real register is optional. Set `GRAPHFAKER_REGISTER` to a Senzing-format file, a directory of shards or a zip
+and the last section runs; without it everything else still does. Nothing from a real register is printed here beyond counts,
 because it is someone else's data and real people's.
 """)
 
@@ -281,18 +284,133 @@ print(f"one cluster of {len(biggest)} records covering {len(names)} different co
 """)
 
 md("""
-## 6. The same resolver on a real register
+## 6. Hand it to something else
+
+Scoring a resolver in this notebook is one use. The other is handing the dataset to a resolver that is not this one,
+which is what `--sink senzing` is for: records in the format Senzing takes, and the answer key in a second file.
+
+```bash
+graphfaker generate supply_chain --scale 0.01 --seed 11 --out ./chain --sink senzing
+```
+
+The records read back through GraphFaker's own register loader, so the generated dataset can go into a graph
+database and be queried like a real register. That round trip is the point: the same code path reads our records and
+somebody else's.
+""")
+
+code("""
+import tempfile
+
+from graphfaker.fetchers.senzing import read_tables
+from graphfaker.sinks.ladybug import connect, write_ladybug
+from graphfaker.sinks.senzing import write_senzing
+
+out = Path(tempfile.mkdtemp()) / "senzing"
+export = write_senzing(run, out)
+print(export.summary())
+""")
+
+code("""
+# The records, read back as a register and loaded into LadybugDB. This is what
+# `graphfaker register records.jsonl --out ./records --sink ladybug` does.
+records = read_tables(out / "records.jsonl")
+print({label: frame.height for label, frame in records.nodes.items()})
+print({label: frame.height for label, frame in records.edges.items()})
+
+write_ladybug(records, out / "db", db_path=out / "db" / "graph.lbdb", truth=None)
+conn = connect(out / "db" / "graph.lbdb")
+
+
+def ask(cypher):
+    # The column names come from the result, so a RETURN ... AS alias survives
+    # into the table instead of arriving as column_0.
+    result = conn.execute(cypher)
+    names = result.get_column_names()
+    rows = []
+    while result.has_next():
+        rows.append(result.get_next())
+    return pl.DataFrame(rows, schema=names, orient="row") if rows else pl.DataFrame()
+""")
+
+md("""
+**Who is the registered agent.** One address, many companies. This is the query that makes address useless as a
+blocking key, and a dataset where every company had its own address would return a flat list of ones.
+""")
+
+code("""
+ask(\"\"\"
+MATCH (o:Organization)
+WHERE o.ADDR_LINE1 IS NOT NULL
+RETURN o.ADDR_LINE1 AS address, o.ADDR_CITY AS city, count(*) AS records
+ORDER BY records DESC LIMIT 5
+\"\"\")
+""")
+
+md("""
+**One company, as a register holds it.** Whichever company has the most filed against it, and every record of it.
+""")
+
+code("""
+ask(\"\"\"
+MATCH (r:Organization)-[]->(c:Organization)
+WITH c, count(*) AS filings
+ORDER BY filings DESC LIMIT 1
+MATCH (r:Organization)-[e]->(c)
+RETURN r.id AS record, r.NAME_ORG AS filed_as, label(e) AS role, r.ADDR_LINE1 AS at
+\"\"\")
+""")
+
+md("""
+One company, one name spelled several ways, several addresses. Nothing in those records says they belong together;
+`entities.parquet` does.
+
+**The trap, counted.** Pairs of records at the same address that are not the same company.
+""")
+
+code("""
+ask(\"\"\"
+MATCH (a:Organization), (b:Organization)
+WHERE a.ADDR_LINE1 = b.ADDR_LINE1 AND a.id < b.id AND a.NAME_ORG <> b.NAME_ORG
+RETURN a.ADDR_LINE1 AS address, count(*) AS wrong_pairs
+ORDER BY wrong_pairs DESC LIMIT 3
+\"\"\")
+""")
+
+md("""
+**And the signal people actually want from a register:** somebody on more than one board. In a register that is
+several rows written several ways, and whether they are one person is the question.
+""")
+
+code("""
+ask(\"\"\"
+MATCH (p:Person)-[:EXECUTIVE_AT]->(c:Organization)
+WITH p.NAME_FULL AS person, count(*) AS boards
+WHERE boards > 1
+RETURN person, boards ORDER BY boards DESC LIMIT 5
+\"\"\")
+""")
+
+md("""
+## 7. The same resolver on a real register
 
 Everything above had an answer key. This section does not, which is the point of running it: the output is a shape,
 not a score, and no amount of looking at it tells you how much was missed.
 
-Set `GRAPHFAKER_REGISTER` to a Senzing-format file, directory or zip to run it. The cell prints counts only.
+Set `GRAPHFAKER_REGISTER` to a Senzing-format register and re-run. A single JSONL file works, and so does a
+directory of shards or a zip: the outputs below came from the national open data export, 2,493 shards and 330
+million records in one 21 GB archive, read without unpacking it.
+
+```bash
+GRAPHFAKER_REGISTER=~/Downloads/ODO_SENZING_20260305.zip python docs/notebooks/build_register.py
+```
+
+The cell prints counts only. A register is real people, and nothing from one belongs in a committed file.
 """)
 
 code("""
 if not REGISTER_PATH:
     print("GRAPHFAKER_REGISTER is not set, so this section is skipped.")
-    print("Point it at a register and re-run:  graphfaker register <path> --limit 200000")
+    print("Point it at a register and re-run. A zip is fine; it is read without unpacking.")
 """)
 
 code("""
