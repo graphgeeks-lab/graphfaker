@@ -33,6 +33,12 @@ Engine
 .. automodule:: graphfaker.engine.seeding
    :members: Streams
 
+.. automodule:: graphfaker.schema.process
+   :members: TimingModel, HourProfile, HourWindow, QuarterEndBoost, MonthlySchedule, Lognormal, Mixture, Rounding, ChannelSpec, ProcessSpec
+
+.. automodule:: graphfaker.engine.process
+   :members: day_weights, timestamps, monthly_dates, schedule_days, amounts, round_amounts, blocks
+
 .. automodule:: graphfaker.engine.addresses
    :members: AddressProfile, REGISTER, RETAIL, UNIQUE, allocate, assign, shared_addresses, reuse_stats
 

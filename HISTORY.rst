@@ -2,6 +2,40 @@
 History
 =======
 
+1.3.0 (unreleased)
+------------------
+
+* Half the schema debt, paid. ``graphfaker.schema.process`` holds what a
+  process *is*, as declarations: a ``TimingModel`` (weekday weights, an hour
+  profile or an office-hours window, an optional quarter-end boost), a
+  ``MonthlySchedule``, an amount model that is a ``Lognormal`` or a
+  ``Mixture`` of two, ``Rounding`` for the round-number rate procurement
+  invoices really have, and ``ChannelSpec`` and ``ProcessSpec`` over them.
+  ``graphfaker.engine.process`` runs them: day weights, timestamps, monthly
+  dates, amounts, blocks.
+
+  Three packs answered the same three questions (when, how often, how big)
+  in three ``process.py`` files with different constants, and ``day_weights``,
+  the timestamp sampler and the block splitter existed twice over. The fraud
+  and supply chain packs now declare their timing and amounts and call the
+  engine. **No dataset moved**: the fingerprints of every pack at several
+  scales and hardness levels are the digests they were before the refactor,
+  which ``tests/test_process.py`` asserts, because a refactor is not a
+  release.
+
+  What stayed in the packs is partner selection, which is the part that is
+  genuinely different each time: a merchant chosen by region and category, a
+  contact from a repeat list, a supplier with a contract. A timing model is
+  not. The coordination pack keeps its own timestamps too: it samples days by
+  rejection against the profile rather than by a weighted choice, and folding
+  a third method into the model would have been a branch per caller rather
+  than a lift.
+
+  This is what the designer work needs. A compiler has nothing to emit into
+  until a process can be written down, and now a channel's timing, schedule
+  and amounts can be. Declared *processes* driving the engine for any domain,
+  rather than packs calling the helpers, is the other half and is still open.
+
 1.2.0 (2026-10-11)
 ------------------
 

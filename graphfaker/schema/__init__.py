@@ -1,5 +1,6 @@
 """Declarative graph schemas: node types, samplers, latent factors, edge
-families, topology models, and the catalogue of patterns a domain injects.
+families, topology models, the catalogue of patterns a domain injects, and
+the process that produces its ordinary events.
 See ``docs/design/synthetic-at-scale.md``."""
 
 from graphfaker.schema.graph import (
@@ -15,6 +16,20 @@ from graphfaker.schema.patterns import (
     Camouflage,
     PatternCatalog,
     PatternSpec,
+)
+from graphfaker.schema.process import (
+    AmountModel,
+    ChannelSpec,
+    HourModel,
+    HourProfile,
+    HourWindow,
+    Lognormal,
+    Mixture,
+    MonthlySchedule,
+    ProcessSpec,
+    QuarterEndBoost,
+    Rounding,
+    TimingModel,
 )
 from graphfaker.schema.samplers import (
     BernoulliSampler,
@@ -41,9 +56,11 @@ from graphfaker.schema.topology import (
 )
 
 __all__ = [
+    "AmountModel",
     "BernoulliSampler",
     "Camouflage",
     "CategorySampler",
+    "ChannelSpec",
     "ConstantSampler",
     "DegreeDerived",
     "EdgeType",
@@ -52,21 +69,31 @@ __all__ = [
     "ForeignKeySampler",
     "GaussianSampler",
     "GraphSchema",
+    "HourModel",
+    "HourProfile",
+    "HourWindow",
     "LatentFactor",
+    "Lognormal",
     "LognormalSampler",
+    "Mixture",
     "MixtureComponent",
     "MixtureSampler",
+    "MonthlySchedule",
     "NodeType",
     "NumericAffinity",
     "PatternCatalog",
     "PatternSpec",
     "PoissonSampler",
+    "ProcessSpec",
+    "QuarterEndBoost",
     "RealismTargets",
     "ReferenceSampler",
     "Relationship",
+    "Rounding",
     "Sampler",
     "SocialTopology",
     "SubcategorySampler",
+    "TimingModel",
     "TopologyModel",
     "UniformSampler",
     "UniformTopology",

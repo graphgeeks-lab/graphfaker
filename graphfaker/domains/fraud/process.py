@@ -24,7 +24,6 @@ simplification and is noted in the design document.
 
 from __future__ import annotations
 
-import datetime as dt
 import functools
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -40,6 +39,11 @@ from graphfaker.domains.fraud.entities import (
     REGION,
     STATUS_ACTIVITY,
 )
+from graphfaker.engine.process import amounts as engine_amounts
+from graphfaker.engine.process import day_weights as engine_day_weights
+from graphfaker.engine.process import monthly_dates as engine_monthly_dates
+from graphfaker.engine.process import timestamps as engine_timestamps
+from graphfaker.schema.process import HourProfile, Lognormal, Mixture, TimingModel
 
 PAYS, TRANSFERS, WIRES = "PAYS", "TRANSFERS", "WIRES"
 CHANNELS = (PAYS, TRANSFERS, WIRES)
@@ -89,6 +93,19 @@ HOUR_PROFILE = np.array(
 )
 BUSINESS_HOURS = np.array([0.0] * 8 + [1.0] * 10 + [0.0] * 6)
 
+#: The three channels' timing, as declarations the engine runs. One per
+#: channel because a card payment, a transfer and a wire do not share a
+#: week: a wire on a Saturday is nearly unheard of and a card payment is
+#: not.
+TIMING = {
+    channel: TimingModel(weekday=tuple(profile), hour=HourProfile(weights=tuple(HOUR_PROFILE)))
+    for channel, profile in WEEKDAY_PROFILE.items()
+}
+
+#: Salary and scheduled payments land inside the working day rather than
+#: following the card-payment curve.
+BUSINESS_HOURS_PROFILE = HourProfile(weights=tuple(BUSINESS_HOURS))
+
 #: Legitimate transfer and wire amount profiles (log-normal), income-neutral.
 #: Transfers are a mixture: everyday amounts plus a large-transfer component
 #: (rent, tuition, a car) so the tail reaches the thousands the way real
@@ -99,11 +116,18 @@ LARGE_TRANSFER_RATE = 0.08
 WIRE_AMOUNT = (7.0, 0.9)
 
 
+#: Everyday amounts plus a large component, as one declaration.
+TRANSFER_MIXTURE = Mixture(
+    base=Lognormal(mean=TRANSFER_AMOUNT[0], sigma=TRANSFER_AMOUNT[1]),
+    rare=Lognormal(mean=LARGE_TRANSFER_AMOUNT[0], sigma=LARGE_TRANSFER_AMOUNT[1]),
+    rare_rate=LARGE_TRANSFER_RATE,
+)
+WIRE_MODEL = Lognormal(mean=WIRE_AMOUNT[0], sigma=WIRE_AMOUNT[1])
+
+
 def transfer_amounts(rng: np.random.Generator, n: int) -> np.ndarray:
     """Income-neutral legitimate transfer amounts from the mixture."""
-    small = rng.lognormal(*TRANSFER_AMOUNT, size=n)
-    large = rng.lognormal(*LARGE_TRANSFER_AMOUNT, size=n)
-    return np.where(rng.random(n) < LARGE_TRANSFER_RATE, large, small)
+    return engine_amounts(rng, TRANSFER_MIXTURE, n)
 
 
 #: Sensitivity of amounts to income: amount *= exp(k * (log_income - mean)).
@@ -260,10 +284,8 @@ def population(tables: dict[str, pl.DataFrame], config: FraudConfig) -> Populati
 
 
 def day_weights(pop: Population, channel: str) -> np.ndarray:
-    start = pop.period_start.astype("datetime64[D]").astype(dt.date)
-    profile = WEEKDAY_PROFILE[channel]
-    weights = np.array([profile[(start + dt.timedelta(days=d)).weekday()] for d in range(pop.period_days)])
-    return weights / weights.sum()
+    """The channel's relative volume for each day of the period."""
+    return engine_day_weights(TIMING[channel], pop.period_start, pop.period_days)
 
 
 def sample_timestamps(
@@ -273,30 +295,21 @@ def sample_timestamps(
     channel: str,
     hours: np.ndarray = HOUR_PROFILE,
 ) -> np.ndarray:
-    """``n`` timestamps over the period following the channel's seasonality."""
-    days = rng.choice(pop.period_days, size=n, p=day_weights(pop, channel))
-    hour = rng.choice(24, size=n, p=hours / hours.sum())
-    seconds = days * 86_400 + hour * 3_600 + rng.integers(0, 3_600, size=n)
-    return pop.period_start + seconds.astype("timedelta64[s]")
+    """``n`` timestamps over the period following the channel's seasonality.
+
+    ``hours`` overrides the channel's own hour profile, which is how the
+    recurring flows land inside the working day.
+    """
+    timing = TIMING[channel]
+    if hours is not HOUR_PROFILE:
+        timing = timing.model_copy(update={"hour": HourProfile(weights=tuple(hours))})
+    return engine_timestamps(rng, timing, pop.period_start, day_weights(pop, channel), n)
 
 
 def monthly_dates(pop: Population, day_of_month: np.ndarray) -> list[np.ndarray]:
     """For every period month, the timestamp of ``day_of_month`` per row (or
     NaT when that day falls outside the period)."""
-    start = pop.period_start.astype("datetime64[D]").astype(dt.date)
-    end = start + dt.timedelta(days=pop.period_days)
-    out = []
-    year, month = start.year, start.month
-    while dt.date(year, month, 1) < end:
-        first = np.datetime64(dt.date(year, month, 1).isoformat(), "s")
-        stamps = first + ((day_of_month - 1) * 86_400).astype("timedelta64[s]")
-        lo, hi = pop.period_start, pop.period_start + np.timedelta64(pop.period_days * 86_400, "s")
-        stamps = np.where((stamps >= lo) & (stamps < hi), stamps, np.datetime64("NaT", "s"))
-        out.append(stamps)
-        month += 1
-        if month > 12:
-            month, year = 1, year + 1
-    return out
+    return engine_monthly_dates(pop.period_start, pop.period_days, day_of_month)
 
 
 def _frame(
