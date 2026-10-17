@@ -522,7 +522,9 @@ def measure_run(domain: str, scale: float, seed: int) -> dict[str, Any]:
     if parts:
         extra = [c for c in ("address_city", "address_state", "address_postal_code") if c in organizations.columns]
         keys = organizations.select(parts[:1] + extra).with_columns(
-            pl.concat_str(parts[:1] + extra, separator="|").alias("_key")
+            # ignore_nulls, because a missing postcode is a company at a
+            # known address rather than a company at the same unknown one.
+            pl.concat_str(parts[:1] + extra, separator="|", ignore_nulls=True).alias("_key")
         )["_key"]
         per_address.update(keys.to_list())
 
@@ -668,13 +670,28 @@ def compare(reference: dict[str, Any], generated: dict[str, Any]) -> str:
             f"   ours {ours_spellings.get(form, 0.0):>7.2%}"
         )
 
+    # The register names its columns after Senzing features and a generated
+    # table names them after itself, so the two are lined up by hand rather
+    # than matched on a string.
+    as_ours = {
+        "GEO_LATITUDE": "geo_latitude",
+        "ADDR_POSTAL_CODE": "address_postal_code",
+        "LINKEDIN": "linkedin",
+        "PLACEKEY": "placekey",
+        "WEBSITE_ADDRESS": "website",
+        "ADDR_LINE2": "address_line2",
+        "OTHER_ID_NUMBER": "registration_number",
+        "NPI_NUMBER": "npi_number",
+        "LEI_NUMBER": "lei_number",
+    }
+    ours = generated["identifier_coverage"]
     lines += ["", "identifier coverage (share of records carrying it)"]
-    for key, value in list(reference["identifier_coverage"].items())[:8]:
-        lines.append(f"  {key:<20} real {value:>7.1%}")
-    always = [k for k, v in generated["identifier_coverage"].items() if v >= 0.999]
-    lines.append(
-        f"  ours: {len(always)} of {len(generated['identifier_coverage'])} attributes are present on every row"
-    )
+    for key, value in reference["identifier_coverage"].items():
+        mine = ours.get(as_ours.get(key, key.lower()))
+        tail = f"   ours {mine:>7.1%}" if mine is not None else "   ours not modelled"
+        lines.append(f"  {key:<20} real {value:>7.1%}{tail}")
+    always = [key for key, value in ours.items() if value >= 0.999]
+    lines.append(f"  ours: {len(always)} of {len(ours)} columns are present on every row")
     return "\n".join(lines)
 
 

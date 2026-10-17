@@ -10,6 +10,11 @@ alike:
 * ``generate(seed, workers, **options)``: returns a :class:`GraphRun`.
 * ``schema`` (optional): for domains that are just a :class:`GraphSchema`
   preset, the function that builds it.
+* ``process`` (optional): a :class:`~graphfaker.schema.process.ProcessSpec`
+  saying what the entities do over time, for a pack that declares one.
+* ``patterns`` (optional): a
+  :class:`~graphfaker.schema.patterns.PatternCatalog` of the shapes the pack
+  injects, for a pack that injects any.
 
 Built-in domains register themselves when ``graphfaker.domains`` is
 imported. Other packages register through the ``graphfaker.domains`` entry
@@ -29,6 +34,8 @@ from pydantic import BaseModel
 from graphfaker.engine.run import GraphRun
 from graphfaker.logger import logger
 from graphfaker.schema.graph import GraphSchema
+from graphfaker.schema.patterns import PatternCatalog
+from graphfaker.schema.process import ProcessSpec
 
 ENTRY_POINT_GROUP = "graphfaker.domains"
 
@@ -43,6 +50,14 @@ class Domain:
     #: Shown at the top of ``graphfaker schema <name>``: what the schema does
     #: and does not cover, for a domain whose edges come from code.
     schema_note: str | None = None
+    #: The ordinary process the pack runs, for a domain that declares one.
+    #: The schema says what the entities are; this says what they do, and
+    #: ``graphfaker schema <name>`` prints both.
+    process: ProcessSpec | None = None
+    #: The shapes the pack injects, for a domain that injects any. The
+    #: coverage report needs it to say what a run *failed* to produce, which
+    #: the truth tables alone cannot: they only hold what happened.
+    patterns: PatternCatalog | None = None
 
     def run(self, seed: int | None = None, workers: int = 1, **options: Any) -> GraphRun:
         """Validate ``options`` against the options model, then generate."""

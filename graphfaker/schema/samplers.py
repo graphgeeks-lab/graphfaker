@@ -16,6 +16,7 @@ must start with ``@`` and name a latent-factor parameter, e.g.
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -187,6 +188,45 @@ class ForeignKeySampler(_Sampler):
     kind: Literal["foreign_key"] = "foreign_key"
     node_type: str
     same_group: str | None = None
+
+
+#: Faker date providers whose range is "counting back from now" with no way
+#: to say otherwise. A schema using one generates different data every day.
+CLOCK_PROVIDERS = frozenset({
+    "date_this_year", "date_this_month", "date_this_decade", "date_this_century",
+    "date_time_this_year", "date_time_this_month", "date_time_this_decade",
+    "date_time_this_century", "past_date", "past_datetime", "future_date",
+    "future_datetime", "time_delta",
+})
+
+#: Argument values that mean "ask the clock": the two keywords Faker accepts
+#: and its relative offsets (``-365d``, ``+2y``).
+_RELATIVE = re.compile(r"^(now|today|[+-]\d+[smhdwy])$", re.IGNORECASE)
+
+
+def clock_dependent(sampler: object) -> str | None:
+    """Why this sampler would produce different data tomorrow, or ``None``.
+
+    The engine's own date providers count from a fixed reference date, so a
+    seeded dataset is the same on any day. A provider it does not implement
+    falls through to Faker, which reads the real clock when it is asked to,
+    and ``end_date: now`` is asking. The engine cannot honestly freeze
+    somebody else's module, so it says so instead: a schema that wants a
+    reproducible dataset pins its dates, and one that genuinely wants the
+    clock now knows it has one.
+    """
+    if not isinstance(sampler, FakerSampler):
+        return None
+    if sampler.provider in CLOCK_PROVIDERS:
+        return f"the {sampler.provider!r} provider is relative to the current date"
+    relative = sorted(
+        name for name, value in sampler.kwargs.items()
+        if isinstance(value, str) and _RELATIVE.match(value.strip())
+    )
+    if relative:
+        shown = ", ".join(f"{name}={sampler.kwargs[name]!r}" for name in relative)
+        return f"{shown} is relative to the current date"
+    return None
 
 
 Sampler = Annotated[

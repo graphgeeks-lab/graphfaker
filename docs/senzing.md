@@ -30,9 +30,16 @@ One JSON object per line: a `DATA_SOURCE`, a `RECORD_ID` and a list of `FEATURES
   {"NAME_ORG": "KELLY", "NAME_TYPE": "PRIMARY"},
   {"RECORD_TYPE": "ORGANIZATION"},
   {"ADDR_LINE1": "27861 Moore Branch", "ADDR_CITY": "Port Catherine", "ADDR_TYPE": "BUSINESS"},
+  {"PLACEKEY": "@42g-vpp-shq"},
   {"REL_POINTER_DOMAIN": "GF", "REL_POINTER_KEY": 3, "REL_POINTER_ROLE": "BRANCH"}
 ]}
 ```
+
+That record has a Placekey and no postcode, no coordinates, no website and no LinkedIn page, which is the normal
+case rather than a gap in the export. A record carries `GEO_LATITUDE` and `GEO_LONGITUDE` 67.3% of the time,
+`ADDR_POSTAL_CODE` 61.9%, `LINKEDIN` 33.1%, `PLACEKEY` 29.2%, `WEBSITE_ADDRESS` 14.7%, `ADDR_LINE2` 2.8%,
+`OTHER_ID_NUMBER` 1.9%, `NPI_NUMBER` 0.4% and `LEI_NUMBER` 0.06%, which are the rates measured over a million
+companies in a real register. See [Identifiers are mostly missing](#why-it-is-hard-and-in-which-directions) below.
 
 Nothing in `records.jsonl` names the entity. That is the point of the second file: the dataset you hand a resolver has to be the dataset without the answer, and a column nobody meant to read is how an answer leaks.
 
@@ -44,6 +51,7 @@ Every hard part here was measured on a real register rather than invented, and t
 - **Addresses are shared between companies.** The curve comes from a register where the median address holds one organisation and the busiest holds 99,522. That is the registered agent, and it is why address is not a blocking key.
 - **A company's own records are mostly at different addresses.** A branch being somewhere else is the reason a register holds a record for it, so requiring two records to agree on an address loses most of them.
 - **Two different companies share a name about 1% of the time** once the legal form is stripped, which a register does at 1.02% and 1.37% in the two places it was measured. Some near-matches really are different companies, and the answer key knows which.
+- **Identifiers are mostly missing.** A company record carries a latitude two thirds of the time, a postcode just under that, a website one time in seven and an LEI once in sixteen hundred, so almost every pair has at most one or two attributes in common and which ones is close to arbitrary. That is the reason entity resolution is hard, and a dataset where every column is filled turns it into a lookup. Two companies at one door do share coordinates and a Placekey `where`, because they are the same door, so geo is no more of a blocking key than the address is.
 
 Scored with `graphfaker.resolve` on a dataset of 4,409 records for 2,207 companies:
 

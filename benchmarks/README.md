@@ -196,7 +196,7 @@ coverage of geo 67.3%, postcode 61.9%, LinkedIn 33.1%, Placekey 29.2%, website 1
 address is spread across every state, led by FL 11.6%, CA 10.9% and TX 8.3%, which is what makes the Nevada cut a
 cut of companies rather than of addresses.
 
-Four things worth taking from it, of which the first is now fixed.
+Four things worth taking from it, all four of which are now fixed.
 
 **One address holds 99,522 companies** in Las Vegas and 99,794 in Nevada, and the top 1% of addresses carry over
 half of all records in both. That is the registered agent, and it means address is not a blocking key: a resolver
@@ -237,14 +237,23 @@ before this 81% of our companies had no suffix and 5.6% were LLCs. Every spellin
 rate, and `names.variants` writes one company's name the several ways a register writes it, which is the thing a
 resolver has to survive and a dataset of unique names cannot test.
 
-**Legal forms are a distribution, and the spellings vary.** LLC 54.4%, INC 21.0%, no suffix at all 15.0%, CORP 3.8%.
-The register contains `LLC` 865,779 times and `L.L.C` 42,567 times, which is the variant problem in the open. Our
-names end in a suffix 19% of the time and never in LLC at a realistic rate.
+**Identifiers are mostly missing, and this one is now modelled.** Geo on 82.7% of Las Vegas records, Placekey
+27.2%, LinkedIn 19.4%, website 16.1%, LEI on 0.02%; nationally 67.3%, 29.2%, 33.1%, 14.7% and 0.06%, with postcode
+on 61.9%, a second address line on 2.8%, some other identifier on 1.9% and an NPI on 0.4%. Every attribute on every
+one of our suppliers used to be populated, and a pipeline tuned on data where everything is present will not
+survive contact with a register where a fifth of the rows have a website. `graphfaker.engine.coverage` holds the
+measured profile and the supply chain pack applies it: a generated company now lands within a point of every one of
+those rates, and the Senzing export carries the identifiers as the features a register writes.
 
-**Identifiers are mostly missing.** Geo on 82.7% of Las Vegas records, Placekey 27.2%, LinkedIn 19.4%, website
-16.1%, LEI on 0.02%; nationally 67.3%, 29.2%, 33.1%, 14.7% and 0.06%. Every attribute on every one of our suppliers
-is populated. A pipeline tuned on data where everything is present will not survive contact with a register where a
-fifth of the rows have a website.
+Two things beyond the rates. An identifier that describes a place belongs to the place, so two companies at one
+door share coordinates and a Placekey `where`; drawing them per company would give a resolver a key that address
+reuse cannot confuse, which is the opposite of the trap the shared addresses exist to set. And which addresses are
+covered is drawn in proportion to how many companies sit at them, because a coin flip per address misses a
+record-level rate by several points when a handful of agent addresses hold half the rows, and because an address
+with ninety thousand companies registered at it is a building someone has certainly geocoded.
+
+The rates are measured; the formats are not. An LEI has the right shape and correct ISO 7064 check digits but is
+registered to nobody, an NPI passes the Luhn check real ones do, and a Placekey's `where` is not a real H3 cell.
 
 **Most companies have nobody attached, and this one is now modelled.** Only 46,201 of the 1,033,773 Nevada
 companies have a single person pointing at them, and the ones that do have a mean of 14.5, a 99th percentile of 151

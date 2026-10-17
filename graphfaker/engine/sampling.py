@@ -14,9 +14,11 @@ processes will, and it is what the shard boundary here is for.
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import math
 import os
 import pickle
+import re
 import tempfile
 from collections.abc import Iterator
 from concurrent.futures import Executor, ProcessPoolExecutor
@@ -28,6 +30,7 @@ import numpy as np
 import polars as pl
 
 from graphfaker.backends.tables import ID
+from graphfaker.engine.fastfaker import Unsupported
 from graphfaker.engine.seeding import Streams
 from graphfaker.schema.graph import GraphSchema, LatentFactor, NodeType
 from graphfaker.schema.samplers import (
@@ -92,6 +95,12 @@ class RowContext:
             scope[factor] = SimpleNamespace(**self.latent[factor].values[int(ids[row])])
         scope["math"] = math
         scope["rand"] = self.streams.rand
+        # A duration, so "discharged some days after admission" can be said.
+        # ``timedelta`` rather than the whole ``datetime`` module: the module
+        # carries ``now()`` and ``today()``, and a schema that reads the clock
+        # generates a different dataset every run, which is the one thing a
+        # seed is supposed to prevent.
+        scope["timedelta"] = dt.timedelta
         return scope
 
 
@@ -136,7 +145,9 @@ def draw(sampler: Any, ctx: RowContext, row: int) -> Any:
     if isinstance(sampler, BernoulliSampler):
         return rand.random() < ctx.param(sampler.p, row)
     if isinstance(sampler, FakerSampler):
-        return _finish_faker(sampler, getattr(ctx.streams.fake, sampler.provider)(**sampler.kwargs))
+        return _finish_faker(
+            sampler, getattr(ctx.streams.fake, sampler.provider)(**_faker_kwargs(sampler))
+        )
     if isinstance(sampler, ExpressionSampler):
         value = eval(sampler.expr, {"__builtins__": _SAFE_BUILTINS}, ctx.namespace(row))
         return _round(value, sampler.decimals) if isinstance(value, float) else value
@@ -156,6 +167,31 @@ _SAFE_BUILTINS = {
     name: __builtins__[name] if isinstance(__builtins__, dict) else getattr(__builtins__, name)
     for name in ("abs", "int", "float", "round", "min", "max", "len", "str", "bool", "sum")
 }
+
+
+#: An ISO date or datetime written in a schema file.
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?$")
+
+
+def _faker_kwargs(sampler: FakerSampler) -> dict[str, Any]:
+    """A faker provider's arguments, with written dates turned into dates.
+
+    YAML hands over a string unless the date is written unquoted, and
+    Faker's date range arguments take a ``date``, a ``datetime`` or one of
+    its own relative strings and raise ``ParseError`` on anything else. So
+    ``start_date: '2024-01-01'`` and ``start_date: 2024-01-01`` meant
+    different things, one of them worked, and the difference was a pair of
+    quotes. They mean the same thing now.
+    """
+    if not sampler.kwargs:
+        return {}
+    out: dict[str, Any] = {}
+    for name, value in sampler.kwargs.items():
+        if isinstance(value, str) and _ISO_DATE.match(value):
+            out[name] = dt.datetime.fromisoformat(value.replace(" ", "T"))
+        else:
+            out[name] = value
+    return out
 
 
 def _finish_faker(sampler: FakerSampler, value: Any) -> Any:
@@ -236,8 +272,18 @@ def sample_column(sampler: Any, count: int, ctx: RowContext) -> list[Any]:
         groups = ctx.group_ids[sampler.same_group][:count] if sampler.same_group is not None else None
         return _foreign_keys(sampler, ctx, groups, count)
     if isinstance(sampler, FakerSampler) and ctx.streams.fast.supports(sampler.provider, sampler.kwargs):
-        values = ctx.streams.fast.draw(sampler.provider, sampler.kwargs, count, ctx.streams.rng)
-        return [_finish_faker(sampler, value) for value in values]
+        try:
+            values = ctx.streams.fast.draw(sampler.provider, sampler.kwargs, count, ctx.streams.rng)
+        except Unsupported:
+            # ``supports`` looks at the provider; a provider's format can
+            # expand to a token the vectorised path has no table for, and
+            # only the draw finds out. Falling back here rather than
+            # trusting the check means an unsupported corner is slow
+            # instead of fatal, which is the right way round: the fast
+            # path is an optimisation and Faker is the definition.
+            pass
+        else:
+            return [_finish_faker(sampler, value) for value in values]
     return [draw(sampler, ctx, row) for row in range(count)]
 
 
