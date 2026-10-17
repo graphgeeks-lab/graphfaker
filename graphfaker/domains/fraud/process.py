@@ -39,11 +39,27 @@ from graphfaker.domains.fraud.entities import (
     REGION,
     STATUS_ACTIVITY,
 )
+from graphfaker.engine.process import (
+    actor_counts,
+    actor_mix_matrix,
+    hours_of_day,
+    schedule_days,
+    split_by_mix,
+)
 from graphfaker.engine.process import amounts as engine_amounts
 from graphfaker.engine.process import day_weights as engine_day_weights
 from graphfaker.engine.process import monthly_dates as engine_monthly_dates
 from graphfaker.engine.process import timestamps as engine_timestamps
-from graphfaker.schema.process import HourProfile, Lognormal, Mixture, TimingModel
+from graphfaker.schema.process import (
+    ActorMix,
+    ChannelSpec,
+    HourProfile,
+    Lognormal,
+    Mixture,
+    MonthlySchedule,
+    ProcessSpec,
+    TimingModel,
+)
 
 PAYS, TRANSFERS, WIRES = "PAYS", "TRANSFERS", "WIRES"
 CHANNELS = (PAYS, TRANSFERS, WIRES)
@@ -146,6 +162,59 @@ LOCAL_MERCHANT_RATE = 0.8
 RECURRING_SHARE = 0.3
 #: Participation rates in scheduled flows at full participation.
 RENT_RATE, UTILITY_RATE, SUBSCRIPTION_MEAN = 0.55, 0.7, 1.5
+
+#: Events per block of the ad hoc process. The process is vectorised over a
+#: block of accounts at a time, so this bounds the numpy arrays and the
+#: polars conversion in flight to a few hundred megabytes whatever the scale.
+ADHOC_BLOCK_ROWS = 4_000_000
+
+#: When salary lands. Most employers pay on the 25th, the rest over the last
+#: days of the month, and a few on the 1st.
+PAYDAY = MonthlySchedule(day_min=1, day_max=28, days=(25, 26, 27, 28, 1), weights=(0.4, 0.15, 0.15, 0.2, 0.1))
+
+#: The whole ordinary process as one declaration.
+#:
+#: The three ad hoc channels take no share of the budget each. The budget is
+#: spread over the accounts in proportion to how active they are, and then
+#: each account's events divide by what kind of account it is, which is the
+#: :class:`ActorMix` below: a credit card makes no wires, a savings account
+#: makes almost no card payments. Flat shares could not say that.
+PROCESS = ProcessSpec(
+    name="fraud",
+    channels=(
+        ChannelSpec(name=PAYS, relationship=PAYS, timing=TIMING[PAYS]),
+        ChannelSpec(name=TRANSFERS, relationship=TRANSFERS, timing=TIMING[TRANSFERS], amount=TRANSFER_MIXTURE),
+        ChannelSpec(name=WIRES, relationship=WIRES, timing=TIMING[WIRES], amount=WIRE_MODEL),
+        ChannelSpec(
+            name="salary",
+            relationship=TRANSFERS,
+            timing=TimingModel(hour=BUSINESS_HOURS_PROFILE),
+            schedule=PAYDAY,
+        ),
+        ChannelSpec(
+            name="rent",
+            relationship=PAYS,
+            timing=TimingModel(hour=HourProfile(weights=tuple(HOUR_PROFILE))),
+            schedule=MonthlySchedule(day_min=1, day_max=5),
+            participation=RENT_RATE,
+        ),
+        ChannelSpec(
+            name="utilities",
+            relationship=PAYS,
+            timing=TimingModel(hour=HourProfile(weights=tuple(HOUR_PROFILE))),
+            schedule=MonthlySchedule(day_min=8, day_max=20),
+            participation=UTILITY_RATE,
+        ),
+        ChannelSpec(
+            name="subscription",
+            relationship=PAYS,
+            timing=TimingModel(hour=HourProfile(weights=tuple(HOUR_PROFILE))),
+            schedule=MonthlySchedule(day_min=1, day_max=28),
+        ),
+    ),
+    actor_mix=ActorMix(by="account_type", channels=(PAYS, TRANSFERS, WIRES), shares=CHANNEL_MIX),
+    block_events=ADHOC_BLOCK_ROWS,
+)
 
 
 @dataclass
@@ -506,13 +575,13 @@ def recurring_flows(
             pool = biz_by_region.get(int(region))
             pool = pool if pool is not None and len(pool) else biz_all
             employer[rows] = rng.choice(pool, size=len(rows))
-        payday = rng.choice([25, 26, 27, 28, 1], size=len(acc_idx), p=[0.4, 0.15, 0.15, 0.2, 0.1])
+        payday = schedule_days(rng, PROCESS.channel("salary").schedule, len(acc_idx))
         monthly = np.exp(pop.customer_log_income[cust_idx]) / 12.0
         for stamps in monthly_dates(pop, payday):
             ok = ~np.isnat(stamps)
             if not ok.any():
                 continue
-            hour = rng.choice(24, size=ok.sum(), p=BUSINESS_HOURS / BUSINESS_HOURS.sum())
+            hour = hours_of_day(rng, PROCESS.channel("salary").timing.hour, int(ok.sum()))
             ts = stamps[ok] + (hour * 3_600).astype("timedelta64[s]")
             amount = monthly[ok] * rng.normal(1.0, 0.01, size=ok.sum())
             _keep(
@@ -530,20 +599,20 @@ def recurring_flows(
             )
 
     # --- rent, utilities, subscriptions: fixed merchant, fixed day, stable amount.
-    def scheduled(
-        category: str, accounts: np.ndarray, per_account: np.ndarray, day_lo: int, day_hi: int, jitter: float
-    ):
+    def scheduled(category: str, accounts: np.ndarray, per_account: np.ndarray, jitter: float):
+        """One recurring flow, on the day and at the hour its channel declares."""
+        channel = PROCESS.channel(category)
         acc = np.repeat(accounts, per_account)
         if not len(acc):
             return
         merchant = merchants.choose_for_accounts(rng, acc, category)
-        day = rng.integers(day_lo, day_hi + 1, size=len(acc))
+        day = schedule_days(rng, channel.schedule, len(acc))
         base = merchant_amounts(rng, pop, merchant, acc)
         for stamps in monthly_dates(pop, day):
             ok = ~np.isnat(stamps)
             if not ok.any():
                 continue
-            hour = rng.choice(24, size=ok.sum(), p=HOUR_PROFILE / HOUR_PROFILE.sum())
+            hour = hours_of_day(rng, channel.timing.hour, int(ok.sum()))
             ts = stamps[ok] + (hour * 3_600).astype("timedelta64[s]")
             amount = base[ok] * rng.normal(1.0, jitter, size=ok.sum())
             _keep(
@@ -554,21 +623,15 @@ def recurring_flows(
             )
 
     renters = checking_idx[rng.random(len(checking_idx)) < RENT_RATE * participation]
-    scheduled("rent", renters, np.ones(len(renters), dtype=int), 1, 5, 0.0)
+    scheduled("rent", renters, np.ones(len(renters), dtype=int), 0.0)
     utility_users = checking_idx[rng.random(len(checking_idx)) < UTILITY_RATE * participation]
-    scheduled("utilities", utility_users, rng.integers(1, 3, size=len(utility_users)), 8, 20, 0.08)
+    scheduled("utilities", utility_users, rng.integers(1, 3, size=len(utility_users)), 0.08)
     subs_idx = np.flatnonzero(active & np.isin(pop.account_type, ["checking", "credit"]))
-    scheduled("subscription", subs_idx, rng.poisson(SUBSCRIPTION_MEAN * participation, size=len(subs_idx)), 1, 28, 0.0)
+    scheduled("subscription", subs_idx, rng.poisson(SUBSCRIPTION_MEAN * participation, size=len(subs_idx)), 0.0)
     return frames
 
 
 # ------------------------------------------------------------------ ad hoc
-
-
-#: Events per block of the ad hoc process. The process is vectorised over a
-#: block of accounts at a time, so this bounds the numpy arrays and the
-#: polars conversion in flight to a few hundred megabytes whatever the scale.
-ADHOC_BLOCK_ROWS = 4_000_000
 
 
 def _account_blocks(counts: np.ndarray, target: int) -> list[tuple[int, int]]:
@@ -602,19 +665,16 @@ def adhoc_flows(
         return frames
     weights = pop.account_weight
     global_p = weights / weights.sum()
-    expected = global_p * budget
-    counts = rng.poisson(expected)
 
-    mix = np.array([CHANNEL_MIX[t] for t in pop.account_type])
-    pays = rng.binomial(counts, mix[:, 0])
-    rest = counts - pays
-    p_tr = np.divide(mix[:, 1], 1 - mix[:, 0], out=np.ones(len(mix)), where=(1 - mix[:, 0]) > 0)
-    transfers = rng.binomial(rest, np.clip(p_tr, 0, 1))
-    wires = rest - transfers
-    del counts, rest, mix, p_tr
+    # The declaration allocates: the budget over accounts by activity, then
+    # each account's events over the channels by what kind of account it is.
+    counts = actor_counts(rng, weights, budget)
+    mix = actor_mix_matrix(PROCESS.actor_mix, pop.account_type)
+    pays, transfers, wires = split_by_mix(rng, counts, mix)
+    del counts, mix
 
     # PAYS
-    for first, last in _account_blocks(pays, ADHOC_BLOCK_ROWS):
+    for first, last in _account_blocks(pays, PROCESS.block_events):
         src = np.repeat(np.arange(first, last), pays[first:last])
         if not len(src):
             continue
@@ -632,7 +692,7 @@ def adhoc_flows(
         )
 
     # TRANSFERS
-    for first, last in _account_blocks(transfers, ADHOC_BLOCK_ROWS):
+    for first, last in _account_blocks(transfers, PROCESS.block_events):
         src = np.repeat(np.arange(first, last), transfers[first:last])
         if not len(src):
             continue
@@ -663,7 +723,7 @@ def adhoc_flows(
 
     # WIRES
     if len(pop.counterparty_ids):
-        for first, last in _account_blocks(wires, ADHOC_BLOCK_ROWS):
+        for first, last in _account_blocks(wires, PROCESS.block_events):
             src = np.repeat(np.arange(first, last), wires[first:last])
             if not len(src):
                 continue

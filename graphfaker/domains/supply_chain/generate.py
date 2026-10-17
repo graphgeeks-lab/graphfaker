@@ -54,10 +54,10 @@ def generate(
         **{**(config.model_dump() if config else {}), **overrides}
     )
     root = Streams.root(seed)
-    # Seven children, with addresses, names and people last: a stream of
-    # their own means adding them left every other draw in the run where it
-    # was. Children are taken in order, so asking for one more does not move
-    # the earlier ones.
+    # Eight children, with addresses, names, people and identifier coverage
+    # last: a stream of their own means adding them left every other draw in
+    # the run where it was. Children are taken in order, so asking for one
+    # more does not move the earlier ones.
     (
         node_streams,
         structure_streams,
@@ -66,13 +66,15 @@ def generate(
         address_streams,
         name_streams,
         people_streams,
-    ) = root.spawn(7)
+        coverage_streams,
+    ) = root.spawn(8)
 
     # 1. Entities.
     tables, latent = entities.build_nodes(config, node_streams, shard_size, workers)
     rng = structure_streams.rng
     tables = entities.add_addresses(tables, address_streams)
     tables = entities.add_names(tables, name_streams)
+    tables = entities.add_identifiers(tables, coverage_streams)
     tables, person_edges = entities.add_people(tables, people_streams)
     tables["Supplier"] = entities.add_onboarding_dates(tables["Supplier"], config, rng)
     logger.info(

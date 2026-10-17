@@ -38,9 +38,17 @@ import polars as pl
 from graphfaker.backends.tables import ID, SOURCE, TARGET
 from graphfaker.domains.supply_chain.config import SupplyChainConfig
 from graphfaker.engine.process import blocks as engine_blocks
+from graphfaker.engine.process import channel_counts
 from graphfaker.engine.process import day_weights as engine_day_weights
 from graphfaker.engine.process import timestamps as engine_timestamps
-from graphfaker.schema.process import HourWindow, QuarterEndBoost, TimingModel
+from graphfaker.schema.process import (
+    ChannelSpec,
+    HourWindow,
+    ProcessSpec,
+    QuarterEndBoost,
+    Rounding,
+    TimingModel,
+)
 
 ORDERS = "ORDERS"
 SHIPS = "SHIPS"
@@ -116,6 +124,28 @@ TIMING = TimingModel(
 #: Rows per block of events. The arrays in flight are a few hundred megabytes
 #: at any scale, the same approach the fraud pack uses.
 BLOCK_EVENTS = 2_000_000
+
+#: The whole legitimate process as one declaration. Three channels take a
+#: share of the event budget and two are produced alongside the orders, one
+#: event for one, which is why the shares add up to less than half: an order
+#: is three rows by the time it has shipped and been invoiced.
+PROCESS = ProcessSpec(
+    name="supply_chain",
+    channels=(
+        ChannelSpec(
+            name=ORDERS,
+            relationship=ORDERS,
+            timing=TIMING,
+            share=ORDER_SHARE,
+            rounding=Rounding(step=ROUND_PRICING_STEP, rate=ROUND_PRICING_RATE),
+        ),
+        ChannelSpec(name=SHIPS, relationship=SHIPS, timing=TIMING, derives_from=ORDERS),
+        ChannelSpec(name=INVOICES, relationship=INVOICES, timing=TIMING, derives_from=ORDERS),
+        ChannelSpec(name=DELIVERS, relationship=DELIVERS, timing=TIMING, share=DELIVERY_SHARE),
+        ChannelSpec(name=INTERCOMPANY, relationship=INTERCOMPANY, timing=TIMING, share=INTERCOMPANY_SHARE),
+    ),
+    block_events=BLOCK_EVENTS,
+)
 
 
 class Population:
@@ -270,21 +300,25 @@ def legitimate_events(
     weights = day_weights(pop)
     counter = _Counter()
 
-    n_orders = max(1, int(budget * ORDER_SHARE))
-    for start, stop in _blocks(n_orders, BLOCK_EVENTS):
+    # The declaration divides the budget. Orders get at least one even at a
+    # scale where the share truncates to nothing, so a tiny run still has a
+    # procurement half.
+    counts = channel_counts(PROCESS, budget, at_least_one=(ORDERS,))
+
+    for start, stop in _blocks(counts[ORDERS], PROCESS.block_events):
         block = _order_block(rng, pop, contracts, weights, stop - start, counter)
         for channel, frame in block.items():
             kept = finish(frame) if finish is not None else frame
             if kept.height:
                 parts[channel].append(kept)
 
-    deliveries = _delivery_block(rng, pop, structure, weights, int(budget * DELIVERY_SHARE), counter)
+    deliveries = _delivery_block(rng, pop, structure, weights, counts[DELIVERS], counter)
     if deliveries is not None:
         kept = finish(deliveries) if finish is not None else deliveries
         if kept.height:
             parts[DELIVERS].append(kept)
 
-    moves = _intercompany_block(rng, pop, structure, weights, int(budget * INTERCOMPANY_SHARE), counter)
+    moves = _intercompany_block(rng, pop, structure, weights, counts[INTERCOMPANY], counter)
     if moves is not None:
         kept = finish(moves) if finish is not None else moves
         if kept.height:

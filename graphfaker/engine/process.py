@@ -7,6 +7,11 @@ reproducibility contract says a dataset is a pure function of the schema,
 the seed and the shard size within a release, and a refactor is not a
 release.
 
+It also decides how many events each channel gets. The two shapes the packs
+used are both here: ``channel_counts`` for a flat share of the budget, and
+``actor_counts`` plus ``split_by_mix`` for a budget spread over actors and
+then divided by what kind of actor each one is.
+
 That constraint shaped the interface more than anything else. ``timestamps``
 makes three draws for an hour profile and two for a window, because that is
 what the fraud and supply chain packs respectively did, and a single tidier
@@ -22,11 +27,14 @@ from collections.abc import Iterator
 import numpy as np
 
 from graphfaker.schema.process import (
+    ActorMix,
     AmountModel,
     ChannelSpec,
+    HourModel,
     HourProfile,
     Lognormal,
     MonthlySchedule,
+    ProcessSpec,
     Rounding,
     TimingModel,
 )
@@ -81,6 +89,20 @@ def timestamps(
     window = timing.hour
     seconds = (window.start_hour * 3600 + rng.integers(0, window.hours * 3600, size=size)).astype(np.int64)
     return start + (days.astype(np.int64) * 86_400 + seconds).astype("timedelta64[s]")
+
+
+def hours_of_day(rng: np.random.Generator, hour: HourModel, size: int) -> np.ndarray:
+    """Which hour of the day ``size`` events land in.
+
+    What a scheduled channel needs: the day comes from the schedule, so only
+    the hour is drawn. The ad hoc path does not use this, because a window
+    there draws a uniform second across the whole window rather than an hour
+    and then a second inside it.
+    """
+    if isinstance(hour, HourProfile):
+        weights = hour.array()
+        return rng.choice(24, size=size, p=weights / weights.sum())
+    return hour.start_hour + rng.integers(0, hour.hours, size=size)
 
 
 def monthly_dates(start: np.datetime64, days: int, day_of_month: np.ndarray) -> list[np.ndarray]:
@@ -154,18 +176,122 @@ def blocks(total: int, per_block: int) -> Iterator[tuple[int, int]]:
         start = stop
 
 
-def channel_budget(spec_shares: dict[str, float], budget: int) -> dict[str, int]:
-    """How many events each ad hoc channel gets of the budget."""
-    return {name: int(budget * share) for name, share in spec_shares.items()}
+def channel_counts(spec: ProcessSpec, budget: int, *, at_least_one: tuple[str, ...] = ()) -> dict[str, int]:
+    """How many events each channel with a flat share gets of the budget.
+
+    Truncating rather than rounding, because that is what the packs did and
+    the remainder belongs to the channels that derive their volume from
+    another. ``at_least_one`` names channels that must produce something
+    even at a scale where their share truncates to nothing, which is how a
+    tiny run still exercises every channel.
+    """
+    out = {}
+    for name, share in spec.shares.items():
+        count = int(budget * share)
+        out[name] = max(1, count) if name in at_least_one else count
+    return out
 
 
-def describe(channel: ChannelSpec) -> str:
-    """One line for a report or a schema dump."""
-    when = (
-        f"monthly, day {channel.schedule.day_min}-{channel.schedule.day_max}"
-        if channel.schedule and not channel.schedule.days
-        else "monthly, on set days"
-        if channel.schedule
-        else f"{channel.share:.0%} of the budget"
+def actor_counts(rng: np.random.Generator, weights: np.ndarray, budget: int) -> np.ndarray:
+    """How many events each actor produces, in proportion to its weight.
+
+    Poisson around the expectation rather than a fixed share each, so the
+    busiest account is busy because it was drawn that way rather than
+    because it was told to be, and the totals come out near the budget
+    without any actor being pinned to its mean.
+    """
+    return rng.poisson((weights / weights.sum()) * budget)
+
+
+def actor_mix_matrix(mix: ActorMix, values: np.ndarray) -> np.ndarray:
+    """One row of channel shares per actor, looked up by ``mix.by``."""
+    return np.array([mix.shares[value] for value in values])
+
+
+def split_by_mix(rng: np.random.Generator, counts: np.ndarray, mix: np.ndarray) -> list[np.ndarray]:
+    """Divide each actor's events between the mix's channels.
+
+    Binomial down the channels in order, each against what the earlier ones
+    left, so the last channel takes the remainder and the totals add up
+    exactly. Drawing in channel order is not an implementation detail: it
+    is the order the fraud pack drew in, and the datasets must not move.
+    """
+    remaining = counts
+    out = []
+    for column in range(mix.shape[1] - 1):
+        share = mix[:, column] if column == 0 else np.clip(_conditional(mix, column), 0, 1)
+        taken = rng.binomial(remaining, share)
+        out.append(taken)
+        remaining = remaining - taken
+    out.append(remaining)
+    return out
+
+
+def _conditional(mix: np.ndarray, column: int) -> np.ndarray:
+    """A channel's share of what the channels before it left behind."""
+    left = 1 - mix[:, :column].sum(axis=1)
+    return np.divide(mix[:, column], left, out=np.ones(len(mix)), where=left > 0)
+
+
+def describe(channel: ChannelSpec, spec: ProcessSpec | None = None) -> str:
+    """One line saying where a channel's volume, timing and amounts come from."""
+    parts = [_allocation(channel, spec), _timing(channel.timing)]
+    if channel.amount is not None:
+        parts.append(_amount(channel.amount))
+    if channel.rounding is not None:
+        parts.append(f"{channel.rounding.rate:.0%} rounded to {channel.rounding.step:g}")
+    label = channel.name if channel.name == channel.relationship else f"{channel.name} ({channel.relationship})"
+    return f"{label}: " + ", ".join(parts)
+
+
+def describe_process(spec: ProcessSpec) -> list[str]:
+    """The whole declaration as lines, for a report or a schema dump."""
+    lines = [describe(channel, spec) for channel in spec.channels]
+    if spec.actor_mix is not None:
+        lines.append(
+            f"the {spec.actor_mix.by} mix divides "
+            + ", ".join(spec.actor_mix.channels)
+            + ": "
+            + "; ".join(
+                f"{value} " + "/".join(f"{share:.0%}" for share in row)
+                for value, row in spec.actor_mix.shares.items()
+            )
+        )
+    return lines
+
+
+def _allocation(channel: ChannelSpec, spec: ProcessSpec | None) -> str:
+    if channel.share is not None:
+        return f"{channel.share:.0%} of the event budget"
+    if channel.derives_from is not None:
+        return f"one per {channel.derives_from}"
+    if channel.schedule is not None:
+        when = (
+            "monthly, day " + "/".join(str(d) for d in channel.schedule.days)
+            if channel.schedule.days
+            else f"monthly, day {channel.schedule.day_min}-{channel.schedule.day_max}"
+        )
+        return when if channel.participation >= 1.0 else f"{when}, {channel.participation:.0%} take part"
+    if spec is not None and spec.actor_mix is not None and channel.name in spec.actor_mix.channels:
+        return f"a share of each actor's events, set by {spec.actor_mix.by}"
+    return "unallocated"
+
+
+def _timing(timing: TimingModel) -> str:
+    if isinstance(timing.hour, HourProfile):
+        when = "hour-of-day profile"
+    else:
+        end = timing.hour.start_hour + timing.hour.hours
+        when = f"{timing.hour.start_hour:02d}:00-{end:02d}:00"
+    if timing.quarter_end is not None:
+        when += f", x{timing.quarter_end.factor:g} over the last {timing.quarter_end.days} days of a quarter"
+    return when
+
+
+def _amount(model: AmountModel) -> str:
+    if isinstance(model, Lognormal):
+        return f"lognormal({model.mean:g}, {model.sigma:g})"
+    return (
+        f"lognormal({model.base.mean:g}, {model.base.sigma:g}) with "
+        f"{model.rare_rate:.0%} lognormal({model.rare.mean:g}, {model.rare.sigma:g})"
     )
-    return f"{channel.name} ({channel.relationship}): {when}"

@@ -42,6 +42,7 @@ register(
         summary="A bank: customers, accounts, merchants, devices; transactions; labelled laundering typologies.",
         generate=fraud.generate,
         options=fraud.FraudConfig,
+        process=fraud.process.PROCESS,
         schema=lambda **options: fraud.entities.schema(fraud.FraudConfig(**options)),
         schema_note=(
             "This is the entity half of the fraud domain: its node types, attribute samplers and the\n"
@@ -61,6 +62,7 @@ register(
         ),
         generate=supply_chain.generate,
         options=supply_chain.SupplyChainConfig,
+        process=supply_chain.process.PROCESS,
         schema=lambda **options: supply_chain_schema(options),
         schema_note=(
             "This is the entity half of the supply chain domain: its node types, attribute samplers\n"

@@ -642,6 +642,12 @@ def schema_command(
     header = f"# Schema of the {domain!r} domain, written by `graphfaker schema {domain}`.\n# Edit it, then: graphfaker generate --schema {os.path.basename(out) if out else 'this-file.yaml'} --seed 1 --out ./graph\n"
     if pack.schema_note:
         header += "".join(f"# {line}\n" for line in pack.schema_note.splitlines())
+    if pack.process is not None:
+        from graphfaker.engine.process import describe_process
+
+        header += "#\n# What those entities do over time: the pack's declared process. It is not part\n"
+        header += "# of the schema below, so editing the YAML will not change it.\n"
+        header += "".join(f"#   {line}\n" for line in describe_process(pack.process))
     text = header + loaded.to_yaml()
     if out is None:
         typer.echo(text, nl=False)

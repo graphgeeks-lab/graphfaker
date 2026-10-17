@@ -5,7 +5,46 @@ History
 1.3.0 (unreleased)
 ------------------
 
-* Half the schema debt, paid. ``graphfaker.schema.process`` holds what a
+Datasets change for a given seed in the ``supply_chain`` pack, which gained
+the identifier coverage below. The ``fraud``, ``social`` and ``coordination``
+packs are byte-identical to 1.2.0.
+
+* Identifiers are mostly missing now, the way a register's are. A generated
+  company carried every column; a real one carries a latitude 67.3% of the
+  time, a postcode 61.9%, a LinkedIn page 33.1%, a Placekey 29.2%, a website
+  14.7%, a second address line 2.8%, a state filing number 1.9%, an NPI 0.4%
+  and an LEI 0.06%, measured over the 1,033,773 companies registered in
+  Nevada in the 2026-03-05 open data export and agreeing within a point with
+  the Las Vegas register. That was the last of the four measured realism gaps
+  for companies, and the one that matters most for the thing people build
+  these datasets to try: entity resolution is hard because the attribute that
+  would settle a match is absent, and a dataset where every column is filled
+  turns the problem into a lookup.
+
+  ``graphfaker.engine.coverage`` holds the profile and the generators, and
+  the supply chain pack applies it to suppliers, plants, warehouses and
+  customers. Two things beyond the rates. An identifier that describes a
+  place belongs to the place, so two companies at one door have the same
+  coordinates and the same Placekey ``where``; drawing them per company would
+  hand a resolver a key that address reuse cannot confuse, which is the
+  opposite of the trap the shared addresses exist to set. And which addresses
+  are covered is drawn in proportion to how many companies sit at them, both
+  because the register's rate is a share of records and a coin flip per
+  address misses it by several points when a handful of agent addresses hold
+  half the rows, and because the bias is the right way round: an address with
+  ninety thousand companies registered at it is a building someone has
+  certainly geocoded.
+
+  The rates are measured; the formats are not. An LEI has the right shape and
+  correct ISO 7064 check digits but is registered to nobody, an NPI passes
+  the Luhn check real ones do and sits in the organisation range, and a
+  Placekey's ``where`` is not a real H3 cell. The Senzing export carries all
+  of them as the features a register writes. It no longer writes a supplier's
+  tier as ``OTHER_ID_NUMBER``: that put a modelling attribute on 11% of
+  records where a register has an identifier on 1.9%, and handed a resolver a
+  feature that correlates with the answer and exists nowhere in the world.
+
+* The schema debt, paid. ``graphfaker.schema.process`` holds what a
   process *is*, as declarations: a ``TimingModel`` (weekday weights, an hour
   profile or an office-hours window, an optional quarter-end boost), a
   ``MonthlySchedule``, an amount model that is a ``Lognormal`` or a
@@ -31,10 +70,28 @@ History
   a third method into the model would have been a branch per caller rather
   than a lift.
 
+  The packs also declare how their events are divided, which is the half
+  that turns a set of helpers into a process the engine drives. Two shapes
+  were in the code and both are declarations now: a flat ``share`` of the
+  event budget per channel, which is what the supply chain does, and an
+  ``ActorMix``, which spreads the budget over the actors in proportion to how
+  active they are and then divides each actor's events by what kind of actor
+  it is, which is what the fraud pack does because a credit card makes no
+  wires and a flat share cannot say that. A channel can also derive its
+  volume from another, one event for one, which is what a shipment and an
+  invoice are to an order. ``channel_counts``, ``actor_counts`` and
+  ``split_by_mix`` do the arithmetic the packs used to do inline.
+
+  A ``Domain`` carries its ``ProcessSpec``, and ``graphfaker schema <domain>``
+  prints it above the entity schema: where each channel's volume comes from,
+  when it happens, what the amounts look like and how often they are round.
+  The schema says what the entities are; this says what they do.
+
   This is what the designer work needs. A compiler has nothing to emit into
-  until a process can be written down, and now a channel's timing, schedule
-  and amounts can be. Declared *processes* driving the engine for any domain,
-  rather than packs calling the helpers, is the other half and is still open.
+  until a process can be written down, and now one can be. The coordination
+  pack is the remaining holdout: it samples days by rejection against the
+  profile rather than by a weighted choice, and folding a third method into
+  the model would have been a branch per caller rather than a lift.
 
 1.2.0 (2026-10-11)
 ------------------
