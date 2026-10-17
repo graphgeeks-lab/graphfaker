@@ -33,7 +33,7 @@ pip install "graphfaker[llm]"
 
 Two small pure-Python clients, neither imported unless you ask for one. Nothing in a generated dataset depends on either, so a collaborator who only wants to generate from your committed schema does not need the extra at all.
 
-Configure it with environment variables so a key never lands in a shell history:
+Configure it with environment variables so a key never lands in a shell history. GraphFaker reads a project `.env` on the way in, so a key already sitting next to your code works without exporting anything:
 
 | variable | meaning |
 |---|---|
@@ -43,6 +43,8 @@ Configure it with environment variables so a key never lands in a shell history:
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | the key, read by the vendor's own client |
 
 `--provider`, `--model` and `--base-url` override them per call.
+
+The `.env` is the nearest one from the working directory up to the repository root, so it is found from a subdirectory and a stray file outside the repo is not. **Anything already in the environment wins**, so a key you exported on purpose, or a CI job's secrets, are never replaced by a file somebody forgot about. `--env-file` points at a different one. `graphfaker info` says which file was used and which keys are present, and never prints a value.
 
 ## Drafting a schema
 

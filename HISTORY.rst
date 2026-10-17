@@ -30,6 +30,25 @@ byte-identical to 1.2.0.
   Ages are relative to that date, which is the cost of having an answer at
   all, and moving it is a release decision rather than a maintenance one.
 
+* A project ``.env`` is read on the way in, so an API key already sitting
+  next to the code does not have to be exported again to run one command.
+  The nearest file from the working directory up to the repository root, so
+  it is found from a subdirectory and a stray file outside the repo is not;
+  ``--env-file`` points somewhere else. Anything already in the environment
+  wins, because a key exported on purpose and a CI job's secrets should not
+  lose to a file somebody forgot about. ``graphfaker info`` says which file
+  was used and which keys are present, and nothing ever prints a value.
+  Thirty lines rather than a dependency: the parts of the format that are
+  genuinely hard are the parts nobody puts an API key in.
+
+* The vectorised Faker path falls back instead of failing. ``supports``
+  looks at the provider, but a provider's format expands to tokens, so
+  ``address`` passed the check and then died rendering ``{{state_abbr}}``,
+  which the fast path has no table for. A schema Faker itself handles fine
+  killed the run. The fast path is an optimisation and Faker is the
+  definition, so an unsupported corner is slow rather than fatal now. No
+  shipped dataset moves: the only schemas affected produced nothing at all.
+
 * Quoting a date in a schema file no longer changes what it means. YAML
   parses an unquoted ``2024-01-01`` into a date and a quoted one into a
   string, and Faker's date range arguments take a date or one of its own

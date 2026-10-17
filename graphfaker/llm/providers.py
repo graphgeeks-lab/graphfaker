@@ -32,6 +32,28 @@ MODEL_VAR = "GRAPHFAKER_LLM_MODEL"
 BASE_URL_VAR = "GRAPHFAKER_LLM_BASE_URL"
 
 
+def _require_key(variable: str, given: str | None) -> str:
+    """The API key, or a message saying exactly where to put one.
+
+    The key is usually already in a ``.env`` next to the code, which the
+    CLI reads on the way in, so the useful error names the variable and the
+    file that was looked at rather than leaving someone to guess which of
+    the two is wrong.
+    """
+    import os
+
+    key = given or os.environ.get(variable)
+    if key:
+        return key
+    from graphfaker.env import find
+
+    found = find()
+    where = f"{found} has no {variable}" if found else "no .env was found"
+    raise ProviderError(
+        f"no API key: set {variable} in the environment or in a .env next to your project ({where})"
+    )
+
+
 class ProviderError(RuntimeError):
     """The model could not be reached, or refused the request.
 
@@ -68,7 +90,7 @@ class AnthropicProvider:
             raise ProviderError(
                 "the anthropic client is not installed; pip install 'graphfaker[llm]'"
             ) from exc
-        client = anthropic.Anthropic(api_key=self.api_key) if self.api_key else anthropic.Anthropic()
+        client = anthropic.Anthropic(api_key=_require_key("ANTHROPIC_API_KEY", self.api_key))
         try:
             message = client.messages.create(
                 model=self.model,
@@ -122,7 +144,11 @@ class OpenAICompatibleProvider:
                 "the openai client is not installed; pip install 'graphfaker[llm]'"
             ) from exc
         # A local server usually wants no key and the client insists on one.
-        key = self.api_key or os.environ.get("OPENAI_API_KEY") or ("none" if self.base_url else None)
+        key = (
+            self.api_key or os.environ.get("OPENAI_API_KEY") or "none"
+            if self.base_url
+            else _require_key("OPENAI_API_KEY", self.api_key)
+        )
         client = openai.OpenAI(api_key=key, base_url=self.base_url)
 
         request: dict[str, object] = {

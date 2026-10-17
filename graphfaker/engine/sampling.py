@@ -30,6 +30,7 @@ import numpy as np
 import polars as pl
 
 from graphfaker.backends.tables import ID
+from graphfaker.engine.fastfaker import Unsupported
 from graphfaker.engine.seeding import Streams
 from graphfaker.schema.graph import GraphSchema, LatentFactor, NodeType
 from graphfaker.schema.samplers import (
@@ -271,8 +272,18 @@ def sample_column(sampler: Any, count: int, ctx: RowContext) -> list[Any]:
         groups = ctx.group_ids[sampler.same_group][:count] if sampler.same_group is not None else None
         return _foreign_keys(sampler, ctx, groups, count)
     if isinstance(sampler, FakerSampler) and ctx.streams.fast.supports(sampler.provider, sampler.kwargs):
-        values = ctx.streams.fast.draw(sampler.provider, sampler.kwargs, count, ctx.streams.rng)
-        return [_finish_faker(sampler, value) for value in values]
+        try:
+            values = ctx.streams.fast.draw(sampler.provider, sampler.kwargs, count, ctx.streams.rng)
+        except Unsupported:
+            # ``supports`` looks at the provider; a provider's format can
+            # expand to a token the vectorised path has no table for, and
+            # only the draw finds out. Falling back here rather than
+            # trusting the check means an unsupported corner is slow
+            # instead of fatal, which is the right way round: the fast
+            # path is an optimisation and Faker is the definition.
+            pass
+        else:
+            return [_finish_faker(sampler, value) for value in values]
     return [draw(sampler, ctx, row) for row in range(count)]
 
 

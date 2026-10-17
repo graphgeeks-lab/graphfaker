@@ -293,7 +293,7 @@ With `graphfaker[llm]` installed, `schema draft` writes one from a description i
 graphfaker schema draft "a hospital: patients, doctors, wards, and admissions over time" --out hospital.yaml
 ```
 
-A model writes the YAML, pydantic checks it, and the file is the deliverable: read it, fix the counts, commit it, and it is an ordinary schema from then on. A model never runs during `generate`, so a dataset stays a pure function of its schema file and its seed. `--provider`, `--model` and `--base-url` choose where to ask (a local OpenAI-compatible server works); the summary goes to stderr so the YAML on stdout can be piped. See [the semantic layer](docs/semantic-layer.md) for what it is and is not for.
+A model writes the YAML, pydantic checks it, and the file is the deliverable: read it, fix the counts, commit it, and it is an ordinary schema from then on. The API key is read from a project `.env` if there is one, so there is nothing to export; anything already in the environment wins, and `graphfaker info` says which file was used without printing what is in it. A model never runs during `generate`, so a dataset stays a pure function of its schema file and its seed. `--provider`, `--model` and `--base-url` choose where to ask (a local OpenAI-compatible server works); the summary goes to stderr so the YAML on stdout can be piped. See [the semantic layer](docs/semantic-layer.md) for what it is and is not for.
 
 Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json` under `--out`. Options shared by every domain:
 
