@@ -6,6 +6,8 @@ from pydantic import ValidationError
 from graphfaker.domains import social
 from graphfaker.schema import (
     CategorySampler,
+    ConstantSampler,
+    DegreeDerived,
     EdgeType,
     ForeignKeySampler,
     GaussianSampler,
@@ -253,3 +255,24 @@ def test_a_schema_that_reads_the_clock_can_be_spotted():
     ) is None
     assert clock_dependent(FakerSampler(provider="date_of_birth", kwargs={"maximum_age": 80})) is None
     assert clock_dependent(FakerSampler(provider="name")) is None
+
+
+def test_an_expression_that_does_not_parse_is_a_validation_error():
+    """A ``SyntaxError`` walks straight out of a pydantic field validator.
+
+    So a schema with a typo in an expression crashed the command that was
+    supposed to report it, and anything catching schema errors, including
+    the drafter's repair round, never saw it.
+    """
+    from graphfaker.schema.samplers import ExpressionSampler
+
+    with pytest.raises(ValidationError, match="not a valid expression"):
+        ExpressionSampler(expr="x if y else")
+    with pytest.raises(ValidationError, match="not a valid expression"):
+        minimal(nodes=[NodeType(name="A", count=2, attributes={"a": ExpressionSampler(expr="1 +")})])
+    with pytest.raises(ValidationError, match="not a valid expression"):
+        minimal(nodes=[NodeType(
+            name="A", count=2,
+            attributes={"n": ConstantSampler(value=1)},
+            derived={"d": DegreeDerived(relationship="TO", expr="count +")},
+        )])

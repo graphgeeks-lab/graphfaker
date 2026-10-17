@@ -219,7 +219,7 @@ def draft(
         attempts.append(text)
         try:
             schema = GraphSchema.from_yaml(text)
-        except (ValidationError, ValueError, TypeError, KeyError) as exc:
+        except (ValidationError, ValueError, TypeError, KeyError, SyntaxError) as exc:
             # Anything the schema throws is a thing to repair, not a crash.
             # Most of it arrives as a ValidationError; a malformed YAML
             # document and the odd check that raises straight through do

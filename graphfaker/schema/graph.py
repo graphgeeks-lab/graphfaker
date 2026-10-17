@@ -175,7 +175,14 @@ class DegreeDerived(BaseModel):
     @field_validator("expr")
     @classmethod
     def _compiles(cls, expr: str) -> str:
-        compile(expr, "<derived>", "eval")
+        try:
+            compile(expr, "<derived>", "eval")
+        except SyntaxError as exc:
+            # ValueError, so pydantic wraps it the way it wraps every
+            # other check here. A SyntaxError walks straight out of a
+            # field validator, so a schema with a typo in an expression
+            # crashed the command that was supposed to report it.
+            raise ValueError(f"{expr!r} is not a valid expression: {exc.msg}") from exc
         return expr
 
 
