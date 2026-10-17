@@ -10,6 +10,7 @@ dataset can always be traced back to the declaration that produced it.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -17,16 +18,114 @@ from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic_core import PydanticUndefined
 
 from graphfaker.schema.samplers import (
     ExpressionSampler,
     ForeignKeySampler,
+    MixtureSampler,
     Sampler,
     sampler_refs,
 )
 from graphfaker.schema.topology import SocialTopology, TopologyModel
 
 _IDENT = r"^[A-Za-z_][A-Za-z0-9_]*$"
+
+
+#: Names an attribute expression can use beyond the row's own attributes:
+#: the seeded random source, ``math``, and the builtins the engine allows.
+#: Kept here rather than imported from the engine so the schema can be
+#: validated without loading it.
+EXPRESSION_NAMES = frozenset({
+    "math", "rand", "timedelta",
+    "abs", "int", "float", "round", "min", "max", "len", "str", "bool", "sum",
+})
+
+#: And for a ``derived`` expression, which runs after the edges exist and
+#: sees the matching degree instead of the random source.
+DERIVED_NAMES = frozenset({"count", "max", "min", "int", "round"})
+
+
+def free_names(expr: str) -> set[str]:
+    """Names an expression reads and does not itself bind.
+
+    Comprehension targets, lambda arguments and walrus assignments are
+    bound by the expression, so they are not things the scope has to
+    provide. ``a.b`` reads ``a`` only.
+    """
+    tree = ast.parse(expr, mode="eval")
+    bound: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.comprehension):
+            bound |= {n.id for n in ast.walk(node.target) if isinstance(n, ast.Name)}
+        elif isinstance(node, ast.Lambda):
+            bound |= {a.arg for a in node.args.args + node.args.kwonlyargs}
+        elif isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name):
+            bound.add(node.target.id)
+    read = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    return read - bound
+
+
+def _check_expressions(where: str, sampler: Any, available: set[str]) -> None:
+    """Every name an expression sampler reads has to be something it can see.
+
+    Without this an expression compiles, validates, and raises a
+    ``NameError`` halfway through a run: ``graphfaker validate`` says the
+    file is fine and the generator disagrees a minute later. The failure is
+    worth catching early for a hand-written schema and more so for a
+    drafted one, where reaching for a module that is not in scope
+    (``datetime`` is the usual one) is the commonest mistake a model makes.
+    """
+    if isinstance(sampler, MixtureSampler):
+        for component in sampler.components:
+            _check_expressions(where, component.sampler, available)
+        return
+    if not isinstance(sampler, ExpressionSampler):
+        return
+    unknown = free_names(sampler.expr) - available
+    if unknown:
+        raise ValueError(
+            f"{where} uses {', '.join(sorted(unknown))}, which an expression cannot see. "
+            f"It has the attributes declared before it, the latent factors, "
+            f"{', '.join(sorted(EXPRESSION_NAMES))}"
+        )
+
+
+def _keep_meaningful_nulls(model: BaseModel, data: dict[str, Any]) -> dict[str, Any]:
+    """Put back the nulls that mean something.
+
+    ``exclude_none`` keeps a written schema readable by dropping every
+    optional nobody set, which is right for a field whose default is
+    already ``None`` and wrong for one whose default is not. The case in
+    the models today is ``SocialTopology.prominence``, which defaults to
+    the attribute name ``prominence`` and is set to null to say there is no
+    popularity attribute: write that and read it back and the null is gone
+    and the default has returned. A schema that does not round-trip is a
+    dataset that cannot be regenerated from its own file, which is the one
+    promise the manifest makes, so the exception is worth the traversal.
+    """
+    for name, info in type(model).model_fields.items():
+        value = getattr(model, name, None)
+        if value is None:
+            if info.default is not None and info.default is not PydanticUndefined:
+                data[name] = None
+            continue
+        if isinstance(value, BaseModel):
+            if isinstance(data.get(name), dict):
+                _keep_meaningful_nulls(value, data[name])
+        elif isinstance(value, (list, tuple)):
+            written = data.get(name)
+            if isinstance(written, list) and len(written) == len(value):
+                for item, slot in zip(value, written, strict=True):
+                    if isinstance(item, BaseModel) and isinstance(slot, dict):
+                        _keep_meaningful_nulls(item, slot)
+        elif isinstance(value, dict):
+            written = data.get(name)
+            if isinstance(written, dict):
+                for key, item in value.items():
+                    if isinstance(item, BaseModel) and isinstance(written.get(key), dict):
+                        _keep_meaningful_nulls(item, written[key])
+    return data
 
 
 def _looks_like_path(text: str) -> bool:
@@ -212,7 +311,12 @@ class GraphSchema(BaseModel):
         }
 
         for node in self.nodes:
+            # Attributes are ordered and an expression may only reference
+            # the ones before it, so the scope grows as we go.
+            available = set(EXPRESSION_NAMES) | latent_names
             for attr, sampler in node.attributes.items():
+                _check_expressions(f"{node.name}.{attr}", sampler, available)
+                available.add(attr)
                 for ref in sampler_refs(sampler):
                     if ref not in known_params:
                         raise ValueError(
@@ -231,11 +335,20 @@ class GraphSchema(BaseModel):
                             "is not a latent factor"
                         )
             rel_names = {rel.name for _, rel in self.relationships()}
+            # A derived attribute runs after the edges exist, so it sees
+            # every attribute on the node rather than only the earlier ones.
+            after_edges = DERIVED_NAMES | set(node.attributes)
             for attr, derived in node.derived.items():
                 if derived.relationship not in rel_names:
                     raise ValueError(
                         f"{node.name}.{attr} derives from unknown relationship "
                         f"{derived.relationship!r}"
+                    )
+                unknown = free_names(derived.expr) - after_edges
+                if unknown:
+                    raise ValueError(
+                        f"{node.name}.{attr} uses {', '.join(sorted(unknown))}, which a derived "
+                        f"expression cannot see. It has: {', '.join(sorted(after_edges))}"
                     )
 
         for edge in self.edges:
@@ -251,7 +364,11 @@ class GraphSchema(BaseModel):
                     )
                 for attr, sampler in rel.attributes.items():
                     if isinstance(sampler, (ForeignKeySampler, ExpressionSampler)):
-                        raise TypeError(
+                        # ValueError, so pydantic wraps it into the same
+                        # ValidationError every other check here produces. A
+                        # TypeError escaped the model validator untouched and
+                        # anything catching schema errors missed it.
+                        raise ValueError(
                             f"{rel.name}.{attr}: {sampler.kind} samplers are not "
                             "supported on edge attributes yet"
                         )
@@ -294,7 +411,7 @@ class GraphSchema(BaseModel):
     # ------------------------------------------------------------ serialisation
 
     def to_dict(self) -> dict[str, Any]:
-        return self.model_dump(mode="json", exclude_none=True)
+        return _keep_meaningful_nulls(self, self.model_dump(mode="json", exclude_none=True))
 
     def to_yaml(self, path: str | Path | None = None) -> str:
         text = yaml.safe_dump(self.to_dict(), sort_keys=False, allow_unicode=True)

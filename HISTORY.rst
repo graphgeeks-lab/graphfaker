@@ -6,8 +6,129 @@ History
 ------------------
 
 Datasets change for a given seed in the ``supply_chain`` pack, which gained
-the identifier coverage below. The ``fraud``, ``social`` and ``coordination``
-packs are byte-identical to 1.2.0.
+the identifier coverage below, and in the ``fraud`` and ``social`` packs,
+whose date providers no longer read the clock. ``coordination`` is
+byte-identical to 1.2.0.
+
+* A seeded dataset is the same tomorrow. ``date_of_birth`` and ``date``
+  count backwards from today and were reading the real clock, so
+  ``graphfaker generate fraud --seed 42`` produced a different birth-date
+  column every day: reproducible across machines and not across midnight,
+  which is the half nobody checks. They now count from
+  ``graphfaker.engine.fastfaker.REFERENCE_DATE``, a constant. The supply
+  chain and coordination packs never had the problem, because they take an
+  explicit ``period_start``, which is the same idea written down.
+
+  Found while checking that a drafted schema generates the same bytes twice,
+  which is the sort of thing the semantic layer makes much more likely to be
+  noticed: nobody re-runs a pack on two different days and diffs it, and the
+  one test that would have caught it was written the same afternoon it would
+  have started failing. ``tests/test_seed.py`` now moves the clock eleven
+  years and asserts every pack is unmoved, so a drift of one day in one
+  column fails it.
+
+  Ages are relative to that date, which is the cost of having an answer at
+  all, and moving it is a release decision rather than a maintenance one.
+
+* Quoting a date in a schema file no longer changes what it means. YAML
+  parses an unquoted ``2024-01-01`` into a date and a quoted one into a
+  string, and Faker's date range arguments take a date or one of its own
+  relative strings and raise on anything else, so the same schema worked or
+  did not depending on a pair of quotes, and the failure arrived halfway
+  through a run rather than at validation. A written ISO date is now read as
+  a date wherever it reaches a Faker provider.
+
+* ``graphfaker validate`` warns when a schema reads the clock.
+  ``end_date: now``, ``start_date: -2y`` and providers like ``past_date``
+  are relative to the day the generator runs, so the same seed gives
+  different data tomorrow. The engine's own date providers are frozen (see
+  above) but it cannot honestly freeze somebody else's module, so it names
+  the attribute instead. A warning rather than an error: a schema is allowed
+  to want the clock, it is just rarely what anyone wants from a seeded
+  generator, and finding out by diffing two runs a day apart is a bad way to
+  find out.
+
+* An expression sampler is checked for names it will actually have.
+  ``expr`` was validated by compiling it, so ``datetime.timedelta(days=1)``
+  passed ``graphfaker validate`` and raised a ``NameError`` a minute into
+  generation. Every free name is now checked against what the scope will
+  hold, and the error says what is available. ``timedelta`` was added to
+  that scope, so "discharged some days after admission" can be said at all;
+  deliberately not the whole ``datetime`` module, because ``now()`` in a
+  schema is a dataset that changes every run.
+
+* The semantic layer's first half: ``graphfaker schema draft "<description>"``
+  turns a sentence into a schema YAML. ``pip install graphfaker[llm]``.
+
+  The architecture is one sentence and the rest follows from it: **the model
+  compiles intent and the engine owns generation**. Ask a model for ten
+  thousand transactions and you get ten thousand plausible rows with no
+  process behind them, no degree distribution, no repeat partners, no tail
+  and no way to make the same dataset twice. What the engine cannot do is
+  work out what you meant by "a hospital with patients, doctors and
+  admissions", and that is the only part of this where a model beats the
+  alternative.
+
+  So a model never runs inside ``generate``. It runs in ``schema draft``,
+  which writes a file you read, edit and commit, and the dataset is then a
+  pure function of that file, the seed and the shard size exactly as before.
+  Two drafts of the same sentence will not agree; two generations from the
+  drafted file always will.
+
+  What comes back is validated before anybody sees it, and the pydantic
+  errors go back to the model once, because the failures are mechanical
+  almost every time: a sampler kind that does not exist, an edge pointing at
+  a node type renamed halfway through the answer. After a second failure it
+  prints what it was reaching for and writes nothing. The prompt's list of
+  sampler kinds is read off the pydantic models and its worked example is
+  the social pack's own schema, so neither can drift from what the engine
+  accepts. A provider is anything with a ``complete`` method; the two that
+  ship are Anthropic and an OpenAI-compatible client, which covers the
+  hosted APIs and anything speaking the same protocol locally.
+  ``docs/semantic-layer.md`` has the whole argument.
+
+* A schema with an explicit ``null`` now round-trips.
+  ``GraphSchema.to_yaml`` dropped every ``None`` to keep a written schema
+  readable, which is right for a field whose default is already ``None`` and
+  wrong for one whose default is not: writing
+  ``topology: {prominence: null}`` and reading it back brought the default
+  attribute name ``prominence`` straight back, so the file said one thing
+  and loading it meant another. No shipped schema set one, so no digest
+  moves, but a schema that does not round-trip is a dataset that cannot be
+  regenerated from its own file, which is the one promise the manifest
+  makes. Found by a drafting test, which is the sort of thing the semantic
+  layer makes much more likely to happen.
+
+* A coverage report, the third metric next to hardness and realism.
+  ``graphfaker.engine.coverage_report.coverage_report(run)`` says what a
+  dataset actually contains, which is the question people ask first and the
+  one nothing answered: every shape in the pack's catalogue and how many of
+  each, the roles the members filled, where the pattern events sit in the
+  ordinary process (which channels, which part of the day and week, which
+  amount deciles, each against the background of the whole run), which parts
+  of the population were recruited, and each shape against the decoy that
+  imitates it. Printed by ``graphfaker fraud`` with the other two reports and
+  by ``graphfaker generate <domain> --coverage`` for any pack, and carried in
+  ``--json``.
+
+  It is domain-agnostic because it has to be: it reads the truth tables
+  through :mod:`graphfaker.sinks.truth`, which finds them by shape, and the
+  pack's ``PatternCatalog``, which a ``Domain`` now carries alongside its
+  process. A pack gets the report by existing. The catalogue is what makes it
+  worth having, because the truth tables hold what happened and only the
+  catalogue knows what was supposed to be possible, so without it the report
+  can say what a run contains and not what it is missing.
+
+  Reading the decoys took both conventions in the packs. Fraud and supply
+  chain record a decoy under the name of the shape it imitates, on purpose,
+  so that the shape column says what a structure looks like and the label
+  says whether it is the thing being looked for; coordination records a decoy
+  under its own name. Counting by the shape column alone gets one of the two
+  wrong, and which one depends on the pack.
+
+  Nothing in it is a verdict. A small run cannot carry fourteen shapes at a
+  floor of two, and some typologies genuinely only happen on weekdays. It
+  says what is there.
 
 * Identifiers are mostly missing now, the way a register's are. A generated
   company carried every column; a real one carries a latitude 67.3% of the

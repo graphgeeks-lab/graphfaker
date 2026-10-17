@@ -108,6 +108,14 @@ examples = [
     "duckdb==1.5.4",
     "osmnx==2.0.2",
 ]
+llm = [
+    # The semantic layer: `graphfaker schema draft "<description>"`. Both are
+    # small pure-Python clients, and neither is imported unless you ask for
+    # one. No generated dataset depends on either: a model writes a schema
+    # file, a human reads it, and the engine generates from the file.
+    "anthropic>=0.49",
+    "openai>=1.70",
+]
 docs = [
     "sphinx>=8.0",
     "myst-nb>=1.2",

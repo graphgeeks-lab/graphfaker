@@ -325,16 +325,17 @@ def test_the_packs_declare_their_timing_and_still_produce_the_same_bytes():
     engine draws in a different order from the code it replaced, every one
     of them changes, which is the only check that matters here.
 
-    The supply chain digest is the one exception, and not because of this
-    work: identifier coverage landed in the same release and deliberately
-    changes what a supply chain company carries. Its timing, amounts and
-    budget are still drawn in the old order, which is what the two
-    unchanged digests on either side of it are evidence for.
+    Two of the three moved in this release and neither is this work's doing.
+    Identifier coverage changes what a supply chain company carries, and
+    freezing the reference date changes every birth date in the bank. The
+    coordination digest is untouched, and the timing, amounts and budget of
+    all three are still drawn in the order they always were, which is what
+    this test is actually for.
     """
     from graphfaker.domains import get
     from graphfaker.engine.run import fingerprint
 
-    assert fingerprint(get("fraud").run(scale=0.004, seed=42)) == "352db296d8963ab7"
+    assert fingerprint(get("fraud").run(scale=0.004, seed=42)) == "d28b79c1241e0504"
     assert fingerprint(get("supply_chain").run(scale=0.004, seed=42)) == "f60024d3d08e4dbc"
     assert fingerprint(get("coordination").run(scale=0.0006, seed=5)) == "d39a9533236cbe70"
 

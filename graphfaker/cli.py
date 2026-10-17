@@ -33,8 +33,19 @@ def _main(
     version: bool = typer.Option(
         False, "--version", "-V", help="Print the version and exit.", callback=_version_callback, is_eager=True
     ),
+    env_file: str = typer.Option(
+        None, "--env-file", help="A .env to read instead of the project's. Variables already set are kept."
+    ),
 ) -> None:
-    """GraphFaker: synthetic and real-world graph datasets."""
+    """GraphFaker: synthetic and real-world graph datasets.
+
+    A project ``.env`` is read on the way in, so an API key already sitting
+    next to the code does not have to be exported again. Anything already
+    in the environment wins; see ``graphfaker info`` for which file was used.
+    """
+    from graphfaker.env import load
+
+    load(Path(env_file) if env_file else None)
 
 
 #: Optional extras and the module that proves each one is installed.
@@ -44,6 +55,7 @@ _EXTRAS = {
     "ladybug": ("ladybug", "graphfaker load ladybug, verify ladybug, --sink ladybug"),
     "pyg": ("torch_geometric", "--sink pyg"),
     "osm": ("osmnx", "graphfaker gen --fetcher osm"),
+    "llm": ("anthropic", "graphfaker schema draft"),
 }
 
 
@@ -72,6 +84,14 @@ def info():
             typer.echo(f"  [ ] {extra}: pip install \"graphfaker[{extra}]\" for {enables}")
         else:
             typer.echo(f"  [x] {extra} ({module} {installed}): {enables}")
+
+    # Which file, never what is in it.
+    from graphfaker.env import find
+
+    found = find()
+    typer.echo(f"env file: {found if found else 'none found'}")
+    for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GRAPHFAKER_LLM_PROVIDER", "GRAPHFAKER_LLM_MODEL"):
+        typer.echo(f"  [{'x' if os.environ.get(name) else ' '}] {name}")
 
 
 @app.command(short_help="Load a real-world network, or a quick social graph, and export one file.")
@@ -386,6 +406,7 @@ def generate(
     sink: str = typer.Option("parquet", help="parquet | neo4j | neo4j-admin | ladybug | duckdb | pyg | senzing | gen-fraud-graph."),
     blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="No progress logging; warnings and errors only."),
+    coverage: bool = typer.Option(False, "--coverage", help="Print what the dataset contains: shapes, roles, regimes, segments, decoy twins."),
     as_json: bool = typer.Option(False, "--json", help="Print the manifest as JSON on stdout when done."),
 ):
     """Examples:
@@ -408,7 +429,9 @@ def generate(
         run = _generate(loaded, seed=seed, shard_size=shard_size or DEFAULT_SHARD_SIZE, workers=workers)
         _write_sink(run, out, sink, blind)
         if as_json:
-            _dump(run.manifest.model_dump())
+            _dump(_with_coverage(run.manifest.model_dump(), run, coverage))
+        elif coverage:
+            _echo_coverage(run)
         return
     if domain is None:
         raise typer.BadParameter("give a domain name (see `graphfaker domains`) or --schema FILE")
@@ -427,7 +450,23 @@ def generate(
         raise typer.BadParameter(f"{problems}. Run `graphfaker domains` to see the options.") from exc
     _write_sink(run, out, sink, blind)
     if as_json:
-        _dump(run.manifest.model_dump())
+        _dump(_with_coverage(run.manifest.model_dump(), run, coverage, pack.patterns))
+    elif coverage:
+        _echo_coverage(run, pack.patterns)
+
+
+def _echo_coverage(run, catalog=None) -> None:
+    from graphfaker.engine.coverage_report import coverage_report
+
+    typer.echo(coverage_report(run, catalog).summary())
+
+
+def _with_coverage(payload: dict, run, wanted: bool, catalog=None) -> dict:
+    if not wanted:
+        return payload
+    from graphfaker.engine.coverage_report import coverage_report
+
+    return {"manifest": payload, "coverage": coverage_report(run, catalog).as_dict()}
 
 
 @app.command(short_help="Check schema YAML files without generating anything.")
@@ -451,8 +490,34 @@ def validate(
             f"{path}: ok, schema {loaded.name!r}, {len(loaded.nodes)} node types, {len(loaded.relationships())} relationship types, "
             f"{loaded.total_nodes:,} nodes and {loaded.total_edges:,} edges, digest {loaded.digest()}"
         )
+        for line in _clock_warnings(loaded):
+            typer.echo(line, err=True)
     if failed:
         raise typer.Exit(code=1)
+
+
+def _clock_warnings(loaded) -> list[str]:
+    """Attributes that would make the dataset different tomorrow.
+
+    A warning rather than an error, because a schema is allowed to want the
+    clock; it is just rarely what someone wants from a seeded generator, and
+    finding out by diffing two runs a day apart is a bad way to find out.
+    """
+    from graphfaker.schema.samplers import clock_dependent
+
+    found = [
+        f"  {node.name}.{attr}: {why}"
+        for node in loaded.nodes
+        for attr, sampler in node.attributes.items()
+        if (why := clock_dependent(sampler))
+    ]
+    if not found:
+        return []
+    return [
+        "  warning: this schema reads the clock, so the same seed gives different data on different days:",
+        *found,
+        "  pin the dates (start_date / end_date as literal dates) if you want a reproducible dataset.",
+    ]
 
 
 @app.command(short_help="What a dataset directory contains: manifest, counts, truth, versions.")
@@ -609,22 +674,31 @@ def _register_sink(tables, out: str, sink: str) -> None:
 
 @app.command(
     "schema",
-    short_help="Print a domain's schema as YAML, to edit and generate from.",
+    short_help="Print a domain's schema as YAML, or draft one from a description.",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )
 def schema_command(
     ctx: typer.Context,
-    domain: str = typer.Argument(..., help="A domain name from `graphfaker domains`."),
+    domain: str = typer.Argument(..., help="A domain name from `graphfaker domains`, or `draft`."),
     out: str = typer.Option(None, "--out", help="Write to this file instead of standard output."),
+    provider: str = typer.Option(None, "--provider", help="draft only: anthropic | openai. Default anthropic, or $GRAPHFAKER_LLM_PROVIDER."),
+    model: str = typer.Option(None, "--model", help="draft only: the model to ask. Default $GRAPHFAKER_LLM_MODEL, or Anthropic's most capable."),
+    base_url: str = typer.Option(None, "--base-url", help="draft only: an OpenAI-compatible endpoint, for a local model."),
+    name: str = typer.Option(None, "--name", help="draft only: what to call the schema."),
 ):
     """Examples:
 
       graphfaker schema social --total-nodes 500 --out social.yaml
 
       graphfaker generate --schema social.yaml --seed 1 --out ./social
-    """
-    from graphfaker.domains import get
 
+      graphfaker schema draft "a hospital: patients, doctors, wards, admissions" --out hospital.yaml
+    """
+    from graphfaker.domains import available, get
+
+    if domain == "draft" and "draft" not in available():
+        _draft_schema(list(ctx.args), out, provider, model, base_url, name)
+        return
     try:
         pack = get(domain)
     except KeyError as exc:
@@ -656,6 +730,57 @@ def schema_command(
         typer.echo(f"wrote {out}")
 
 
+def _draft_schema(
+    words: list[str], out: str | None, provider: str | None, model: str | None,
+    base_url: str | None, name: str | None,
+) -> None:
+    """``graphfaker schema draft "<description>"``.
+
+    The model writes a schema, pydantic checks it, and the file is the
+    deliverable: a dataset is still a pure function of the YAML and the
+    seed, and nothing asks a model anything during generation. The summary
+    goes to stderr so the YAML on stdout can be piped.
+    """
+    from graphfaker.llm import ProviderError, get_provider
+    from graphfaker.llm.draft import DraftError, draft
+
+    description = " ".join(words).strip()
+    if not description:
+        raise typer.BadParameter(
+            'describe the graph you want: graphfaker schema draft "a hospital: patients, doctors, wards"'
+        )
+    try:
+        client = get_provider(provider, model, base_url)
+    except ProviderError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo(f"asking {client.name} ({client.model})...", err=True)
+    try:
+        result = draft(description, client)
+    except ProviderError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    except DraftError as exc:
+        typer.echo(str(exc), err=True)
+        typer.echo("", err=True)
+        typer.echo("the last attempt, so you can see what it was reaching for:", err=True)
+        typer.echo(exc.attempts[-1], err=True)
+        raise typer.Exit(code=1) from exc
+
+    header = "\n".join([
+        f"# Drafted by {client.name} ({client.model}) from: {description}",
+        "# Read it before you generate from it. A draft is a first guess at what you meant;",
+        "# the counts and the distributions are the parts worth checking.",
+        "",
+    ])
+    if out is None:
+        typer.echo(header + result.yaml, nl=False)
+    else:
+        Path(out).write_text(header + result.yaml, encoding="utf-8")
+        typer.echo(f"wrote {out}", err=True)
+    typer.echo(result.summary(), err=True)
+
+
 @app.command(short_help="Generate a fraud / AML transaction graph with labelled typologies.")
 def fraud(
     scale: float = typer.Option(0.001, help="1.0 = ~10M accounts / ~90M transactions (gen-fraud-graph convention)."),
@@ -676,6 +801,7 @@ def fraud(
     """Shortcut for `graphfaker generate fraud ...` that also prints the reports."""
     from graphfaker.domains import get
     from graphfaker.domains.fraud.hardness import hardness_report, realism_report
+    from graphfaker.engine.coverage_report import coverage_report
 
     _quiet(quiet)
     run = get("fraud").run(seed=seed, workers=workers, scale=scale, hardness=hardness, period_days=period_days)
@@ -685,11 +811,14 @@ def fraud(
             "manifest": run.manifest.model_dump(),
             "hardness": hardness_report(run).as_dict() if report else None,
             "realism": realism_report(run) if report else None,
+            "coverage": coverage_report(run).as_dict() if report else None,
         })
     elif report:
         typer.echo(hardness_report(run).summary())
         typer.echo("")
         typer.echo("realism: " + ", ".join(f"{k}={v:.3f}" for k, v in realism_report(run).items()))
+        typer.echo("")
+        typer.echo(coverage_report(run).summary())
 
 
 @app.command(short_help="Score flagged accounts / transactions against a fraud run's truth.")

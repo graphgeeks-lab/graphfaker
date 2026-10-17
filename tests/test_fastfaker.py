@@ -6,7 +6,6 @@ the same weights, the same parameter references, from the shard's stream.
 
 from __future__ import annotations
 
-import datetime as dt
 import re
 from collections import Counter
 
@@ -89,9 +88,12 @@ def test_formats_placeholders_and_composition(fast, rng):
 
 
 def test_direct_providers(fast, rng):
-    today = dt.datetime.now(tz=dt.timezone.utc).date()
+    # Ages are relative to the engine's fixed reference date rather than to
+    # the clock, which is what makes a seeded dataset the same tomorrow.
+    from graphfaker.engine.fastfaker import REFERENCE_DATE
+
     dobs = fast.draw("date_of_birth", {"minimum_age": 18, "maximum_age": 85}, 5000, rng)
-    ages = [(today - d).days / 365.25 for d in dobs]
+    ages = [(REFERENCE_DATE - d).days / 365.25 for d in dobs]
     assert 18 <= min(ages) and max(ages) < 86.1
     assert len(set(fast.draw("uuid4", {}, 1000, rng))) == 1000
     assert all(re.fullmatch(r"[0-9a-f-]{36}", u) for u in fast.draw("uuid4", {}, 10, rng))

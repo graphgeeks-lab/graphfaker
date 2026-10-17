@@ -24,9 +24,10 @@ The graphs people most want to test against, such as who pays whom, who knows wh
 pip install graphfaker
 pip install "graphfaker[osm]"         # the OpenStreetMap fetcher (osmnx and its geo stack, about 150 MB)
 pip install "graphfaker[examples]"    # adds matplotlib, ladybug and jupyter for the notebooks
+pip install "graphfaker[llm]"         # `graphfaker schema draft "<a description>"`
 ```
 
-The fraud pack, the coordination pack, the social domain, schemas and every sink are in the base install. Database clients and the PyG export are extras: `[neo4j]`, `[ladybug]`, `[duckdb]`, `[pyg]`. `graphfaker info` shows which are installed.
+The fraud pack, the coordination pack, the social domain, schemas and every sink are in the base install. Database clients, the PyG export and the schema drafter are extras: `[neo4j]`, `[ladybug]`, `[duckdb]`, `[pyg]`, `[llm]`. `graphfaker info` shows which are installed. Nothing in a generated dataset depends on `[llm]`: a model writes a schema file, you read it, and the engine generates from the file.
 
 Or without a Python environment, as a container ([docs](https://graphfaker.readthedocs.io/en/latest/get-started/docker.html)):
 
@@ -284,7 +285,15 @@ graphfaker schema social --total-nodes 500 --out my_graph.yaml     # a domain's 
 graphfaker generate --schema my_graph.yaml --seed 42 --out ./my_graph
 ```
 
-The file is the same `schema.yaml` every run writes next to its data, so a dataset can be regenerated, or varied, from the file it came with; `graphfaker validate` checks an edited file before a run. `graphfaker schema fraud` prints the bank's entity schema with a note that its transactions and patterns come from code; `graphfaker generate fraud` is the way to get the bank.
+The file is the same `schema.yaml` every run writes next to its data, so a dataset can be regenerated, or varied, from the file it came with; `graphfaker validate` checks an edited file before a run. `graphfaker schema fraud` prints the bank's entity schema with a note that its transactions and patterns come from code; `graphfaker generate fraud` is the way to get the bank. For a pack that declares a process, `graphfaker schema` prints that above the entity schema: where each channel's volume comes from, when it happens and what the amounts look like.
+
+With `graphfaker[llm]` installed, `schema draft` writes one from a description instead of from a pack:
+
+```sh
+graphfaker schema draft "a hospital: patients, doctors, wards, and admissions over time" --out hospital.yaml
+```
+
+A model writes the YAML, pydantic checks it, and the file is the deliverable: read it, fix the counts, commit it, and it is an ordinary schema from then on. A model never runs during `generate`, so a dataset stays a pure function of its schema file and its seed. `--provider`, `--model` and `--base-url` choose where to ask (a local OpenAI-compatible server works); the summary goes to stderr so the YAML on stdout can be piped. See [the semantic layer](docs/semantic-layer.md) for what it is and is not for.
 
 Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.json` under `--out`. Options shared by every domain:
 
@@ -296,7 +305,8 @@ Both commands write `nodes/`, `edges/`, `truth/`, `schema.yaml` and `manifest.js
 | `--workers N` | processes for node sampling; faster, does not change the result |
 | `--sink parquet\|neo4j\|neo4j-admin\|ladybug\|duckdb\|pyg\|senzing\|gen-fraud-graph` | also load a live database, or write a loader layout (Parquet is always written) |
 | `--quiet`, `-q` | no progress logging; warnings and errors only |
-| `--json` | when done, print the manifest (and for `fraud`, the hardness and realism reports) as one JSON document on stdout. Logging goes to stderr, so a pipeline can read stdout |
+| `--coverage` | print what the dataset contains: every shape in the pack's catalogue, how many of each, the roles their members filled, where the pattern events sit in the ordinary process, which parts of the population were recruited, and each shape against the decoy that imitates it |
+| `--json` | when done, print the manifest (and for `fraud`, the hardness, realism and coverage reports) as one JSON document on stdout. Logging goes to stderr, so a pipeline can read stdout |
 
 Three commands look at datasets and schema files without generating anything. `graphfaker inspect ./bank` reads the manifest and the file layout and prints what a directory contains (schema, seed, versions, counts, which truth tables are there, the domain options), with `--json` for scripts. `graphfaker validate my_graph.yaml other.yaml` checks schema files with the same rules `generate --schema` applies and exits non-zero if any fails. `graphfaker evaluate ./bank --accounts flagged.txt --json` scores a detector's output as JSON.
 
@@ -369,11 +379,26 @@ graphfaker generate fraud --scale 0.01 --seed 42 --out ./bank --sink duckdb     
 graphfaker generate fraud --scale 0.01 --seed 42 --out ./bank --sink neo4j-admin    # ./bank/neo4j/, run import.sh
 ```
 
-`graphfaker fraud` is a shortcut for the fraud domain that also prints the hardness and realism reports:
+`graphfaker fraud` is a shortcut for the fraud domain that also prints the hardness, realism and coverage reports:
 
 ```sh
 graphfaker fraud --scale 0.01 --hardness medium --seed 42 --out ./bank
 ```
+
+The three answer different questions and the third is the one people ask first. Hardness says how hard the
+injected patterns are to find. Realism says how much the ordinary process looks like the world. **Coverage says
+what is actually in the dataset**: whether all fourteen shapes are present or a small run produced nine copies of
+the commonest one, which roles the members filled, whether any pattern happened at three in the morning or on a
+four-figure sum, which parts of the population were never recruited, and whether every shape got the decoy that
+makes its precision measurable. It is computed from the truth tables and the pack's catalogue, so every domain
+that injects anything gets it:
+
+```sh
+graphfaker generate supply_chain --scale 0.01 --seed 42 --out ./chain --coverage
+```
+
+Nothing in it is a verdict. A gap can be the right answer: a small run cannot carry fourteen shapes at a floor of
+two, and some typologies genuinely only happen on weekdays. It says what is there so you can decide.
 
 Score a detector's flagged accounts (one id per line) against the truth of a run:
 

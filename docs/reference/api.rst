@@ -48,8 +48,23 @@ Engine
 .. automodule:: graphfaker.engine.people
    :members: PeopleProfile, REGISTER, EVERY_COMPANY, attach, allocate, person_variants
 
+.. automodule:: graphfaker.engine.coverage_report
+   :members: CoverageReport, coverage_report
+
 .. automodule:: graphfaker.engine.coverage
    :members: Attribute, CoverageProfile, REGISTER, COMPLETE, apply, address_index, coverage_stats, websites, linkedin_urls, placekeys, geo, lei_numbers, npi_numbers, registration_numbers
+
+Semantic layer
+--------------
+
+.. automodule:: graphfaker.llm
+   :members:
+
+.. automodule:: graphfaker.llm.providers
+   :members: Provider, AnthropicProvider, OpenAICompatibleProvider, RecordedProvider, ProviderError, get_provider
+
+.. automodule:: graphfaker.llm.draft
+   :members: draft, DraftResult, DraftError, build_prompt, sampler_contract, extract_yaml
 
 Tables
 ------

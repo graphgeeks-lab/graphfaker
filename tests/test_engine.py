@@ -273,3 +273,32 @@ def test_small_node_types_stay_in_process(monkeypatch):
     monkeypatch.setattr(sampling, "ProcessPoolExecutor", lambda *a, **k: calls.append(1) or (_ for _ in ()).throw(AssertionError("pool used")))
     run = generate(social.schema(120, 400), seed=2, workers=4)
     assert run.tables.nodes["Person"].height > 0 and not calls
+
+
+def test_a_written_date_reaches_faker_as_a_date():
+    """Quoting a date in a schema file used to change what it meant.
+
+    YAML parses an unquoted ``2024-01-01`` into a ``date`` and a quoted one
+    into a string, and Faker's date range arguments take a date or one of
+    its own relative strings and raise ``ParseError`` on anything else. So
+    the same schema worked or did not depending on a pair of quotes, and
+    the failure arrived halfway through a run rather than at validation.
+    """
+    import datetime as dt
+
+    from graphfaker.engine.sampling import _faker_kwargs
+    from graphfaker.schema.samplers import FakerSampler
+
+    coerced = _faker_kwargs(
+        FakerSampler(provider="date_time_between", kwargs={"start_date": "2024-01-01", "end_date": "2026-01-01"})
+    )
+    assert coerced["start_date"] == dt.datetime(2024, 1, 1)
+    assert coerced["end_date"] == dt.datetime(2026, 1, 1)
+
+    # Faker's own relative strings and everything else are left alone.
+    passthrough = _faker_kwargs(
+        FakerSampler(provider="date_time_between", kwargs={"start_date": "-2y", "end_date": "now"})
+    )
+    assert passthrough == {"start_date": "-2y", "end_date": "now"}
+    assert _faker_kwargs(FakerSampler(provider="words", kwargs={"nb": 3})) == {"nb": 3}
+    assert _faker_kwargs(FakerSampler(provider="name")) == {}
