@@ -97,10 +97,24 @@ PERSON_ADDRESS_SHARE = 0.753
 
 ADDRESS_COLUMNS = (
     ("address_line1", "ADDR_LINE1"),
+    ("address_line2", "ADDR_LINE2"),
     ("address_city", "ADDR_CITY"),
     ("address_state", "ADDR_STATE"),
     ("address_postal_code", "ADDR_POSTAL_CODE"),
     ("country", "ADDR_COUNTRY"),
+    ("geo_latitude", "GEO_LATITUDE"),
+    ("geo_longitude", "GEO_LONGITUDE"),
+)
+
+#: Identifiers a register carries as their own features, in the order it
+#: writes them. Each is on a minority of records, which is the point: see
+#: :mod:`graphfaker.engine.coverage`.
+IDENTIFIER_COLUMNS = (
+    ("placekey", "PLACEKEY"),
+    ("linkedin", "LINKEDIN"),
+    ("website", "WEBSITE_ADDRESS"),
+    ("lei_number", "LEI_NUMBER"),
+    ("npi_number", "NPI_NUMBER"),
 )
 
 
@@ -155,9 +169,18 @@ def _features(
     address = _address(row) if address is None else address
     if address:
         features.append(address)
-    for column, feature in (("tier", "OTHER_ID_NUMBER"),):
+    for column, feature in IDENTIFIER_COLUMNS:
         if row.get(column) is not None:
-            features.append({"OTHER_ID_TYPE": f"GF_{column.upper()}", feature: str(row[column])})
+            features.append({feature: str(row[column])})
+    # The register's other identifier is a state filing number, and that is
+    # the only thing written here. A supplier's tier used to go out as one
+    # too, which put a modelling attribute on 11% of records where a
+    # register has an identifier on 1.9%, and handed a resolver a feature
+    # that correlates with the answer and exists nowhere in the world.
+    if row.get("registration_number") is not None:
+        features.append(
+            {"OTHER_ID_TYPE": "STATE_FILING", "OTHER_ID_NUMBER": str(row["registration_number"])}
+        )
     del kind
     return features
 

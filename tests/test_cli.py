@@ -254,3 +254,47 @@ def test_inspect_and_json_outputs(tmp_path):
 
     result = runner.invoke(app, ["evaluate", str(out), "--json"])
     assert result.exit_code == 0 and json.loads(result.output)["account"]["fn"] > 0
+
+
+def test_the_fraud_report_says_what_the_dataset_contains(tmp_path):
+    out = tmp_path / "bank"
+    result = runner.invoke(app, ["fraud", "--scale", "0.001", "--seed", "3", "--out", str(out), "--quiet"])
+    assert result.exit_code == 0, result.output
+    assert "hardness report" in result.output and "realism:" in result.output
+    assert "coverage report:" in result.output
+    # The three things the coverage report is for: shapes, their decoys, and
+    # where in the ordinary process the patterns landed.
+    assert "fan_in" in result.output and "decoy_fan_in" in result.output
+    assert "roles filled" in result.output
+
+    result = runner.invoke(app, ["fraud", "--scale", "0.001", "--seed", "3", "--out", str(out), "--quiet", "--json"])
+    coverage = json.loads(result.output)["coverage"]
+    assert coverage["shapes_in_catalogue"] == 14
+    assert {row["shape"] for row in coverage["twins"]} <= {row["shape"] for row in coverage["shapes"]}
+
+
+def test_coverage_is_available_to_every_domain_that_injects_anything(tmp_path):
+    """The report is domain-agnostic, so a pack gets it without a command.
+
+    ``graphfaker fraud`` is a shortcut with its own reports; everything else
+    goes through ``generate``, and the flag is there rather than in three
+    places.
+    """
+    out = tmp_path / "chain"
+    result = runner.invoke(
+        app,
+        ["generate", "supply_chain", "--scale", "0.004", "--seed", "3", "--out", str(out), "--quiet", "--coverage"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "coverage report:" in result.output
+    assert "phantom_supplier" in result.output and "disruption_cascade" in result.output
+
+    # A domain with no patterns says so instead of failing.
+    plain = tmp_path / "social"
+    result = runner.invoke(
+        app,
+        ["generate", "social", "--total-nodes", "200", "--total-edges", "400",
+         "--seed", "1", "--out", str(plain), "--quiet", "--coverage"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "no injected patterns" in result.output

@@ -41,6 +41,21 @@ _LETTERS = np.array(list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 _DIGITS = np.array(list("0123456789"))
 _PLACEHOLDERS = "#%$!@?"
 
+#: What "today" means to a date provider that counts backwards from it.
+#:
+#: Deliberately a constant rather than the clock. ``date_of_birth`` and
+#: ``date`` derive their range from today, so reading the real clock made
+#: ``graphfaker generate fraud --seed 42`` produce a different birth-date
+#: column every day: the promise that a seed gives the same bytes on any
+#: machine was true across machines and false across midnight. The supply
+#: chain and coordination packs never had the problem because they take an
+#: explicit ``period_start``, which is the same idea written down.
+#:
+#: Moving this date changes every dataset that uses one of those providers,
+#: so it is a release decision rather than a maintenance one. Ages are
+#: relative to it, which is the cost of having an answer at all.
+REFERENCE_DATE = dt.date(2026, 1, 1)
+
 #: Providers with no ``{{token}}`` formats, handled directly.
 _DIRECT = frozenset({"date_of_birth", "date", "uuid4", "latitude", "longitude", "words", "word", "country_code", "email", "user_name", "job"})
 
@@ -261,7 +276,7 @@ class FastFaker:
 
     @staticmethod
     def _date_of_birth(n: int, rng: np.random.Generator, minimum_age: int, maximum_age: int) -> list[dt.date]:
-        today = dt.datetime.now(tz=dt.timezone.utc).date()
+        today = REFERENCE_DATE
         start = _change_year(today, -(maximum_age + 1)) + dt.timedelta(days=1)
         end = _change_year(today, -minimum_age)
         span = (end - start).days
@@ -271,7 +286,7 @@ class FastFaker:
     @staticmethod
     def _date(n: int, rng: np.random.Generator) -> list[str]:
         start = dt.date(1970, 1, 1)
-        span = (dt.datetime.now(tz=dt.timezone.utc).date() - start).days
+        span = (REFERENCE_DATE - start).days
         offsets = rng.integers(0, span + 1, size=n)
         return [(start + dt.timedelta(days=int(d))).isoformat() for d in offsets.tolist()]
 

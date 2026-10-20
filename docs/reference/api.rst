@@ -33,6 +33,12 @@ Engine
 .. automodule:: graphfaker.engine.seeding
    :members: Streams
 
+.. automodule:: graphfaker.schema.process
+   :members: TimingModel, HourProfile, HourWindow, QuarterEndBoost, MonthlySchedule, Lognormal, Mixture, Rounding, ActorMix, ChannelSpec, ProcessSpec
+
+.. automodule:: graphfaker.engine.process
+   :members: day_weights, timestamps, hours_of_day, monthly_dates, schedule_days, amounts, round_amounts, blocks, channel_counts, actor_counts, actor_mix_matrix, split_by_mix, describe, describe_process
+
 .. automodule:: graphfaker.engine.addresses
    :members: AddressProfile, REGISTER, RETAIL, UNIQUE, allocate, assign, shared_addresses, reuse_stats
 
@@ -41,6 +47,24 @@ Engine
 
 .. automodule:: graphfaker.engine.people
    :members: PeopleProfile, REGISTER, EVERY_COMPANY, attach, allocate, person_variants
+
+.. automodule:: graphfaker.engine.coverage_report
+   :members: CoverageReport, coverage_report
+
+.. automodule:: graphfaker.engine.coverage
+   :members: Attribute, CoverageProfile, REGISTER, COMPLETE, apply, address_index, coverage_stats, websites, linkedin_urls, placekeys, geo, lei_numbers, npi_numbers, registration_numbers
+
+Semantic layer
+--------------
+
+.. automodule:: graphfaker.llm
+   :members:
+
+.. automodule:: graphfaker.llm.providers
+   :members: Provider, AnthropicProvider, OpenAICompatibleProvider, RecordedProvider, ProviderError, get_provider
+
+.. automodule:: graphfaker.llm.draft
+   :members: draft, DraftResult, DraftError, build_prompt, sampler_contract, extract_yaml
 
 Tables
 ------

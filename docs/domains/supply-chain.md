@@ -32,13 +32,21 @@ A port closure and a shell company produce the same ledger. A framework agreemen
 
 | node type | attributes |
 |---|---|
-| Supplier | name (a register's legal forms), tier (1 to 3), country, **address (line, city, postcode)**, capacity, on-time rate, quality score, payment terms, onboarded at, region, category |
-| Plant | name, country, capacity, shifts, region |
-| Warehouse | name, country, capacity in pallets, automated, region |
-| Customer | name, segment, **address**, annual spend, region |
+| Supplier | name (a register's legal forms), tier (1 to 3), country, **address (line, city, postcode)**, capacity, on-time rate, quality score, payment terms, onboarded at, region, category, **register identifiers** |
+| Plant | name, country, capacity, shifts, region, **address**, **register identifiers** |
+| Warehouse | name, country, capacity in pallets, automated, region, **address**, **register identifiers** |
+| Customer | name, segment, **address**, annual spend, region, **register identifiers** |
 | Person | name, first, middle and last where a register would record them, home address |
 | Product | name, family, unit cost, lead time class, hazardous, category |
 | Carrier | name, mode, on-time rate, cost per km, region |
+
+The register identifiers are `geo_latitude`, `geo_longitude`, `placekey`, `linkedin`, `website`, `address_line2`,
+`registration_number`, `npi_number` and `lei_number`, and most of them are null on most rows: a company carries
+coordinates 67.3% of the time, a postcode 61.9%, a website 14.7% and an LEI 0.06%, which are the rates measured
+over a million companies in a real register. That is deliberate and it is the thing that makes the dataset worth
+pointing a resolver at: the attribute that would settle a match is usually missing. Two companies at one address
+share their coordinates and their Placekey `where`, because they are the same door. See
+`graphfaker.engine.coverage`.
 
 | relationship | meaning |
 |---|---|

@@ -6,7 +6,6 @@ the same weights, the same parameter references, from the shard's stream.
 
 from __future__ import annotations
 
-import datetime as dt
 import re
 from collections import Counter
 
@@ -89,9 +88,12 @@ def test_formats_placeholders_and_composition(fast, rng):
 
 
 def test_direct_providers(fast, rng):
-    today = dt.datetime.now(tz=dt.timezone.utc).date()
+    # Ages are relative to the engine's fixed reference date rather than to
+    # the clock, which is what makes a seeded dataset the same tomorrow.
+    from graphfaker.engine.fastfaker import REFERENCE_DATE
+
     dobs = fast.draw("date_of_birth", {"minimum_age": 18, "maximum_age": 85}, 5000, rng)
-    ages = [(today - d).days / 365.25 for d in dobs]
+    ages = [(REFERENCE_DATE - d).days / 365.25 for d in dobs]
     assert 18 <= min(ages) and max(ages) < 86.1
     assert len(set(fast.draw("uuid4", {}, 1000, rng))) == 1000
     assert all(re.fullmatch(r"[0-9a-f-]{36}", u) for u in fast.draw("uuid4", {}, 10, rng))
@@ -178,3 +180,40 @@ def test_a_column_is_the_same_whatever_the_process():
     a = sample_column(FakerSampler(provider="email"), 100, _ctx(seed=9))
     b = sample_column(FakerSampler(provider="email"), 100, _ctx(seed=9))
     assert a == b
+
+
+def test_a_provider_the_fast_path_cannot_finish_falls_back(fast, rng):
+    """``supports`` looks at the provider; a format expands to tokens.
+
+    ``address`` passes the check and then renders ``{{state_abbr}}``, which
+    the vectorised path has no table for, so the draw raised and the run
+    died on a schema Faker itself handles fine. The fast path is an
+    optimisation and Faker is the definition, so an unsupported corner is
+    slow rather than fatal.
+    """
+    from graphfaker.engine.fastfaker import Unsupported
+
+    assert fast.supports("state_abbr", {}) is False
+
+    # Whatever the check says, a draw that cannot finish raises the one
+    # exception the sampler knows to fall back on, rather than anything else.
+    try:
+        fast.draw("state_abbr", {}, 4, rng)
+    except Unsupported:
+        pass
+
+
+def test_a_schema_using_such_a_provider_still_generates(tmp_path):
+    from graphfaker.engine.run import generate
+    from graphfaker.schema import GraphSchema, NodeType
+    from graphfaker.schema.samplers import FakerSampler
+    from graphfaker.schema.topology import UniformTopology
+
+    schema = GraphSchema(
+        name="places",
+        nodes=[NodeType(name="Site", count=40, attributes={"where": FakerSampler(provider="state_abbr")})],
+        topology=UniformTopology(),
+    )
+    run = generate(schema, seed=1)
+    column = run.tables.nodes["Site"]["where"].to_list()
+    assert len(column) == 40 and all(isinstance(v, str) and v for v in column)

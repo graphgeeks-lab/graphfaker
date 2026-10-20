@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphfaker"
-version = "1.2.0"
+version = "1.3.0"
 description = "Generate graph data that behaves like the real thing: people, the relationships between them and the events over time, with the ground truth included."
 readme = "README.md"
 authors = [
@@ -107,6 +107,14 @@ examples = [
     "neo4j>=5.26",
     "duckdb==1.5.4",
     "osmnx==2.0.2",
+]
+llm = [
+    # The semantic layer: `graphfaker schema draft "<description>"`. Both are
+    # small pure-Python clients, and neither is imported unless you ask for
+    # one. No generated dataset depends on either: a model writes a schema
+    # file, a human reads it, and the engine generates from the file.
+    "anthropic>=0.49",
+    "openai>=1.70",
 ]
 docs = [
     "sphinx>=8.0",

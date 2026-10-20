@@ -30,13 +30,25 @@ generate without holding every event at once.
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 
 import numpy as np
 import polars as pl
 
 from graphfaker.backends.tables import ID, SOURCE, TARGET
 from graphfaker.domains.supply_chain.config import SupplyChainConfig
+from graphfaker.engine.process import blocks as engine_blocks
+from graphfaker.engine.process import channel_counts
+from graphfaker.engine.process import day_weights as engine_day_weights
+from graphfaker.engine.process import timestamps as engine_timestamps
+from graphfaker.schema.process import (
+    ChannelSpec,
+    HourWindow,
+    ProcessSpec,
+    QuarterEndBoost,
+    Rounding,
+    TimingModel,
+)
 
 ORDERS = "ORDERS"
 SHIPS = "SHIPS"
@@ -100,9 +112,40 @@ WEEKDAY_WEIGHTS = np.array([1.15, 1.2, 1.15, 1.1, 0.95, 0.25, 0.15])
 QUARTER_END_BOOST = 2.4
 QUARTER_END_DAYS = 6
 
+#: The same three numbers as a declaration the engine can run. Orders land
+#: on weekdays, cluster at quarter end, and are placed in office hours, so a
+#: 3am order is a thing a detector could notice.
+TIMING = TimingModel(
+    weekday=tuple(WEEKDAY_WEIGHTS),
+    hour=HourWindow(start_hour=8, hours=10),
+    quarter_end=QuarterEndBoost(factor=QUARTER_END_BOOST, days=QUARTER_END_DAYS),
+)
+
 #: Rows per block of events. The arrays in flight are a few hundred megabytes
 #: at any scale, the same approach the fraud pack uses.
 BLOCK_EVENTS = 2_000_000
+
+#: The whole legitimate process as one declaration. Three channels take a
+#: share of the event budget and two are produced alongside the orders, one
+#: event for one, which is why the shares add up to less than half: an order
+#: is three rows by the time it has shipped and been invoiced.
+PROCESS = ProcessSpec(
+    name="supply_chain",
+    channels=(
+        ChannelSpec(
+            name=ORDERS,
+            relationship=ORDERS,
+            timing=TIMING,
+            share=ORDER_SHARE,
+            rounding=Rounding(step=ROUND_PRICING_STEP, rate=ROUND_PRICING_RATE),
+        ),
+        ChannelSpec(name=SHIPS, relationship=SHIPS, timing=TIMING, derives_from=ORDERS),
+        ChannelSpec(name=INVOICES, relationship=INVOICES, timing=TIMING, derives_from=ORDERS),
+        ChannelSpec(name=DELIVERS, relationship=DELIVERS, timing=TIMING, share=DELIVERY_SHARE),
+        ChannelSpec(name=INTERCOMPANY, relationship=INTERCOMPANY, timing=TIMING, share=INTERCOMPANY_SHARE),
+    ),
+    block_events=BLOCK_EVENTS,
+)
 
 
 class Population:
@@ -200,37 +243,13 @@ class Contracts:
 
 
 def day_weights(pop: Population) -> np.ndarray:
-    """Relative order volume for each day of the period.
-
-    Weekdays over weekends, and the last few days of a calendar quarter over
-    everything, which is the rhythm a split-order pattern has to blend into:
-    a cluster of purchases at quarter end is normal, and that is exactly why
-    it is a good place to hide one.
-    """
-    days = np.arange(pop.period_days)
-    dates = pop.period_start.astype("datetime64[D]") + days
-    weekday = (dates.astype("datetime64[D]").astype(int) + 3) % 7  # 1970-01-01 was a Thursday
-    weights = WEEKDAY_WEIGHTS[weekday]
-    months = dates.astype("datetime64[M]").astype(int) % 12
-    day_of_month = (dates - dates.astype("datetime64[M]")).astype(int)
-    month_length = (
-        (dates.astype("datetime64[M]") + np.timedelta64(1, "M")).astype("datetime64[D]")
-        - dates.astype("datetime64[M]").astype("datetime64[D]")
-    ).astype(int)
-    quarter_end_month = np.isin(months, [2, 5, 8, 11])
-    near_end = day_of_month >= (month_length - QUARTER_END_DAYS)
-    weights = weights * np.where(quarter_end_month & near_end, QUARTER_END_BOOST, 1.0)
-    return weights / weights.sum()
+    """Relative order volume for each day of the period, from :data:`TIMING`."""
+    return engine_day_weights(TIMING, pop.period_start, pop.period_days)
 
 
 def _stamps(rng: np.random.Generator, pop: Population, weights: np.ndarray, size: int) -> np.ndarray:
     """``size`` timestamps inside the period, following the day profile."""
-    if size <= 0:
-        return np.empty(0, dtype="datetime64[s]")
-    days = rng.choice(len(weights), size=size, p=weights)
-    # Office hours, so that a 3am order is a thing a detector could notice.
-    seconds = (8 * 3600 + rng.integers(0, 10 * 3600, size=size)).astype(np.int64)
-    return pop.period_start + (days.astype(np.int64) * 86_400 + seconds).astype("timedelta64[s]")
+    return engine_timestamps(rng, TIMING, pop.period_start, weights, size)
 
 
 def _frame(
@@ -257,12 +276,8 @@ def _frame(
     )
 
 
-def _blocks(total: int, per_block: int) -> Iterator[tuple[int, int]]:
-    start = 0
-    while start < total:
-        stop = min(total, start + per_block)
-        yield start, stop
-        start = stop
+#: Kept as a name the pack already uses; the ranges come from the engine.
+_blocks = engine_blocks
 
 
 def legitimate_events(
@@ -285,21 +300,25 @@ def legitimate_events(
     weights = day_weights(pop)
     counter = _Counter()
 
-    n_orders = max(1, int(budget * ORDER_SHARE))
-    for start, stop in _blocks(n_orders, BLOCK_EVENTS):
+    # The declaration divides the budget. Orders get at least one even at a
+    # scale where the share truncates to nothing, so a tiny run still has a
+    # procurement half.
+    counts = channel_counts(PROCESS, budget, at_least_one=(ORDERS,))
+
+    for start, stop in _blocks(counts[ORDERS], PROCESS.block_events):
         block = _order_block(rng, pop, contracts, weights, stop - start, counter)
         for channel, frame in block.items():
             kept = finish(frame) if finish is not None else frame
             if kept.height:
                 parts[channel].append(kept)
 
-    deliveries = _delivery_block(rng, pop, structure, weights, int(budget * DELIVERY_SHARE), counter)
+    deliveries = _delivery_block(rng, pop, structure, weights, counts[DELIVERS], counter)
     if deliveries is not None:
         kept = finish(deliveries) if finish is not None else deliveries
         if kept.height:
             parts[DELIVERS].append(kept)
 
-    moves = _intercompany_block(rng, pop, structure, weights, int(budget * INTERCOMPANY_SHARE), counter)
+    moves = _intercompany_block(rng, pop, structure, weights, counts[INTERCOMPANY], counter)
     if moves is not None:
         kept = finish(moves) if finish is not None else moves
         if kept.height:

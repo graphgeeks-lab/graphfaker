@@ -23,7 +23,10 @@ import polars as pl
 
 from graphfaker.backends.tables import ID, SOURCE, TARGET
 from graphfaker.domains.supply_chain.config import TIER_MIX, SupplyChainConfig
+from graphfaker.engine import coverage
 from graphfaker.engine.addresses import RETAIL, shared_addresses
+from graphfaker.engine.coverage import REGISTER as COVERAGE_REGISTER
+from graphfaker.engine.coverage import CoverageProfile
 from graphfaker.engine.names import company_names
 from graphfaker.engine.people import attach
 from graphfaker.engine.run import node_pool
@@ -256,6 +259,56 @@ def add_addresses(
             [pl.Series(name, values) for name, values in retail.items()]
         )
     return tables
+
+
+#: The node types that carry a register's identifiers. Everything with an
+#: address: a warehouse is not a legal entity but it is a place, and a
+#: register holds a location record for it with the same columns missing.
+ADDRESSED_TYPES = ("Supplier", "Plant", "Warehouse", "Customer")
+
+
+def add_identifiers(
+    tables: dict[str, pl.DataFrame],
+    streams: Streams,
+    profile: CoverageProfile = COVERAGE_REGISTER,
+) -> dict[str, pl.DataFrame]:
+    """Geo, Placekey, LinkedIn, website and the rest, mostly absent.
+
+    A register carries a latitude on 67.3% of its companies, a postcode on
+    61.9%, a website on 14.7% and an LEI on 0.06%, so almost every pair of
+    companies has one or two attributes in common and no resolver can plan
+    on which. Filling every column instead is the single change that makes
+    a corporate dataset too easy. See :mod:`graphfaker.engine.coverage`.
+
+    The three business types are covered together, so two companies at one
+    address agree on the identifiers that describe the address whichever
+    table they are in. Customers are covered separately because they sit on
+    their own address pool.
+    """
+    rng = streams.rng
+    business = [label for label in ("Supplier", "Plant", "Warehouse") if label in tables]
+    _cover(tables, business, rng, profile)
+    _cover(tables, [label for label in ("Customer",) if label in tables], rng, profile)
+    return tables
+
+
+def _cover(
+    tables: dict[str, pl.DataFrame], labels: list[str], rng, profile: CoverageProfile
+) -> None:
+    """Apply one coverage profile across several tables as one population."""
+    if not labels:
+        return
+    wanted = ("name", "address_line1", "address_city", "address_postal_code")
+    columns = [c for c in wanted if all(c in tables[label].columns for label in labels)]
+    stacked = pl.concat([tables[label].select(columns) for label in labels], how="vertical")
+    covered = coverage.apply(rng, stacked, profile)
+    produced = [c for a in profile.attributes for c in a.columns if c in covered.columns]
+    at = 0
+    for label in labels:
+        height = tables[label].height
+        block = covered.slice(at, height)
+        tables[label] = tables[label].with_columns([block[column] for column in produced])
+        at += height
 
 
 #: The node types that are companies, and so are named like companies. A
