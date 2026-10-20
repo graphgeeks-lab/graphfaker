@@ -44,6 +44,8 @@ Configure it with environment variables so a key never lands in a shell history.
 
 `--provider`, `--model` and `--base-url` override them per call.
 
+There is no temperature setting, and that is not an omission. The current Anthropic models removed the sampling controls and replaced them with an effort level, which the drafter sets to `high`: a draft runs once, is read by a human, and decides how much hand-editing the file needs. Neither provider lets you make a draft reproducible, because no model does; the reproducibility lives in the file it writes.
+
 The `.env` is the nearest one from the working directory up to the repository root, so it is found from a subdirectory and a stray file outside the repo is not. **Anything already in the environment wins**, so a key you exported on purpose, or a CI job's secrets, are never replaced by a file somebody forgot about. `--env-file` points at a different one. `graphfaker info` says which file was used and which keys are present, and never prints a value.
 
 ## Drafting a schema
