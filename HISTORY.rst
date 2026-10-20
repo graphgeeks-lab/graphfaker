@@ -177,6 +177,24 @@ byte-identical to 1.2.0.
   Thirty lines rather than a dependency: the parts of the format that are
   genuinely hard are the parts nobody puts an API key in.
 
+* The Anthropic provider no longer asks for a temperature, which the
+  current models will not take. They removed the sampling controls outright
+  and replaced them with ``output_config.effort``, so the client raised
+  ``Messages.create() got an unexpected keyword argument 'temperature'``
+  before anything reached the network: a near-zero temperature was not a
+  conservative default, it was a request that could not be made. It now
+  sends adaptive thinking and ``effort: high``, and streams, because
+  thinking makes a request take long enough that a non-streaming call can
+  hit the client's own timeout.
+
+  ``temperature`` is gone from the provider protocol with it. One provider
+  still takes it and sets its own; it is not a parameter every provider
+  has. Both providers now send the current request shape and drop whatever
+  the far end names in its rejection, which covers an older model that has
+  no effort level and an older installed client that has never heard of
+  one. Picking the shape from the model's name would mean a table of model
+  names that is wrong the week after it is written.
+
 * A seeded dataset is the same tomorrow. ``date_of_birth`` and ``date``
   count backwards from today and were reading the real clock, so
   ``graphfaker generate fraud --seed 42`` produced a different birth-date

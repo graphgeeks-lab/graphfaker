@@ -250,3 +250,126 @@ def test_a_draft_that_will_not_validate_exits_non_zero(tmp_path, monkeypatch):
     result = runner.invoke(app, ["schema", "draft", "a clinic", "--out", str(out)])
     assert result.exit_code == 1
     assert not out.exists(), "a schema that does not validate is not written"
+
+
+# ------------------------------------------------ the request that is sent
+
+
+class _Block:
+    type = "text"
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class _Message:
+    def __init__(self, text: str) -> None:
+        self.content = [_Block(text)]
+
+
+class _Stream:
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get_final_message(self):
+        return _Message(self._text)
+
+
+class _FakeAnthropic:
+    """Records every request shape it was asked for, and refuses some."""
+
+    #: Parameter name to the exception a stand-in client raises for it, which
+    #: is how the two ways this fails are reproduced: a 400 from the API and
+    #: a TypeError from a client that has removed the keyword.
+    refuse: dict[str, Exception] = {}
+    calls: list[dict] = []
+
+    def __init__(self, api_key=None, **_):
+        self.messages = self
+
+    def stream(self, **kwargs):
+        type(self).calls.append(kwargs)
+        for parameter, error in type(self).refuse.items():
+            if parameter in kwargs:
+                raise error
+        return _Stream("name: ok\nnodes:\n- {name: A, count: 1}\n")
+
+
+def _fake_anthropic(monkeypatch, refuse=None):
+    import anthropic
+
+    _FakeAnthropic.calls = []
+    _FakeAnthropic.refuse = refuse or {}
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeAnthropic)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    return _FakeAnthropic
+
+
+def test_the_anthropic_request_carries_effort_and_no_temperature(monkeypatch):
+    """The bug this exists for.
+
+    Current Anthropic models removed the sampling controls and replaced them
+    with an effort level, and the client raises a TypeError before anything
+    reaches the network: ``Messages.create() got an unexpected keyword
+    argument 'temperature'``. Asking for a near-zero temperature was not a
+    conservative default, it was a request the model will not take.
+    """
+    from graphfaker.llm import AnthropicProvider
+
+    fake = _fake_anthropic(monkeypatch)
+    AnthropicProvider().complete("system", "user")
+
+    assert len(fake.calls) == 1
+    sent = fake.calls[0]
+    assert "temperature" not in sent and "top_p" not in sent and "top_k" not in sent
+    assert sent["thinking"] == {"type": "adaptive"}
+    assert sent["output_config"] == {"effort": "high"}
+    assert sent["model"].startswith("claude-")
+    assert sent["system"] == "system"
+    assert sent["messages"] == [{"role": "user", "content": "user"}]
+    # No thinking budget: removed on the current models, a 400 if sent.
+    assert "budget_tokens" not in str(sent)
+
+    assert AnthropicProvider(effort="low").model == AnthropicProvider().model
+    _fake_anthropic(monkeypatch)
+    AnthropicProvider(effort="low").complete("s", "u")
+    assert _FakeAnthropic.calls[0]["output_config"] == {"effort": "low"}
+
+
+def test_a_client_or_model_that_refuses_a_field_gets_the_request_without_it(monkeypatch):
+    """Both ways the far end says no, and the request shrinks to fit.
+
+    An older installed client raises a TypeError naming the keyword; an
+    older model returns a 400 naming it. Picking the shape from the model
+    name would mean a table of model names that is wrong the week after it
+    is written.
+    """
+    from graphfaker.llm import AnthropicProvider
+
+    fake = _fake_anthropic(
+        monkeypatch,
+        refuse={
+            "output_config": TypeError("Messages.stream() got an unexpected keyword argument 'output_config'"),
+            "thinking": Exception("thinking: unsupported parameter for this model"),
+        },
+    )
+    AnthropicProvider().complete("s", "u")
+
+    assert len(fake.calls) == 3, "full shape, then without output_config, then without thinking"
+    assert "output_config" in fake.calls[0]
+    assert "output_config" not in fake.calls[1] and "thinking" in fake.calls[1]
+    assert "output_config" not in fake.calls[2] and "thinking" not in fake.calls[2]
+
+
+def test_an_error_that_is_not_about_a_parameter_is_raised_as_it_arrived(monkeypatch):
+    from graphfaker.llm import AnthropicProvider, ProviderError
+
+    _fake_anthropic(monkeypatch, refuse={"model": Exception("connection reset by peer")})
+    with pytest.raises(ProviderError, match="connection reset"):
+        AnthropicProvider().complete("s", "u")

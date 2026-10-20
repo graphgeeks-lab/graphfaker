@@ -1,11 +1,16 @@
 """Somewhere to send a prompt, in as few lines as the job needs.
 
 One method. The task is "turn this description into a schema", which is one
-request and one response, so there is no streaming, no tool loop, no
-conversation state and no retry policy beyond what the vendor's own client
-already does. A provider is anything with :meth:`Provider.complete`, which
-means bringing your own is passing an object rather than inheriting from
-one.
+request and one response, so there is no tool loop, no conversation state
+and no retry policy beyond what the vendor's own client already does. A
+provider is anything with :meth:`Provider.complete`, which means bringing
+your own is passing an object rather than inheriting from one.
+
+What is here instead of simplicity is one thing: the request shape adapts
+to what the far end will take. Both APIs have drifted and neither
+announces which way, so picking a shape from the model's name means a
+table of model names that is wrong the week after it is written. Send the
+current shape, read the rejection, drop what it named, ask again.
 
 The two that ship cover what people actually have: Anthropic's API, and
 anything speaking the OpenAI chat-completions protocol, which is the hosted
@@ -70,20 +75,41 @@ class Provider(Protocol):
     name: str
     model: str
 
-    def complete(self, system: str, user: str, *, max_tokens: int = 8192, temperature: float = 0.0) -> str:
-        """The model's reply as text, with no wrapper of any kind."""
+    def complete(self, system: str, user: str, *, max_tokens: int = 8192) -> str:
+        """The model's reply as text, with no wrapper of any kind.
+
+        No temperature. The current Anthropic models removed the sampling
+        controls outright and replaced them with an effort level, so a
+        temperature is not a parameter every provider has; the one that
+        still takes it sets its own.
+        """
         ...
 
 
 @dataclass
 class AnthropicProvider:
-    """Anthropic's Messages API through the official client."""
+    """Anthropic's Messages API through the official client.
+
+    No temperature. Current models removed the sampling controls
+    (``temperature``, ``top_p``, ``top_k``) and replaced them with
+    ``output_config.effort``, so asking for a temperature is not a
+    conservative default, it is a request the model will not take: the
+    client raises before anything reaches the network.
+
+    ``effort`` is how deeply it works instead, and ``high`` is right for
+    this job. The default on the current model is ``medium``, and a schema
+    draft runs once, is read by a human, and decides how much hand-editing
+    the file needs, so the extra thinking is worth paying for. Pass a
+    different one to the constructor for a cheaper draft.
+    """
 
     model: str = DEFAULT_ANTHROPIC_MODEL
     api_key: str | None = None
+    #: low | medium | high | xhigh | max.
+    effort: str = "high"
     name: str = "anthropic"
 
-    def complete(self, system: str, user: str, *, max_tokens: int = 8192, temperature: float = 0.0) -> str:
+    def complete(self, system: str, user: str, *, max_tokens: int = 8192) -> str:
         try:
             import anthropic
         except ImportError as exc:  # pragma: no cover - exercised by hand
@@ -91,16 +117,28 @@ class AnthropicProvider:
                 "the anthropic client is not installed; pip install 'graphfaker[llm]'"
             ) from exc
         client = anthropic.Anthropic(api_key=_require_key("ANTHROPIC_API_KEY", self.api_key))
-        try:
-            message = client.messages.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-            )
-        except Exception as exc:
-            raise ProviderError(f"anthropic ({self.model}): {exc}") from exc
+
+        request: dict[str, object] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            # Adaptive thinking, said explicitly rather than left to the
+            # default, because the default differs across the family: on the
+            # current models omitting it thinks anyway, on some older ones it
+            # does not. A schema is worth thinking about either way.
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": self.effort},
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+        }
+
+        def send(**kwargs: object):
+            # Streamed, because adaptive thinking makes a request take long
+            # enough that a non-streaming call can hit the client's own
+            # timeout before the model has finished.
+            with client.messages.stream(**kwargs) as stream:
+                return stream.get_final_message()
+
+        message = _send(send, request, _ANTHROPIC_ADAPTATIONS, f"anthropic ({self.model})")
         return "".join(block.text for block in message.content if getattr(block, "type", "") == "text")
 
 
@@ -122,20 +160,18 @@ class OpenAICompatibleProvider:
     api_key: str | None = None
     name: str = "openai"
 
-    def complete(self, system: str, user: str, *, max_tokens: int = 8192, temperature: float = 0.0) -> str:
+    def complete(self, system: str, user: str, *, max_tokens: int = 8192) -> str:
         """One request, retried without whatever the endpoint rejected.
 
-        The protocol has drifted. ``gpt-5`` and the reasoning models renamed
+        The protocol has drifted: ``gpt-5`` and the reasoning models renamed
         ``max_tokens`` to ``max_completion_tokens`` and accept only the
-        default temperature; an older local server knows ``max_tokens`` and
-        nothing else. Sending the union fails on both, and picking one by
-        looking at the model name means a table of model names that is wrong
-        the week after it is written.
+        default temperature, while an older local server knows ``max_tokens``
+        and nothing else. See :func:`_send`.
 
-        So: send the usual request, and when the endpoint says which
-        parameter it will not take, rename or drop that one and ask again.
-        At most one retry per parameter, and anything that is not an
-        unsupported-parameter complaint is raised as it arrived.
+        A near-zero temperature is asked for and given up without complaint.
+        It does not make a draft reproducible, and nothing here depends on
+        that; it only leans the model towards the common shape of a schema
+        rather than an inventive one.
         """
         try:
             import openai
@@ -154,42 +190,70 @@ class OpenAICompatibleProvider:
         request: dict[str, object] = {
             "model": self.model,
             "max_tokens": max_tokens,
-            "temperature": temperature,
+            "temperature": 0.0,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         }
-        for _ in range(len(_ADAPTATIONS) + 1):
-            try:
-                reply = client.chat.completions.create(**request)
-            except Exception as exc:
-                adapted = _adapt(request, str(exc))
-                if adapted is None:
-                    where = self.base_url or "api.openai.com"
-                    raise ProviderError(f"openai ({self.model} at {where}): {exc}") from exc
-                continue
-            return reply.choices[0].message.content or ""
-        raise ProviderError(f"openai ({self.model}): the endpoint rejected every form of the request")
+        where = self.base_url or "api.openai.com"
+        reply = _send(
+            client.chat.completions.create, request, _OPENAI_ADAPTATIONS, f"openai ({self.model} at {where})"
+        )
+        return reply.choices[0].message.content or ""
 
 
 #: Parameter the endpoint refused, and what to send instead. ``None`` drops
-#: it: a model that will not take a temperature has one it insists on.
-_ADAPTATIONS: dict[str, str | None] = {
+#: it. Both families have drifted and neither announces which way: ``gpt-5``
+#: renamed ``max_tokens`` and fixed the temperature, while an older local
+#: server knows only the old name.
+_OPENAI_ADAPTATIONS: dict[str, str | None] = {
     "max_tokens": "max_completion_tokens",
     "max_completion_tokens": "max_tokens",
     "temperature": None,
 }
 
+#: The same for Anthropic, where the modern request shape is sent first and
+#: dropped a field at a time for an older model or an older installed
+#: client: ``thinking`` and ``output_config`` do not exist before a certain
+#: generation, and a client old enough not to know the keyword raises a
+#: ``TypeError`` rather than returning a 400.
+_ANTHROPIC_ADAPTATIONS: dict[str, str | None] = {
+    "output_config": None,
+    "thinking": None,
+    "temperature": None,
+}
 
-def _adapt(request: dict[str, object], message: str) -> str | None:
-    """Rename or drop the parameter the endpoint named, or give up.
+
+def _send(call, request: dict[str, object], adaptations: dict[str, str | None], label: str):
+    """Make the request, dropping whatever the far end says it will not take.
+
+    Picking the request shape by looking at the model name means a table of
+    model names that is wrong the week after it is written, and sending the
+    union of every shape fails everywhere at once. So send the current one
+    and let the rejection say what to remove. At most one retry per
+    parameter; anything that is not a complaint about a parameter is raised
+    as it arrived.
+    """
+    for _ in range(len(adaptations) + 1):
+        try:
+            return call(**request)
+        except Exception as exc:
+            if _adapt(request, str(exc), adaptations) is None:
+                raise ProviderError(f"{label}: {exc}") from exc
+    raise ProviderError(f"{label}: every form of the request was rejected")
+
+
+def _adapt(request: dict[str, object], message: str, adaptations: dict[str, str | None]) -> str | None:
+    """Rename or drop the parameter the far end named, or give up.
 
     Matching on the message is unlovely and is the only thing available:
-    the error is a 400 whose body names the parameter, and the alternative
-    is a table of which models take which arguments.
+    the failure is either a 400 whose body names the parameter or a
+    ``TypeError`` from a client that has removed the keyword, and both put
+    the name in the text.
     """
     lowered = message.lower()
-    if "unsupported" not in lowered and "unrecognized" not in lowered and "not supported" not in lowered:
+    complaints = ("unsupported", "unrecognized", "not supported", "unexpected keyword", "removed")
+    if not any(word in lowered for word in complaints):
         return None
-    for parameter, replacement in _ADAPTATIONS.items():
+    for parameter, replacement in adaptations.items():
         if parameter not in request or parameter not in lowered:
             continue
         value = request.pop(parameter)
@@ -215,8 +279,8 @@ class RecordedProvider:
     model: str = "recorded"
     calls: list[tuple[str, str]] = field(default_factory=list)
 
-    def complete(self, system: str, user: str, *, max_tokens: int = 8192, temperature: float = 0.0) -> str:
-        del max_tokens, temperature
+    def complete(self, system: str, user: str, *, max_tokens: int = 8192) -> str:
+        del max_tokens
         self.calls.append((system, user))
         if len(self.calls) > len(self.replies):
             raise ProviderError(
