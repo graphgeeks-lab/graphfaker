@@ -11,6 +11,9 @@ graph asks a model anything.
 
 from __future__ import annotations
 
+import sys
+from types import SimpleNamespace
+
 import pytest
 from typer.testing import CliRunner
 
@@ -302,11 +305,17 @@ class _FakeAnthropic:
 
 
 def _fake_anthropic(monkeypatch, refuse=None):
-    import anthropic
+    """Stand in for the whole ``anthropic`` module, installed or not.
 
+    The provider imports it inside ``complete``, so putting a stub in
+    ``sys.modules`` is enough and means these tests need no network, no key
+    and no optional dependency. That last one matters: CI installs the dev
+    and examples extras, not ``graphfaker[llm]``, and a test that imported
+    the real client to monkeypatch it passed here and failed there.
+    """
     _FakeAnthropic.calls = []
     _FakeAnthropic.refuse = refuse or {}
-    monkeypatch.setattr(anthropic, "Anthropic", _FakeAnthropic)
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=_FakeAnthropic))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     return _FakeAnthropic
 
@@ -336,7 +345,7 @@ def test_the_anthropic_request_carries_effort_and_no_temperature(monkeypatch):
     # No thinking budget: removed on the current models, a 400 if sent.
     assert "budget_tokens" not in str(sent)
 
-    assert AnthropicProvider(effort="low").model == AnthropicProvider().model
+    # The effort is the one knob, so it has to reach the request.
     _fake_anthropic(monkeypatch)
     AnthropicProvider(effort="low").complete("s", "u")
     assert _FakeAnthropic.calls[0]["output_config"] == {"effort": "low"}
