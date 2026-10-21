@@ -298,3 +298,37 @@ def test_coverage_is_available_to_every_domain_that_injects_anything(tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert "no injected patterns" in result.output
+
+
+def test_validate_verbose_reads_the_schema_back(tmp_path):
+    """What somebody holding a drafted schema needs: the ratios.
+
+    The header line already says how big the thing is. The breakdown says
+    what it is, and the number that matters most is an edge family's budget
+    divided by its source rows: a schema states a share of a total and
+    nothing in the file says whether that works out to one per row.
+    """
+    path = tmp_path / "social.yaml"
+    result = runner.invoke(app, ["schema", "social", "--total-nodes", "400", "--out", str(path)])
+    assert result.exit_code == 0, result.output
+
+    quiet = runner.invoke(app, ["validate", str(path)])
+    assert quiet.exit_code == 0, quiet.output
+    assert "node types" in quiet.output
+    assert "per Person" not in quiet.output, "the breakdown is opt-in"
+
+    loud = runner.invoke(app, ["validate", str(path), "--verbose"])
+    assert loud.exit_code == 0, loud.output
+    assert "latent  community" in loud.output
+    assert "per Person" in loud.output
+    assert "faker(name)" in loud.output, "samplers and their parameters, not just attribute names"
+    assert "* functional" in loud.output
+    # -v is the same flag.
+    assert runner.invoke(app, ["validate", str(path), "-v"]).output == loud.output
+
+
+def test_validate_verbose_still_fails_on_a_bad_schema(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("name: oops\nnodes: []\n", encoding="utf-8")
+    result = runner.invoke(app, ["validate", str(bad), "--verbose"])
+    assert result.exit_code == 1

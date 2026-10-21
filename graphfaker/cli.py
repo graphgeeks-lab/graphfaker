@@ -472,11 +472,17 @@ def _with_coverage(payload: dict, run, wanted: bool, catalog=None) -> dict:
 @app.command(short_help="Check schema YAML files without generating anything.")
 def validate(
     files: list[str] = typer.Argument(..., help="Schema YAML files, as written by `graphfaker schema` or by hand."),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Read the schema back: node types with their samplers, edge families with the budget per source row, the latent factor.",
+    ),
 ):
     """Parse and validate each file with the same checks `generate --schema`
     applies, and say what it describes. Exits non-zero if any file fails.
 
       graphfaker validate my_graph.yaml other.yaml
+
+      graphfaker validate hospital.yaml --verbose
     """
     failed = False
     for path in files:
@@ -490,6 +496,11 @@ def validate(
             f"{path}: ok, schema {loaded.name!r}, {len(loaded.nodes)} node types, {len(loaded.relationships())} relationship types, "
             f"{loaded.total_nodes:,} nodes and {loaded.total_edges:,} edges, digest {loaded.digest()}"
         )
+        if verbose:
+            # The header line says how big it is; this says what it is, which
+            # is the question somebody holding a drafted schema has.
+            for line in loaded.describe()[1:]:
+                typer.echo(line)
         for line in _clock_warnings(loaded):
             typer.echo(line, err=True)
     if failed:

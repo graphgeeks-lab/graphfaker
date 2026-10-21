@@ -9,11 +9,14 @@ from graphfaker.schema import (
     ConstantSampler,
     DegreeDerived,
     EdgeType,
+    ExpressionSampler,
+    FakerSampler,
     ForeignKeySampler,
     GaussianSampler,
     GraphSchema,
     LatentFactor,
     NodeType,
+    ReferenceSampler,
     Relationship,
     SocialTopology,
     UniformTopology,
@@ -276,3 +279,125 @@ def test_an_expression_that_does_not_parse_is_a_validation_error():
             attributes={"n": ConstantSampler(value=1)},
             derived={"d": DegreeDerived(relationship="TO", expr="count +")},
         )])
+
+
+# ------------------------------------------------------- reading one back
+
+
+def test_every_sampler_has_a_short_form():
+    """Generated from the union, so a new sampler cannot be left out."""
+    import typing
+
+    from graphfaker.schema.samplers import Sampler, describe_sampler
+
+    for model in typing.get_args(typing.get_args(Sampler)[0]):
+        kind = model.model_fields["kind"].default
+        assert kind in _SAMPLER_FORMS, f"{kind} has no expected short form in this test"
+        assert describe_sampler(_SAMPLER_FORMS[kind][0]) == _SAMPLER_FORMS[kind][1], kind
+
+
+def _sampler_forms():
+    from graphfaker.schema.samplers import (
+        BernoulliSampler,
+        ForeignKeySampler,
+        LognormalSampler,
+        MixtureComponent,
+        MixtureSampler,
+        PoissonSampler,
+        SubcategorySampler,
+        UniformSampler,
+    )
+
+    return {
+        "constant": (ConstantSampler(value="USD"), "constant(USD)"),
+        "category": (CategorySampler(values=["a", "b", "c"]), "category(3)"),
+        "subcategory": (SubcategorySampler(parent="specialty", values={"x": ["y"]}), "subcategory(by specialty)"),
+        "uniform": (UniformSampler(low=1, high=10), "uniform(1, 10)"),
+        # Trailing zeros taken off, because a column of them is unreadable.
+        "gaussian": (GaussianSampler(mean=52.0, sd=19.5), "gaussian(52, 19.5)"),
+        "lognormal": (LognormalSampler(mu=0.0, sigma=1.3), "lognormal(0, 1.3)"),
+        "poisson": (PoissonSampler(lam=4.2), "poisson(4.2)"),
+        "bernoulli": (BernoulliSampler(p=0.004), "bernoulli(0.004)"),
+        "faker": (FakerSampler(provider="name"), "faker(name)"),
+        "expression": (ExpressionSampler(expr="1 + 1"), "expression"),
+        "reference": (ReferenceSampler(ref="@community.region"), "@community.region"),
+        "mixture": (
+            MixtureSampler(components=[
+                MixtureComponent(weight=0.6, sampler=ReferenceSampler(ref="@community.region")),
+                MixtureComponent(weight=0.4, sampler=CategorySampler(values=["a", "b"])),
+            ]),
+            "mixture(@community.region + category(2))",
+        ),
+        "foreign_key": (ForeignKeySampler(node_type="Patient"), "-> Patient"),
+    }
+
+
+_SAMPLER_FORMS = _sampler_forms()
+
+
+def test_describe_answers_the_questions_a_draft_has():
+    """The ratio per source row is the line that earns this feature.
+
+    A schema states a share of a total edge budget, and nothing in the file
+    says whether that works out to one payment per purchase or half of one.
+    On a drafted schema that arithmetic was the whole finding.
+    """
+    schema = minimal(
+        nodes=[
+            NodeType(name="Patient", count=4000, attributes={
+                "age": GaussianSampler(mean=52, sd=19),
+                "band": ReferenceSampler(ref="@community.band"),
+            }),
+            NodeType(name="Doctor", count=250, attributes={"name": FakerSampler(provider="name")}),
+        ],
+        latent=[LatentFactor(name="community", groups=8, params={"band": CategorySampler(values=["a", "b"])})],
+        edges=[
+            EdgeType(source="Patient", target="Doctor", share=0.5, relationships=[
+                Relationship(name="TREATED_BY"),
+                Relationship(name="PRIMARY_PHYSICIAN", functional=True),
+            ]),
+            EdgeType(source="Doctor", target="Doctor", share=0.5, closure=True, relationships=[
+                Relationship(name="CONSULTS_WITH"),
+            ]),
+        ],
+        total_edges=4000,
+    )
+    text = "\n".join(schema.describe())
+
+    assert "4,250 nodes, 4,000 edges, social topology" in text
+    assert "latent  community x8: band category(2)" in text
+    # Samplers and their parameters, because a gaussian where the column
+    # means money is the commonest thing wrong with a written schema.
+    assert "age gaussian(52, 19)" in text and "band @community.band" in text
+    # 2,000 edges over 4,000 patients.
+    assert "0.50 per Patient" in text
+    # 2,000 over 250 doctors, on a family that closes triangles.
+    assert "8.00 per Doctor" in text and "closes triangles" in text
+    assert "PRIMARY_PHYSICIAN*" in text and "TREATED_BY," in text
+    assert "* functional" in text
+
+
+def test_describe_says_when_there_is_no_latent_factor():
+    """A schema with none is a pile of independent columns, so it is worth
+    a line rather than an absent section."""
+    # Uniform topology, because the default social one reads a latent
+    # factor and a schema with none has to say which it is.
+    bare = GraphSchema(name="flat", nodes=[NodeType(name="A", count=5)], topology=UniformTopology())
+    assert any("latent  none" in line for line in bare.describe())
+    # And no edge block at all, which is what the packs look like: their
+    # edges come from code rather than from the schema.
+    assert not any("per A" in line for line in bare.describe())
+    assert not any("functional" in line for line in bare.describe())
+
+
+def test_describe_survives_every_shipped_schema():
+    from graphfaker.domains import available
+
+    for name, pack in sorted(available().items()):
+        if pack.schema is None:
+            continue
+        schema = pack.schema(**(pack.options().model_dump() if pack.options else {}))
+        lines = schema.describe()
+        assert lines and lines[0].startswith(f"{schema.name}:"), name
+        for node in schema.nodes:
+            assert any(node.name in line for line in lines), (name, node.name)

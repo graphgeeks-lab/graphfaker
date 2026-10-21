@@ -33,6 +33,9 @@ Engine
 .. automodule:: graphfaker.engine.seeding
    :members: Streams
 
+.. automodule:: graphfaker.schema.samplers
+   :members: describe_sampler, clock_dependent
+
 .. automodule:: graphfaker.schema.process
    :members: TimingModel, HourProfile, HourWindow, QuarterEndBoost, MonthlySchedule, Lognormal, Mixture, Rounding, ActorMix, ChannelSpec, ProcessSpec
 

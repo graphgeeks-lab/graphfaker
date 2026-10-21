@@ -166,6 +166,27 @@ byte-identical to 1.2.0.
   hosted APIs and anything speaking the same protocol locally.
   ``docs/semantic-layer.md`` has the whole argument.
 
+* ``graphfaker validate --verbose`` reads a schema back to you.
+  ``GraphSchema.describe()`` renders the thing somebody holding a few
+  hundred lines of drafted YAML actually needs, and it is not a
+  pretty-printer for the file: each attribute carries its sampler and the
+  sampler's parameters, because a gaussian where the column means money is
+  the commonest thing wrong with a written schema and a gaussian amount has
+  no tail; each edge family carries its budget **divided by its source
+  rows**, because a schema states a share of a total and nothing in the file
+  says whether that works out to one payment per purchase; and the latent
+  factor gets a line even when there is none, because a schema without one
+  is a pile of independent columns.
+
+  That middle number is the one that earns the flag. ``0.80 per Admission``
+  means a fifth of admissions land in no ward, and ``0.60 per Patient`` on a
+  functional relationship means 40% of patients have no primary physician.
+  Neither is visible in the YAML, and on a drafted customs schema the same
+  arithmetic was the entire finding. The summary lives on the schema rather
+  than in the CLI so a notebook can use it, which is where a draft actually
+  gets picked apart, and it judges nothing: the same contract the hardness
+  and coverage reports have.
+
 * A project ``.env`` is read on the way in, so an API key already sitting
   next to the code does not have to be exported again to run one command.
   The nearest file from the working directory up to the repository root, so

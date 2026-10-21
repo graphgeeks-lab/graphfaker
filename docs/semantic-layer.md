@@ -81,6 +81,32 @@ The draft is validated before you see it. If it does not parse as a `GraphSchema
 
 After a second failure it stops, exits non-zero, and prints the last attempt so you can see what it was reaching for. It does not write a file. A schema that does not validate is an error, not a dataset.
 
+## Reading a draft back
+
+A drafted schema is a few hundred lines of YAML, and `--verbose` reads it back to you:
+
+```sh
+graphfaker validate hospital.yaml --verbose
+```
+
+```
+hospital.yaml: ok, schema 'hospital', 4 node types, 11 relationship types, 10,340 nodes and 24,000 edges, digest aab96a5d79
+  latent  department x10: specialty category(8), mean_stay uniform(2, 12), mean_age uniform(8, 72)
+
+  Patient        4,000  name faker(name), age gaussian(@department.mean_age, 16), sex category(2),
+                        blood_type category(8), city faker(city), phone faker(phone_number)
+  Admission      6,000  patient -> Patient, ward -> Ward, attending -> Doctor, admit_date
+                        faker(date_time_between), total_cost expression, outcome category(4)
+
+  Admission -> Patient      6,000    1.00 per Admission    ADMISSION_OF*
+  Admission -> Ward         4,800    0.80 per Admission    ADMITTED_TO*
+  Patient -> Doctor         2,400    0.60 per Patient      TREATED_BY, PRIMARY_PHYSICIAN*
+
+  * functional: a node has at most one of these
+```
+
+Three things are there on purpose. Each attribute carries its sampler and the sampler's parameters, because a gaussian where the column means money is the commonest thing wrong with a written schema. Each edge family carries its budget **divided by its source rows**, because a schema states a share of a total and nothing in the file says whether that works out to one payment per purchase: `0.80 per Admission` means a fifth of admissions land in no ward, and `0.60 per Patient` on a functional relationship means 40% of patients have no primary physician. And the latent factor gets a line even when there is none, because a schema without one is a pile of independent columns.
+
 ## What to check in a draft
 
 The model is good at structure and unreliable about magnitude. In rough order of how often it is worth fixing:
