@@ -2,9 +2,69 @@
 History
 =======
 
-1.3.0 (2026-10-17)
+1.4.0 (2026-10-21)
 ------------------
 
+Two guards and a way to read a schema back. Nothing in a dataset changes
+for a given seed.
+
+The guards are both about not destroying something quietly. A dataset
+directory could become the union of two runs, and ``schema draft`` could
+write over a schema you had edited. Neither announced itself: the first was
+reported as "the draft generates badly but validate is happy", which is
+exactly what it looks like from outside.
+
+* ``graphfaker validate --verbose`` reads a schema back to you.
+  ``GraphSchema.describe()`` renders the thing somebody holding a few
+  hundred lines of drafted YAML actually needs, and it is not a
+  pretty-printer for the file: each attribute carries its sampler and the
+  sampler's parameters, because a gaussian where the column means money is
+  the commonest thing wrong with a written schema and a gaussian amount has
+  no tail; each edge family carries its budget **divided by its source
+  rows**, because a schema states a share of a total and nothing in the file
+  says whether that works out to one payment per purchase; and the latent
+  factor gets a line even when there is none, because a schema without one
+  is a pile of independent columns.
+
+  That middle number is the one that earns the flag. ``0.80 per Admission``
+  means a fifth of admissions land in no ward, and ``0.60 per Patient`` on a
+  functional relationship means 40% of patients have no primary physician.
+  Neither is visible in the YAML, and on a drafted customs schema the same
+  arithmetic was the entire finding. The summary lives on the schema rather
+  than in the CLI so a notebook can use it, which is where a draft actually
+  gets picked apart, and it judges nothing: the same contract the hardness
+  and coverage reports have.
+
+* ``graphfaker schema draft`` will not write over an existing file.
+  A drafted schema is meant to be read and edited, and a second draft of
+  the same sentence is a different schema, so replacing one silently throws
+  away the editing that is the point of the file. Checked before the model
+  is asked, so a mistaken rerun costs nothing; ``--force`` overwrites. If a
+  dataset sits in the directory named after the schema, which is the
+  pairing people make, it says so rather than doing anything about it.
+
+* A dataset directory can no longer become the union of two runs. The
+  write is per table and removed nothing, so generating a second dataset
+  into the same ``--out`` left both: the manifest said two node types and
+  the folder held four, and every loader reads the directory rather than
+  the manifest, so it read one graph made of two. ``GraphRun.write``
+  refuses when the directory holds tables the run does not replace, names
+  them, and writes nothing; ``--force`` on ``generate`` and ``fraud``
+  (``force=True`` from Python) replaces the dataset instead.
+
+  It only comes up when the set of tables changes, which means a renamed
+  or removed node type or a different schema entirely, so regenerating the
+  same schema is unaffected and needs no flag. Only ``nodes/``, ``edges/``
+  and ``truth/`` are considered and only ``.parquet`` in them, so a
+  directory holding your own files is neither reported on nor touched.
+
+  Reported by a user who drafted twice into the same name and found the
+  result generated badly while ``validate`` was happy, which is exactly
+  what this looks like from outside: the schema file was fine and the
+  directory was not.
+
+1.3.0 (2026-10-17)
+------------------
 The schema debt paid: what a domain pack does over time is a declaration the
 engine runs, rather than three Python files answering the same three questions
 with different constants. A coverage report that says what a dataset actually
@@ -165,55 +225,6 @@ byte-identical to 1.2.0.
   ship are Anthropic and an OpenAI-compatible client, which covers the
   hosted APIs and anything speaking the same protocol locally.
   ``docs/semantic-layer.md`` has the whole argument.
-
-* A dataset directory can no longer become the union of two runs. The
-  write is per table and removed nothing, so generating a second dataset
-  into the same ``--out`` left both: the manifest said two node types and
-  the folder held four, and every loader reads the directory rather than
-  the manifest, so it read one graph made of two. ``GraphRun.write``
-  refuses when the directory holds tables the run does not replace, names
-  them, and writes nothing; ``--force`` on ``generate`` and ``fraud``
-  (``force=True`` from Python) replaces the dataset instead.
-
-  It only comes up when the set of tables changes, which means a renamed
-  or removed node type or a different schema entirely, so regenerating the
-  same schema is unaffected and needs no flag. Only ``nodes/``, ``edges/``
-  and ``truth/`` are considered and only ``.parquet`` in them, so a
-  directory holding your own files is neither reported on nor touched.
-
-  Reported by a user who drafted twice into the same name and found the
-  result generated badly while ``validate`` was happy, which is exactly
-  what this looks like from outside: the schema file was fine and the
-  directory was not.
-
-* ``graphfaker schema draft`` will not write over an existing file.
-  A drafted schema is meant to be read and edited, and a second draft of
-  the same sentence is a different schema, so replacing one silently throws
-  away the editing that is the point of the file. Checked before the model
-  is asked, so a mistaken rerun costs nothing; ``--force`` overwrites. If a
-  dataset sits in the directory named after the schema, which is the
-  pairing people make, it says so rather than doing anything about it.
-
-* ``graphfaker validate --verbose`` reads a schema back to you.
-  ``GraphSchema.describe()`` renders the thing somebody holding a few
-  hundred lines of drafted YAML actually needs, and it is not a
-  pretty-printer for the file: each attribute carries its sampler and the
-  sampler's parameters, because a gaussian where the column means money is
-  the commonest thing wrong with a written schema and a gaussian amount has
-  no tail; each edge family carries its budget **divided by its source
-  rows**, because a schema states a share of a total and nothing in the file
-  says whether that works out to one payment per purchase; and the latent
-  factor gets a line even when there is none, because a schema without one
-  is a pile of independent columns.
-
-  That middle number is the one that earns the flag. ``0.80 per Admission``
-  means a fifth of admissions land in no ward, and ``0.60 per Patient`` on a
-  functional relationship means 40% of patients have no primary physician.
-  Neither is visible in the YAML, and on a drafted customs schema the same
-  arithmetic was the entire finding. The summary lives on the schema rather
-  than in the CLI so a notebook can use it, which is where a draft actually
-  gets picked apart, and it judges nothing: the same contract the hardness
-  and coverage reports have.
 
 * A project ``.env`` is read on the way in, so an API key already sitting
   next to the code does not have to be exported again to run one command.
