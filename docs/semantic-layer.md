@@ -64,7 +64,9 @@ drafted 'hospital' with anthropic (claude-opus-5-5)
   read it before you generate from it: a drafted schema is a first guess, not an answer
 ```
 
-The YAML goes to the file (or to stdout with no `--out`, so it can be piped); everything else goes to stderr. Then it is an ordinary schema:
+The YAML goes to the file (or to stdout with no `--out`, so it can be piped); everything else goes to stderr. It will not write over a file that already exists: a draft is meant to be edited, and a second draft of the same sentence is a different schema, so replacing one would throw away your changes. Pass `--force` when that is what you want, and it is checked before the model is asked, so a mistaken rerun costs nothing.
+
+Then it is an ordinary schema:
 
 ```sh
 graphfaker validate hospital.yaml

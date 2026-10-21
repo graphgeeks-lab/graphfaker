@@ -166,6 +166,34 @@ byte-identical to 1.2.0.
   hosted APIs and anything speaking the same protocol locally.
   ``docs/semantic-layer.md`` has the whole argument.
 
+* A dataset directory can no longer become the union of two runs. The
+  write is per table and removed nothing, so generating a second dataset
+  into the same ``--out`` left both: the manifest said two node types and
+  the folder held four, and every loader reads the directory rather than
+  the manifest, so it read one graph made of two. ``GraphRun.write``
+  refuses when the directory holds tables the run does not replace, names
+  them, and writes nothing; ``--force`` on ``generate`` and ``fraud``
+  (``force=True`` from Python) replaces the dataset instead.
+
+  It only comes up when the set of tables changes, which means a renamed
+  or removed node type or a different schema entirely, so regenerating the
+  same schema is unaffected and needs no flag. Only ``nodes/``, ``edges/``
+  and ``truth/`` are considered and only ``.parquet`` in them, so a
+  directory holding your own files is neither reported on nor touched.
+
+  Reported by a user who drafted twice into the same name and found the
+  result generated badly while ``validate`` was happy, which is exactly
+  what this looks like from outside: the schema file was fine and the
+  directory was not.
+
+* ``graphfaker schema draft`` will not write over an existing file.
+  A drafted schema is meant to be read and edited, and a second draft of
+  the same sentence is a different schema, so replacing one silently throws
+  away the editing that is the point of the file. Checked before the model
+  is asked, so a mistaken rerun costs nothing; ``--force`` overwrites. If a
+  dataset sits in the directory named after the schema, which is the
+  pairing people make, it says so rather than doing anything about it.
+
 * ``graphfaker validate --verbose`` reads a schema back to you.
   ``GraphSchema.describe()`` renders the thing somebody holding a few
   hundred lines of drafted YAML actually needs, and it is not a

@@ -332,3 +332,77 @@ def test_validate_verbose_still_fails_on_a_bad_schema(tmp_path):
     bad.write_text("name: oops\nnodes: []\n", encoding="utf-8")
     result = runner.invoke(app, ["validate", str(bad), "--verbose"])
     assert result.exit_code == 1
+
+
+def test_generate_refuses_to_merge_two_datasets_in_one_directory(tmp_path):
+    social = tmp_path / "social.yaml"
+    coordination = tmp_path / "coordination.yaml"
+    assert runner.invoke(app, ["schema", "social", "--total-nodes", "200", "--out", str(social)]).exit_code == 0
+    assert runner.invoke(app, ["schema", "coordination", "--out", str(coordination)]).exit_code == 0
+
+    out = tmp_path / "out"
+    base = ["generate", "--seed", "1", "--out", str(out), "--quiet", "--schema"]
+    assert runner.invoke(app, [*base, str(social)]).exit_code == 0
+    first = sorted(p.stem for p in (out / "nodes").glob("*.parquet"))
+    assert "Person" in first
+
+    # The same schema again is the ordinary loop and is not a conflict.
+    assert runner.invoke(app, [*base, str(social)]).exit_code == 0
+
+    refused = runner.invoke(app, [*base, str(coordination)])
+    assert refused.exit_code == 1
+    assert "union of both" in refused.output and "--force" in refused.output
+    assert sorted(p.stem for p in (out / "nodes").glob("*.parquet")) == first, "nothing was written"
+
+    forced = runner.invoke(app, [*base, str(coordination), "--force"])
+    assert forced.exit_code == 0, forced.output
+    assert sorted(p.stem for p in (out / "nodes").glob("*.parquet")) == ["Account", "Device", "Topic"]
+
+
+def test_schema_draft_will_not_write_over_an_existing_file(tmp_path, monkeypatch):
+    """Checked before the model is asked, so a mistaken rerun costs nothing.
+
+    A drafted schema is meant to be read and edited, and a second draft of
+    the same sentence is a different schema, so replacing one silently
+    throws away the editing that is the whole point of the file.
+    """
+    from graphfaker.llm import RecordedProvider
+
+    out = tmp_path / "hospital.yaml"
+    out.write_text("name: edited_by_hand\nnodes: []\n", encoding="utf-8")
+    # No replies at all: if the model is reached, the provider raises.
+    monkeypatch.setattr("graphfaker.llm.get_provider", lambda *a, **k: RecordedProvider(replies=[]))
+
+    refused = runner.invoke(app, ["schema", "draft", "a hospital", "--out", str(out)])
+    assert refused.exit_code != 0
+    assert "already exists" in refused.output and "--force" in refused.output
+    assert "asking" not in refused.output, "the model was asked before the file was checked"
+    assert out.read_text(encoding="utf-8").startswith("name: edited_by_hand")
+
+    good = "name: clinic\nnodes:\n- {name: A, count: 2}\ntopology: {kind: uniform}\n"
+    monkeypatch.setattr("graphfaker.llm.get_provider", lambda *a, **k: RecordedProvider(replies=[good]))
+    forced = runner.invoke(app, ["schema", "draft", "a hospital", "--out", str(out), "--force"])
+    assert forced.exit_code == 0, forced.output
+    assert "name: clinic" in out.read_text(encoding="utf-8")
+
+
+def test_a_redraft_says_when_a_dataset_came_from_the_previous_one(tmp_path, monkeypatch):
+    """`hospital.yaml` next to `./hospital` is the pairing people make."""
+    from graphfaker.llm import RecordedProvider
+
+    schema = tmp_path / "hospital.yaml"
+    good = "name: hospital\nnodes:\n- {name: A, count: 2}\ntopology: {kind: uniform}\n"
+    monkeypatch.setattr("graphfaker.llm.get_provider", lambda *a, **k: RecordedProvider(replies=[good]))
+    assert runner.invoke(app, ["schema", "draft", "a hospital", "--out", str(schema)]).exit_code == 0
+
+    data = tmp_path / "hospital"
+    assert runner.invoke(
+        app, ["generate", "--schema", str(schema), "--seed", "1", "--out", str(data), "--quiet"]
+    ).exit_code == 0
+
+    monkeypatch.setattr("graphfaker.llm.get_provider", lambda *a, **k: RecordedProvider(replies=[good]))
+    again = runner.invoke(app, ["schema", "draft", "a hospital", "--out", str(schema), "--force"])
+    assert again.exit_code == 0, again.output
+    assert "holds a dataset generated from the previous draft" in again.output
+    # Said, not done: the dataset is untouched.
+    assert (data / "manifest.json").is_file()
