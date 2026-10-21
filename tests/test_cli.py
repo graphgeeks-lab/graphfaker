@@ -6,6 +6,7 @@ import networkx as nx
 from typer.testing import CliRunner
 
 from graphfaker.cli import app
+from tests.helpers import said
 
 runner = CliRunner()
 
@@ -250,7 +251,7 @@ def test_inspect_and_json_outputs(tmp_path):
     assert json.loads(result.output)["truth"] == ["accounts", "patterns", "region", "transactions"]
 
     result = runner.invoke(app, ["inspect", str(tmp_path)])
-    assert result.exit_code != 0 and "manifest.json" in result.output
+    assert result.exit_code != 0 and "manifest.json" in said(result)
 
     result = runner.invoke(app, ["evaluate", str(out), "--json"])
     assert result.exit_code == 0 and json.loads(result.output)["account"]["fn"] > 0
@@ -375,8 +376,10 @@ def test_schema_draft_will_not_write_over_an_existing_file(tmp_path, monkeypatch
 
     refused = runner.invoke(app, ["schema", "draft", "a hospital", "--out", str(out)])
     assert refused.exit_code != 0
-    assert "already exists" in refused.output and "--force" in refused.output
-    assert "asking" not in refused.output, "the model was asked before the file was checked"
+    # Through said(), because this one is a BadParameter: rich boxes it,
+    # wraps the sentence and styles --force a dash at a time.
+    assert "already exists" in said(refused) and "--force" in said(refused)
+    assert "asking" not in said(refused), "the model was asked before the file was checked"
     assert out.read_text(encoding="utf-8").startswith("name: edited_by_hand")
 
     good = "name: clinic\nnodes:\n- {name: A, count: 2}\ntopology: {kind: uniform}\n"
