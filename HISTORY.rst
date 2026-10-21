@@ -14,6 +14,22 @@ write over a schema you had edited. Neither announced itself: the first was
 reported as "the draft generates badly but validate is happy", which is
 exactly what it looks like from outside.
 
+* Two dependency advisories. ``certifi`` moves to 2026.10.19 for
+  PYSEC-2026-4320: earlier bundles trust ``emSign ECC Root CA - G3``, and
+  eight eMudhra intermediates chaining to it have compromised private keys,
+  so somebody holding one of those keys and sitting on the path can present
+  a valid-looking certificate for any hostname. Every HTTPS call the package
+  makes verifies against that bundle, which is the wiki fetcher, the BTS zip
+  the flights fetcher downloads and the Overpass queries behind the OSM one,
+  so it is a direct dependency now rather than whatever ``requests`` brings.
+
+  ``pillow`` moves to 13.0.0 in the ``examples`` extra for eight
+  image-parsing CVEs. Nothing in GraphFaker opens an image: Pillow is there
+  because matplotlib draws the notebooks' plots, so none of it is reachable
+  from the package itself. The floor carries a ``python_version >= '3.11'``
+  marker, because Pillow 13 needs 3.11 and the package supports 3.10, and
+  keeping the extra installable there is worth more than forcing the choice.
+
 * ``graphfaker validate --verbose`` reads a schema back to you.
   ``GraphSchema.describe()`` renders the thing somebody holding a few
   hundred lines of drafted YAML actually needs, and it is not a
