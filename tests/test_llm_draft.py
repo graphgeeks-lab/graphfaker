@@ -28,6 +28,7 @@ from graphfaker.llm.draft import (
     worked_example,
 )
 from graphfaker.schema.graph import GraphSchema
+from tests.helpers import said
 
 runner = CliRunner()
 
@@ -242,7 +243,7 @@ def test_the_cli_prints_the_yaml_when_there_is_no_out(tmp_path, monkeypatch):
 def test_the_cli_needs_a_description():
     result = runner.invoke(app, ["schema", "draft"])
     assert result.exit_code != 0
-    assert "describe the graph" in result.output
+    assert "describe the graph" in said(result)
 
 
 def test_a_draft_that_will_not_validate_exits_non_zero(tmp_path, monkeypatch):

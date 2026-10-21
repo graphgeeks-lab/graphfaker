@@ -302,3 +302,65 @@ def test_a_written_date_reaches_faker_as_a_date():
     assert passthrough == {"start_date": "-2y", "end_date": "now"}
     assert _faker_kwargs(FakerSampler(provider="words", kwargs={"nb": 3})) == {"nb": 3}
     assert _faker_kwargs(FakerSampler(provider="name")) == {}
+
+
+def test_a_second_dataset_cannot_half_overwrite_the_first(tmp_path):
+    """The write is per table and used to remove nothing.
+
+    So generating a second dataset into the same directory left both, and
+    every loader reads the directory rather than the manifest: the manifest
+    said two node types and the folder held four, which a loader happily
+    read as one graph.
+    """
+    import pytest
+
+    from graphfaker.backends.tables import GraphTables
+    from graphfaker.engine.run import generate, stale_tables
+    from graphfaker.schema import EdgeType, GraphSchema, NodeType, Relationship
+    from graphfaker.schema.topology import UniformTopology
+
+    def schema(name, source, target, relationship):
+        return GraphSchema(
+            name=name, topology=UniformTopology(), total_edges=20,
+            nodes=[NodeType(name=source, count=10), NodeType(name=target, count=4)],
+            edges=[EdgeType(source=source, target=target, share=1.0,
+                            relationships=[Relationship(name=relationship)])],
+        )
+
+    out = tmp_path / "data"
+    hospital = generate(schema("hospital", "Patient", "Ward", "ADMITTED_TO"), seed=1)
+    hospital.write(out)
+    assert stale_tables(out, hospital) == []
+
+    # The same tables again is the ordinary loop: every file is replaced.
+    generate(schema("hospital", "Patient", "Ward", "ADMITTED_TO"), seed=2).write(out)
+
+    library = generate(schema("library", "Member", "Book", "BORROWED"), seed=1)
+    assert len(stale_tables(out, library)) == 3
+    with pytest.raises(FileExistsError, match="union of both"):
+        library.write(out)
+    # Nothing was written, so the first dataset is intact.
+    assert sorted(GraphTables.read_parquet(out).nodes) == ["Patient", "Ward"]
+
+    library.write(out, force=True)
+    read = GraphTables.read_parquet(out)
+    assert sorted(read.nodes) == ["Book", "Member"] and sorted(read.edges) == ["BORROWED"]
+
+
+def test_stale_tables_only_looks_at_the_directories_a_run_owns(tmp_path):
+    """Somebody else's parquet is not this function's business."""
+    from graphfaker.engine.run import generate, stale_tables
+    from graphfaker.schema import GraphSchema, NodeType
+    from graphfaker.schema.topology import UniformTopology
+
+    run = generate(GraphSchema(name="a", topology=UniformTopology(),
+                               nodes=[NodeType(name="A", count=3)]), seed=1)
+    out = tmp_path / "data"
+    run.write(out)
+    (out / "mine.parquet").write_bytes(b"not ours")
+    (out / "notes").mkdir()
+    (out / "notes" / "other.parquet").write_bytes(b"not ours either")
+
+    assert stale_tables(out, run) == []
+    run.write(out)  # and writing again does not remove them
+    assert (out / "mine.parquet").is_file() and (out / "notes" / "other.parquet").is_file()

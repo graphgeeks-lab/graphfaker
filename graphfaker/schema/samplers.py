@@ -211,6 +211,54 @@ CLOCK_PROVIDERS = frozenset({
 _RELATIVE = re.compile(r"^(now|today|[+-]\d+[smhdwy])$", re.IGNORECASE)
 
 
+def describe_sampler(sampler: Any) -> str:
+    """One short phrase for a sampler, for reading a schema back.
+
+    Short enough that a node's whole attribute list fits on a couple of
+    lines, because the thing a reader is looking for is a distribution that
+    is wrong for what the column means: a gaussian amount has no tail, and
+    a lognormal age is nonsense. The parameters are in the phrase for the
+    same reason.
+    """
+    kind = getattr(sampler, "kind", None)
+    if kind == "constant":
+        return f"constant({_number(sampler.value)})"
+    if kind == "category":
+        return f"category({len(sampler.values)})"
+    if kind == "subcategory":
+        return f"subcategory(by {sampler.parent})"
+    if kind == "uniform":
+        return f"uniform({_number(sampler.low)}, {_number(sampler.high)})"
+    if kind == "gaussian":
+        return f"gaussian({_number(sampler.mean)}, {_number(sampler.sd)})"
+    if kind == "lognormal":
+        return f"lognormal({_number(sampler.mu)}, {_number(sampler.sigma)})"
+    if kind == "poisson":
+        return f"poisson({_number(sampler.lam)})"
+    if kind == "bernoulli":
+        return f"bernoulli({_number(sampler.p)})"
+    if kind == "faker":
+        return f"faker({sampler.provider})"
+    if kind == "expression":
+        return "expression"
+    if kind == "reference":
+        return f"@{sampler.ref.lstrip('@')}"
+    if kind == "mixture":
+        return "mixture(" + " + ".join(describe_sampler(c.sampler) for c in sampler.components) + ")"
+    if kind == "foreign_key":
+        return f"-> {sampler.node_type}"
+    return str(kind or type(sampler).__name__)
+
+
+def _number(value: Any) -> str:
+    """A parameter, without the trailing zeros that make a line unreadable."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, float) and value == int(value):
+        return str(int(value))
+    return f"{value:g}"
+
+
 def clock_dependent(sampler: object) -> str | None:
     """Why this sampler would produce different data tomorrow, or ``None``.
 

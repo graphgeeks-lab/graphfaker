@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import collections
 import json
-import re
 import zipfile
 
 import polars as pl
@@ -28,25 +27,9 @@ from graphfaker.fetchers.senzing import (
     sources,
     write_dataset,
 )
+from tests.helpers import said
 
 runner = CliRunner()
-
-_ANSI = re.compile(r"\x1b\[[0-9;]*m")
-_BOX = re.compile(r"[\u2500-\u257f]")
-
-
-def said(result) -> str:
-    """What the CLI said, with rich's drawing taken off.
-
-    Typer renders an error through rich, which colours it, wraps it to the
-    terminal width and puts it in a box. Colour is the part that breaks a
-    substring match, because an option is styled a dash at a time:
-    ``--path`` arrives as ``\x1b[1;36m-\x1b[0m\x1b[1;36m-path\x1b[0m``, so
-    the literal string is not in the output at all. That is why these
-    assertions passed locally and failed in CI, where colour is on.
-    """
-    text = _BOX.sub(" ", _ANSI.sub("", result.output))
-    return " ".join(text.split())
 
 RECORDS = [
     # Two companies, each an anchor other records point at.

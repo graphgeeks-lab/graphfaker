@@ -77,9 +77,35 @@ class GraphRun:
     def to_networkx(self) -> nx.DiGraph:
         return self.tables.to_networkx()
 
-    def write(self, directory: str | Path) -> Path:
-        """``nodes/``, ``edges/``, ``truth/``, ``schema.yaml``, ``manifest.json``."""
+    def write(self, directory: str | Path, *, force: bool = False) -> Path:
+        """``nodes/``, ``edges/``, ``truth/``, ``schema.yaml``, ``manifest.json``.
+
+        Refuses when the directory holds tables this run will not overwrite,
+        because the write is per table and nothing used to remove what was
+        already there: generating a second dataset into the same directory
+        left both, and every loader reads the directory rather than the
+        manifest, so a dataset silently became the union of two runs. The
+        manifest said two node types and the folder held four.
+
+        It only comes up when the set of tables changes, which means a
+        renamed or removed node type or a different schema entirely.
+        Regenerating the same schema overwrites every file and is unaffected.
+        ``force`` deletes the leftovers first.
+        """
         root = Path(directory)
+        leftover = stale_tables(root, self)
+        if leftover and not force:
+            names = sorted(str(path.relative_to(root)).replace("\\", "/") for path in leftover)
+            shown = ", ".join(names[:4]) + (f" and {len(names) - 4} more" if len(names) > 4 else "")
+            raise FileExistsError(
+                f"{root} already holds {len(names)} table(s) from an earlier run that this one does "
+                f"not replace ({shown}). Writing here would leave a dataset that is the union of "
+                "both, and every loader reads the directory rather than the manifest. Use another "
+                "directory, or replace the dataset: --force on the command line, force=True here."
+            )
+        for path in leftover:
+            path.unlink()
+
         self.tables.write_parquet(root)
         (root / "truth").mkdir(parents=True, exist_ok=True)
         for name, frame in self.truth.items():
@@ -87,6 +113,27 @@ class GraphRun:
         self.schema.to_yaml(root / "schema.yaml")
         self.manifest.write(root / "manifest.json")
         return root
+
+
+def stale_tables(directory: str | Path, run: GraphRun) -> list[Path]:
+    """Parquet files in ``directory`` that writing ``run`` would not replace.
+
+    Only the three directories a run owns are considered, and only
+    ``.parquet`` in them, so a directory holding somebody else's files is
+    not something this reports on or removes.
+    """
+    root = Path(directory)
+    expected = {
+        "nodes": set(run.tables.nodes),
+        "edges": set(run.tables.edges),
+        "truth": set(run.truth),
+    }
+    found = []
+    for folder, names in expected.items():
+        for path in sorted((root / folder).glob("*.parquet")):
+            if path.stem not in names:
+                found.append(path)
+    return found
 
 
 @contextlib.contextmanager

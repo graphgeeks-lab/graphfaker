@@ -417,6 +417,96 @@ class GraphSchema(BaseModel):
 
     # ------------------------------------------------------------ serialisation
 
+    def describe(self, width: int = 100) -> list[str]:
+        """The schema as lines, for somebody deciding whether to generate it.
+
+        Written against the four things a reader has to check, which is why
+        it is not a pretty-printer for the YAML:
+
+        * **The ratios.** An edge family's budget divided by its source rows
+          is what says whether every purchase has a payment. ``0.48 per
+          Purchase`` is a bug you cannot see in a file that only states a
+          share of a total.
+        * **The distributions.** Each attribute carries its sampler and the
+          sampler's parameters, because the most common thing wrong with a
+          written schema is a gaussian where the column means money. A
+          gaussian amount has no tail, and no tail means no outliers.
+        * **The latent factor**, or a line saying there is none. A schema
+          without one is a pile of independent columns: attributes that do
+          not agree with each other and edges that agree with neither.
+        * **What a relationship is called**, since the queries you write
+          next have to use those names.
+
+        It says what is there and judges nothing, which is the same contract
+        the hardness and coverage reports have.
+        """
+        import textwrap
+
+        from graphfaker.schema.samplers import describe_sampler
+
+        counts = {node.name: node.count for node in self.nodes}
+        lines = [
+            f"{self.name}: {self.total_nodes:,} nodes, {self.total_edges:,} edges, "
+            f"{self.topology.kind} topology, digest {self.digest()}"
+        ]
+
+        if self.latent:
+            for factor in self.latent:
+                groups = f"x{factor.groups}" if factor.groups else "groups chosen from the node count"
+                params = ", ".join(f"{n} {describe_sampler(s)}" for n, s in factor.params.items())
+                lines.append(f"  latent  {factor.name} {groups}: {params or 'no parameters'}")
+        else:
+            lines.append(
+                "  latent  none, so nothing makes the attributes and the edges agree with each other"
+            )
+
+        lines.append("")
+        label = max((len(n.name) for n in self.nodes), default=4) + 2
+        for node in self.nodes:
+            attributes = [f"{name} {describe_sampler(s)}" for name, s in node.attributes.items()]
+            attributes += [f"{name} degree({d.relationship})" for name, d in node.derived.items()]
+            head = f"  {node.name:<{label}}{node.count:>9,}  "
+            body = textwrap.wrap(
+                ", ".join(attributes) or "no attributes",
+                width=max(width, len(head) + 20),
+                initial_indent=head,
+                subsequent_indent=" " * len(head),
+            )
+            lines.extend(body)
+
+        if self.edges:
+            lines.append("")
+            pairs = [f"{e.source} -> {e.target}" for e in self.edges]
+            pair_width = max(len(p) for p in pairs) + 2
+            functional = False
+            for edge, pair in zip(self.edges, pairs, strict=True):
+                budget = int(self.total_edges * edge.share)
+                source_rows = counts.get(edge.source, 0)
+                # Per source row, because that is the number a reader can
+                # sanity-check against what the entity means.
+                ratio = f"{budget / source_rows:>6.2f} per {edge.source}" if source_rows else "no source rows"
+                names = []
+                for rel in edge.relationships:
+                    functional |= rel.functional
+                    names.append(rel.name + ("*" if rel.functional else ""))
+                closure = ", closes triangles" if edge.closure else ""
+                lines.append(
+                    f"  {pair:<{pair_width}}{budget:>9,}  {ratio:<24}{', '.join(names)}{closure}"
+                )
+            if functional:
+                lines.append("")
+                lines.append("  * functional: a node has at most one of these")
+
+        if self.targets is not None:
+            stated = {k: v for k, v in self.targets.model_dump(exclude_none=True).items() if v != {}}
+            if stated:
+                lines.append("")
+                lines.append(
+                    "  targets (declared, not enforced): "
+                    + ", ".join(f"{k}={v}" for k, v in stated.items())
+                )
+        return lines
+
     def to_dict(self) -> dict[str, Any]:
         return _keep_meaningful_nulls(self, self.model_dump(mode="json", exclude_none=True))
 

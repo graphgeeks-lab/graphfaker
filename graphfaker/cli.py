@@ -278,13 +278,18 @@ def _dump(data: dict) -> None:
     typer.echo(json.dumps(data, indent=2, default=str))
 
 
-def _write_sink(run, out: str, sink: str, blind: bool = False) -> None:
+def _write_sink(run, out: str, sink: str, blind: bool = False, force: bool = False) -> None:
     """Write the run as Parquet, then whatever extra layout ``sink`` asks for.
 
     ``blind`` keeps the ground truth out of a database sink (it is still
     written to ``truth/`` on disk), so the database can be handed to a
-    detector as an unbiased benchmark."""
-    root = run.write(out)
+    detector as an unbiased benchmark. ``force`` replaces a dataset already
+    in the directory instead of refusing to half-overwrite it."""
+    try:
+        root = run.write(out, force=force)
+    except FileExistsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     logger.info("wrote %s (%s)", root, ", ".join(f"{k}={v}" for k, v in run.manifest.node_counts.items()))
     if sink == "parquet":
         return
@@ -407,6 +412,7 @@ def generate(
     blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="No progress logging; warnings and errors only."),
     coverage: bool = typer.Option(False, "--coverage", help="Print what the dataset contains: shapes, roles, regimes, segments, decoy twins."),
+    force: bool = typer.Option(False, "--force", help="Replace a dataset already in --out. Without it, a write that would leave an earlier run's tables behind is refused."),
     as_json: bool = typer.Option(False, "--json", help="Print the manifest as JSON on stdout when done."),
 ):
     """Examples:
@@ -427,7 +433,7 @@ def generate(
 
         loaded = _load_schema(schema)
         run = _generate(loaded, seed=seed, shard_size=shard_size or DEFAULT_SHARD_SIZE, workers=workers)
-        _write_sink(run, out, sink, blind)
+        _write_sink(run, out, sink, blind, force)
         if as_json:
             _dump(_with_coverage(run.manifest.model_dump(), run, coverage))
         elif coverage:
@@ -448,7 +454,7 @@ def generate(
     except ValidationError as exc:
         problems = "; ".join(f"--{'.'.join(str(p) for p in e['loc']).replace('_', '-')}: {e['msg']}" for e in exc.errors())
         raise typer.BadParameter(f"{problems}. Run `graphfaker domains` to see the options.") from exc
-    _write_sink(run, out, sink, blind)
+    _write_sink(run, out, sink, blind, force)
     if as_json:
         _dump(_with_coverage(run.manifest.model_dump(), run, coverage, pack.patterns))
     elif coverage:
@@ -472,11 +478,17 @@ def _with_coverage(payload: dict, run, wanted: bool, catalog=None) -> dict:
 @app.command(short_help="Check schema YAML files without generating anything.")
 def validate(
     files: list[str] = typer.Argument(..., help="Schema YAML files, as written by `graphfaker schema` or by hand."),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Read the schema back: node types with their samplers, edge families with the budget per source row, the latent factor.",
+    ),
 ):
     """Parse and validate each file with the same checks `generate --schema`
     applies, and say what it describes. Exits non-zero if any file fails.
 
       graphfaker validate my_graph.yaml other.yaml
+
+      graphfaker validate hospital.yaml --verbose
     """
     failed = False
     for path in files:
@@ -490,6 +502,11 @@ def validate(
             f"{path}: ok, schema {loaded.name!r}, {len(loaded.nodes)} node types, {len(loaded.relationships())} relationship types, "
             f"{loaded.total_nodes:,} nodes and {loaded.total_edges:,} edges, digest {loaded.digest()}"
         )
+        if verbose:
+            # The header line says how big it is; this says what it is, which
+            # is the question somebody holding a drafted schema has.
+            for line in loaded.describe()[1:]:
+                typer.echo(line)
         for line in _clock_warnings(loaded):
             typer.echo(line, err=True)
     if failed:
@@ -685,6 +702,7 @@ def schema_command(
     model: str = typer.Option(None, "--model", help="draft only: the model to ask. Default $GRAPHFAKER_LLM_MODEL, or Anthropic's most capable."),
     base_url: str = typer.Option(None, "--base-url", help="draft only: an OpenAI-compatible endpoint, for a local model."),
     name: str = typer.Option(None, "--name", help="draft only: what to call the schema."),
+    force: bool = typer.Option(False, "--force", help="draft only: overwrite --out if it already exists."),
 ):
     """Examples:
 
@@ -697,7 +715,7 @@ def schema_command(
     from graphfaker.domains import available, get
 
     if domain == "draft" and "draft" not in available():
-        _draft_schema(list(ctx.args), out, provider, model, base_url, name)
+        _draft_schema(list(ctx.args), out, provider, model, base_url, name, force)
         return
     try:
         pack = get(domain)
@@ -732,7 +750,7 @@ def schema_command(
 
 def _draft_schema(
     words: list[str], out: str | None, provider: str | None, model: str | None,
-    base_url: str | None, name: str | None,
+    base_url: str | None, name: str | None, force: bool = False,
 ) -> None:
     """``graphfaker schema draft "<description>"``.
 
@@ -748,6 +766,16 @@ def _draft_schema(
     if not description:
         raise typer.BadParameter(
             'describe the graph you want: graphfaker schema draft "a hospital: patients, doctors, wards"'
+        )
+    # Checked before the model is asked, so a refusal costs nothing. A
+    # drafted schema is a file you are meant to read and edit, and a second
+    # draft of the same sentence is a different schema: overwriting one
+    # silently would throw away the editing that is the whole point.
+    if out is not None and Path(out).exists() and not force:
+        raise typer.BadParameter(
+            f"{out} already exists. A drafted schema is meant to be edited, and a second draft is a "
+            "different schema, so this would replace whatever you changed. Write to another file, or "
+            "pass --force."
         )
     try:
         client = get_provider(provider, model, base_url)
@@ -778,7 +806,26 @@ def _draft_schema(
     else:
         Path(out).write_text(header + result.yaml, encoding="utf-8")
         typer.echo(f"wrote {out}", err=True)
+        for line in _stale_dataset_note(Path(out)):
+            typer.echo(line, err=True)
     typer.echo(result.summary(), err=True)
+
+
+def _stale_dataset_note(schema_path: Path) -> list[str]:
+    """Point at a dataset generated from the schema this file used to hold.
+
+    ``hospital.yaml`` and ``./hospital`` is the obvious pairing and the one
+    people make, so a redraft leaves a directory whose data no longer comes
+    from the file next to it. Nothing is touched; it only says so.
+    """
+    candidate = schema_path.parent / schema_path.stem
+    manifest = candidate / "manifest.json"
+    if not manifest.is_file():
+        return []
+    return [
+        f"note: {candidate} holds a dataset generated from the previous draft. "
+        f"Regenerate it with --force, or write this one somewhere else."
+    ]
 
 
 @app.command(short_help="Generate a fraud / AML transaction graph with labelled typologies.")
@@ -796,6 +843,7 @@ def fraud(
     report: bool = typer.Option(True, help="Print the hardness and realism reports."),
     blind: bool = typer.Option(False, "--blind", help="Keep the ground truth out of the database sink (it is still written to truth/ on disk)."),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="No progress logging; warnings and errors only."),
+    force: bool = typer.Option(False, "--force", help="Replace a dataset already in --out."),
     as_json: bool = typer.Option(False, "--json", help="Print the manifest and the reports as one JSON document on stdout."),
 ):
     """Shortcut for `graphfaker generate fraud ...` that also prints the reports."""
@@ -805,7 +853,7 @@ def fraud(
 
     _quiet(quiet)
     run = get("fraud").run(seed=seed, workers=workers, scale=scale, hardness=hardness, period_days=period_days)
-    _write_sink(run, out, sink, blind)
+    _write_sink(run, out, sink, blind, force)
     if as_json:
         _dump({
             "manifest": run.manifest.model_dump(),
