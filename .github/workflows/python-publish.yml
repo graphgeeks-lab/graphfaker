@@ -1,8 +1,28 @@
-# Builds the package when a GitHub release is published and uploads it to PyPI
-# with trusted publishing (no API token). One-time setup on PyPI: under the
-# graphfaker project, "Publishing" -> add a trusted publisher with
-# owner graphgeeks-lab, repository graphfaker, workflow python-publish.yml,
-# environment pypi.
+# Builds the package when a GitHub release is published and uploads it to PyPI.
+#
+# Authentication is trusted publishing: PyPI issues a short-lived credential
+# to this workflow, so there is no API token in the repository to leak or
+# rotate. It needs one-time setup on PyPI, and until that exists every run
+# fails with `invalid-publisher: valid token, but no corresponding publisher`.
+# The project is already on PyPI, so the publisher goes under the project
+# rather than being added as a pending publisher on the account page:
+#
+#   pypi.org -> graphfaker -> Manage -> Publishing -> add a GitHub publisher
+#     owner        graphgeeks-lab
+#     repository   graphfaker
+#     workflow     python-publish.yml
+#     environment  pypi
+#
+# All four have to match the claims in the failure message exactly; the
+# environment is the one people leave blank, and a blank one does not match
+# a job that declares `environment: pypi`.
+#
+# To use an API token instead, scope one to the graphfaker project, put it in
+# the `pypi` environment's secrets as PYPI_API_TOKEN, and give the publish
+# step `password: ${{ secrets.PYPI_API_TOKEN }}`. Leave `id-token: write` in
+# place either way: the action attests the upload by default and that path
+# wants the OIDC token, so dropping the permission can fail a run that
+# authenticates with a password, for a second and unrelated-looking reason.
 
 name: Publish to PyPI
 
@@ -29,6 +49,9 @@ jobs:
           VERSION=$(grep -E '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
           echo "tag=$TAG version=$VERSION"
           test "$TAG" = "$VERSION"
+
+      - name: Check the version is not already on PyPI
+        run: python scripts/check_unpublished.py
 
       - name: Build
         run: uv build
