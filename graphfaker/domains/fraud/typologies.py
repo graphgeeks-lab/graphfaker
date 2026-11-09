@@ -33,6 +33,8 @@ from graphfaker.domains.fraud.process import (
     BUSINESS_HOURS,
     HOUR_PROFILE,
     PAYS,
+    TRANSFER_MEMO_WEIGHTS,
+    TRANSFER_MEMOS,
     TRANSFERS,
     WIRE_AMOUNT,
     WIRES,
@@ -132,6 +134,11 @@ class TypologyContext(InjectionContext):
         self.business_active = np.flatnonzero(is_business & (pop.account_status == "active"))
         self.business_open = np.flatnonzero(is_business & (pop.account_status != "closed"))
         self.rows: dict[str, list[tuple]] = {PAYS: [], TRANSFERS: [], WIRES: []}
+        # Memos come from their own stream, spawned without advancing ``rng``, so fixing the
+        # memo leak changes memos only: the same accounts, amounts and times as before.
+        seed_seq = getattr(rng.bit_generator, "seed_seq", None) or rng.bit_generator._seed_seq
+        self.memo_rng = np.random.default_rng(seed_seq.spawn(1)[0])
+        self._memo_p = np.array(TRANSFER_MEMO_WEIGHTS) / sum(TRANSFER_MEMO_WEIGHTS)
         self.shared_devices: list[tuple[int, int]] = []
         self.customer_overrides: dict[int, dict[str, Any]] = {}
         self.fresh_accounts: dict[int, np.datetime64] = {}
@@ -245,7 +252,23 @@ class TypologyContext(InjectionContext):
 
     # ----------------------------------------------------------------- rows
 
+    def memo(self, memo: str) -> str:
+        """A transfer memo that does not give the pattern away.
+
+        A memo is not part of any typology's signature, so a pattern's ordinary transfers draw
+        theirs from the legitimate distribution at every hardness. Structuring's "deposit" is
+        part of its signature (cash deposits), so it survives with the same probability as the
+        signature amount, ``1 - amount_blend``. Decoys keep the memo they ask for.
+        """
+        if memo == "deposit" and self.memo_rng.random() >= self.profile.amount_blend:
+            return memo
+        if memo in ("", "deposit"):
+            return str(self.memo_rng.choice(TRANSFER_MEMOS, p=self._memo_p))
+        return memo
+
     def tx(self, channel: str, src: int, dst: Any, amount: float, ts: np.datetime64, pattern: Pattern, memo: str = "") -> None:
+        if channel == TRANSFERS:
+            memo = self.memo(memo)
         source = self.pop.account_ids[src]
         if channel == PAYS:
             target = self.pop.merchant_ids[dst]

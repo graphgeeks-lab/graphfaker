@@ -149,8 +149,11 @@ def transfer_amounts(rng: np.random.Generator, n: int) -> np.ndarray:
 #: Sensitivity of amounts to income: amount *= exp(k * (log_income - mean)).
 INCOME_ELASTICITY = 0.5
 
-TRANSFER_MEMOS = ["", "rent share", "dinner", "gift", "invoice", "loan repayment", "tickets", "thanks"]
-TRANSFER_MEMO_WEIGHTS = [40, 8, 12, 10, 8, 6, 6, 10]
+# "deposit" is here so that word is never fraud-only: structuring writes it too, and before
+# 1.5 no legitimate transfer did, which made the memo a perfect giveaway.
+TRANSFER_MEMOS = ["", "rent share", "dinner", "gift", "invoice", "loan repayment", "tickets", "thanks",
+                  "deposit"]
+TRANSFER_MEMO_WEIGHTS = [40, 8, 12, 10, 8, 6, 6, 10, 4]
 
 #: Share of the P2P layer that goes to a known contact rather than a stranger.
 CONTACT_RATE = 0.75
