@@ -2,6 +2,21 @@
 History
 =======
 
+1.5.1 (2026-11-09)
+------------------
+
+Same code as 1.5.0, released under a new number because 1.5.0 never reached PyPI. The release
+workflow's upload step authenticated with trusted publishing, and no publisher had been
+configured on PyPI, so every attempt was refused with ``invalid-publisher``. The build, the
+version and tag check, and the wheel smoke test all passed; nothing was uploaded. A published
+version cannot be replaced and a tag that published nothing is worth less than a clean number,
+so the fix is this bump rather than a re-tag.
+
+* The upload now authenticates with a project-scoped API token, read from the ``pypi``
+  environment's secrets as ``PYPI_API_TOKEN``. ``python-publish.yml`` records what trusted
+  publishing needs, for switching back once the publisher exists.
+* Install 1.5.1 for everything described under 1.5.0 below. There is no 1.5.0 on PyPI.
+
 1.5.0 (2026-11-09)
 ------------------
 

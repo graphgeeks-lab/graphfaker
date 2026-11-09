@@ -10,7 +10,7 @@ it generates a bank, then trains three detectors on the same Account labels and 
 * **edge_gnn** -- a two-layer heterogeneous GINE network that also reads every edge's attributes
   (timestamp, amount, recurring, memo);
 * **edge_gnn_nomemo** -- the same without the memo. In graphfaker 1.4 the memo gave fraud away
-  ("deposit" appeared only on fraud transfers); 1.5.0 fixed that, and this arm checks the fix:
+  ("deposit" appeared only on fraud transfers); 1.5.1 fixed that, and this arm checks the fix:
   with and without the memo should now score about the same.
 
 ``--patterns-per-20k`` scales the fraud with the bank: that many patterns per typology for every

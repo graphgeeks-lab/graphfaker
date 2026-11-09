@@ -1,28 +1,30 @@
 # Builds the package when a GitHub release is published and uploads it to PyPI.
 #
-# Authentication is trusted publishing: PyPI issues a short-lived credential
-# to this workflow, so there is no API token in the repository to leak or
-# rotate. It needs one-time setup on PyPI, and until that exists every run
-# fails with `invalid-publisher: valid token, but no corresponding publisher`.
-# The project is already on PyPI, so the publisher goes under the project
-# rather than being added as a pending publisher on the account page:
+# Authentication is an API token, held in the `pypi` environment's secrets as
+# PYPI_API_TOKEN. Scope it to the graphfaker project rather than the whole
+# account, so that a leak costs this project and nothing else, and treat it
+# as a credential with a rotation cost, which is what the alternative below
+# exists to avoid.
 #
-#   pypi.org -> graphfaker -> Manage -> Publishing -> add a GitHub publisher
+# The better arrangement is trusted publishing, where PyPI issues a
+# short-lived credential to this workflow and there is nothing in the
+# repository to leak or rotate. It needs one-time setup on PyPI, and until a
+# publisher exists whose fields match this workflow's OIDC claims exactly,
+# every run fails with `invalid-publisher: valid token, but no corresponding
+# publisher`. The project is already on PyPI, so the publisher goes under the
+# project; the account page's pending publishers exist only to create new
+# projects and are never consulted for one that already exists.
+#
+#   pypi.org -> graphfaker -> Manage -> Publishing -> GitHub Actions
 #     owner        graphgeeks-lab
 #     repository   graphfaker
-#     workflow     python-publish.yml
+#     workflow     python-publish.yml   (the filename, not the `name:` below)
 #     environment  pypi
 #
-# All four have to match the claims in the failure message exactly; the
-# environment is the one people leave blank, and a blank one does not match
-# a job that declares `environment: pypi`.
-#
-# To use an API token instead, scope one to the graphfaker project, put it in
-# the `pypi` environment's secrets as PYPI_API_TOKEN, and give the publish
-# step `password: ${{ secrets.PYPI_API_TOKEN }}`. Leave `id-token: write` in
-# place either way: the action attests the upload by default and that path
-# wants the OIDC token, so dropping the permission can fail a run that
-# authenticates with a password, for a second and unrelated-looking reason.
+# To switch back, delete the `password:` line from the publish step. Leave
+# `id-token: write` in place either way: the action attests the upload by
+# default and that path wants the OIDC token, so dropping the permission
+# fails a token-authenticated run for a second, unrelated-looking reason.
 
 name: Publish to PyPI
 
@@ -85,3 +87,4 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          password: ${{ secrets.PYPI_API_TOKEN }}
