@@ -331,11 +331,16 @@ def test_the_packs_declare_their_timing_and_still_produce_the_same_bytes():
     coordination digest is untouched, and the timing, amounts and budget of
     all three are still drawn in the order they always were, which is what
     this test is actually for.
+
+    The fraud digest moved again for the memo-leak fix (fraud transfers no longer carry memos
+    only fraud uses). Checked when it moved: with the memo column dropped, every edge table and
+    the truth (accounts, transactions, patterns) hash identically before and after, because
+    memos are drawn from their own stream.
     """
     from graphfaker.domains import get
     from graphfaker.engine.run import fingerprint
 
-    assert fingerprint(get("fraud").run(scale=0.004, seed=42)) == "d28b79c1241e0504"
+    assert fingerprint(get("fraud").run(scale=0.004, seed=42)) == "836763f2f10fb7d7"
     assert fingerprint(get("supply_chain").run(scale=0.004, seed=42)) == "f60024d3d08e4dbc"
     assert fingerprint(get("coordination").run(scale=0.0006, seed=5)) == "d39a9533236cbe70"
 

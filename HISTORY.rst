@@ -2,6 +2,54 @@
 History
 =======
 
+1.5.0 (2026-11-09)
+------------------
+
+**The fraud pack's memos no longer give the fraud away.** The fraud dataset changes for a given
+seed, but only in the ``memo`` column of ``TRANSFERS``.
+
+In 1.4 a fraud transfer carried a blank memo unless its typology chose one, and there were two
+giveaways in that, not one. Structuring wrote "deposit", a word no legitimate transfer used:
+12.6% of fraud transfers at low hardness and 22.4% at high carried it, against none of the
+legitimate ones, so the word alone was proof. And because every other pattern transfer was left
+blank, a blank memo was the larger signal of the two: at medium hardness 83% of fraud transfers
+were blank against 32% of legitimate ones. Any model that read the memo, such as an edge-feature
+GNN, could find fraud without learning laundering, and the hardness report, which measures
+numeric features, didn't see either one. Both were found while preparing an edge-feature
+baseline.
+
+* A pattern's ordinary transfers now draw their memo from the legitimate distribution, at every
+  hardness.
+* Structuring keeps "deposit" with the same probability as its signature amount
+  (``1 - amount_blend``), and legitimate transfers now say "deposit" too (weight 4 in 104).
+* Memos come from their own random stream. With the memo column dropped, every edge table and
+  the truth are identical to 1.4, so accounts, amounts, times and labels are unchanged.
+
+**Priced scores in the evaluator.** ``Scores.cost(miss_cost)``, ``no_alert_cost`` and
+``value`` price a detector's errors at a declared weight (how many false alerts one missed fraud
+is worth; no default, because it's a policy). ``Evaluation.summary(miss_cost=...)`` and
+``as_dict(miss_cost=...)`` add the columns, and ``graphfaker evaluate --miss-cost 20`` prints
+them, in the table and in ``--json``, for every level and every typology. ``cost_ratio`` states
+the same comparison as a fraction, which is the form that survives being put in a table: 1.0 is
+worth nothing, above it is worse than nothing, and a raw cost of 1,300 means nothing without
+knowing how much fraud was there to miss. It is ``None`` rather than 0.0 when there was no fraud
+to catch, because 0.0 there would read as free. *Why:* a GraphSAGE baseline on 100,000-account banks scored AUC 0.82 at medium hardness
+yet caught 0–4 of about 20 test fraud accounts, at the same cost as raising no alerts. A ranking
+metric can't show that; a priced one can. Nothing changes unless you pass a weight.
+
+* ``tests/test_fraud_memo.py``: no memo is fraud-only at any hardness, and at high hardness fraud
+  memos sit within 0.15 of ordinary transfers' shares. The fraud digest in
+  ``test_process.py`` moved for this, with the check recorded.
+* Checked against a model rather than only against shares: the transaction-reading GNN was
+  trained twice on each difficulty, once with the memo and once without, and the two overlap in
+  AUC with no rise in cost when the memo is dropped. On 1.4 the memo arm won.
+
+One thing the fix does not change: "salary" appears on 18.6% of legitimate transfers and on no
+fraud, because payroll is its own process running from employers' accounts. That marks some
+transfers as clearly legitimate rather than marking any as fraud, and the with-and-without
+experiment above says a model gets nothing exploitable from it, but it is the one memo whose
+distribution still differs sharply.
+
 1.4.0 (2026-10-21)
 ------------------
 

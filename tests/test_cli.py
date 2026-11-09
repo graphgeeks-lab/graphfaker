@@ -409,3 +409,41 @@ def test_a_redraft_says_when_a_dataset_came_from_the_previous_one(tmp_path, monk
     assert "holds a dataset generated from the previous draft" in again.output
     # Said, not done: the dataset is untouched.
     assert (data / "manifest.json").is_file()
+
+
+def test_evaluate_prices_the_errors_when_a_weight_is_given(tmp_path):
+    """The weight is a policy, so it has no default and nothing changes without it."""
+    out = tmp_path / "bank"
+    assert runner.invoke(
+        app, ["fraud", "--scale", "0.001", "--seed", "3", "--out", str(out), "--quiet", "--no-report"]
+    ).exit_code == 0
+
+    import polars as pl
+
+    truth = pl.read_parquet(out / "truth" / "accounts.parquet")
+    flagged = truth.filter(pl.col("is_fraud"))["account_id"].unique().to_list()[:20]
+    listed = tmp_path / "flagged.txt"
+    listed.write_text("\n".join(flagged), encoding="utf-8")
+
+    plain = runner.invoke(app, ["evaluate", str(out), "--accounts", str(listed)])
+    assert plain.exit_code == 0, plain.output
+    assert "cost" not in plain.output, "the priced columns are opt-in"
+
+    priced = runner.invoke(app, ["evaluate", str(out), "--accounts", str(listed), "--miss-cost", "20"])
+    assert priced.exit_code == 0, priced.output
+    assert "no alerts" in priced.output and "value" in priced.output
+    assert "a missed fraud costs 20 false alerts" in priced.output
+
+    import json
+
+    doc = json.loads(
+        runner.invoke(
+            app, ["evaluate", str(out), "--accounts", str(listed), "--json", "--miss-cost", "20"]
+        ).output
+    )
+    assert doc["account"]["miss_cost"] == 20
+    assert doc["account"]["value"] == 20 * doc["account"]["tp"] - doc["account"]["fp"]
+
+    # A weight that is not a count of false alerts is refused.
+    bad = runner.invoke(app, ["evaluate", str(out), "--accounts", str(listed), "--miss-cost", "0"])
+    assert bad.exit_code != 0 and "positive" in said(bad)
