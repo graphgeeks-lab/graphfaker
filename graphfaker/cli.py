@@ -875,9 +875,29 @@ def evaluate(
     accounts: str = typer.Option(None, help="File with one flagged account id per line."),
     transactions: str = typer.Option(None, help="File with one flagged transaction id per line."),
     ring_threshold: float = typer.Option(1.0, help="Fraction of a pattern's accounts that must be flagged to count it as found."),
+    miss_cost: float = typer.Option(
+        None, "--miss-cost",
+        help="Price the errors: how many false alerts one missed fraud is worth. "
+             "No default, because it is a policy rather than a property of the data. "
+             "With it you also get cost, the cost of raising no alerts, and the difference.",
+    ),
     as_json: bool = typer.Option(False, "--json", help="Print the scores as JSON instead of text."),
 ):
+    """Examples:
+
+      graphfaker evaluate ./bank --accounts flagged.txt
+
+      graphfaker evaluate ./bank --accounts flagged.txt --miss-cost 20
+
+    Precision, recall and F1 treat a missed fraud and a false alert as equally
+    bad. ``--miss-cost`` says what a miss is actually worth, which is the only
+    way to see that a detector ranking well at 0.85 AUC can still cost as much
+    as raising no alerts at all.
+    """
     from graphfaker.domains.fraud.evaluate import evaluate as _evaluate
+
+    if miss_cost is not None and miss_cost <= 0:
+        raise typer.BadParameter("--miss-cost is how many false alerts one miss is worth, so it is positive")
 
     def read(path):
         if not path:
@@ -887,9 +907,9 @@ def evaluate(
 
     result = _evaluate(data, read(accounts), read(transactions), ring_threshold=ring_threshold)
     if as_json:
-        _dump(result.as_dict())
+        _dump(result.as_dict(miss_cost))
     else:
-        typer.echo(result.summary())
+        typer.echo(result.summary(miss_cost))
 
 
 load_app = typer.Typer(no_args_is_help=True, help="Load a generated dataset into a live database.")

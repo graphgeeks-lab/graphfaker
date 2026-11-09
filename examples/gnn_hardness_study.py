@@ -9,8 +9,9 @@ it generates a bank, then trains three detectors on the same Account labels and 
 * **graphsage** -- a two-layer heterogeneous GraphSAGE that also sees the neighbourhood;
 * **edge_gnn** -- a two-layer heterogeneous GINE network that also reads every edge's attributes
   (timestamp, amount, recurring, memo);
-* **edge_gnn_nomemo** -- the same without the memo. The memo is a generator giveaway in
-  graphfaker 1.4 ("deposit" appears only on fraud transfers), so this is the honest arm.
+* **edge_gnn_nomemo** -- the same without the memo. In graphfaker 1.4 the memo gave fraud away
+  ("deposit" appeared only on fraud transfers); 1.5.0 fixed that, and this arm checks the fix:
+  with and without the memo should now score about the same.
 
 ``--patterns-per-20k`` scales the fraud with the bank: that many patterns per typology for every
 20,000 accounts (2 matches the prevalence of a 20,000-account bank). Without it, small banks
